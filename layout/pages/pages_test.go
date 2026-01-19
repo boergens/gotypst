@@ -1,0 +1,381 @@
+package pages
+
+import (
+	"testing"
+
+	"github.com/boergens/gotypst/layout"
+)
+
+func TestLayoutDocumentEmpty(t *testing.T) {
+	engine := &Engine{}
+	content := &Content{}
+	styles := StyleChain{}
+
+	doc, err := LayoutDocument(engine, content, styles)
+	if err != nil {
+		t.Fatalf("LayoutDocument failed: %v", err)
+	}
+
+	if doc == nil {
+		t.Fatal("LayoutDocument returned nil")
+	}
+
+	// Empty content should produce at least one empty page
+	if len(doc.Pages) == 0 {
+		t.Error("Expected at least one page for empty content")
+	}
+}
+
+func TestLayoutDocumentNilContent(t *testing.T) {
+	engine := &Engine{}
+	styles := StyleChain{}
+
+	doc, err := LayoutDocument(engine, nil, styles)
+	if err != nil {
+		t.Fatalf("LayoutDocument failed with nil content: %v", err)
+	}
+
+	if doc == nil {
+		t.Fatal("LayoutDocument returned nil")
+	}
+}
+
+func TestCollectEmpty(t *testing.T) {
+	locator := &Locator{Current: 0}
+	splitLocator := locator.Split()
+	styles := StyleChain{}
+
+	items := Collect(nil, splitLocator, styles)
+
+	// Empty children should produce a single empty run
+	if len(items) != 1 {
+		t.Fatalf("Expected 1 item for empty children, got %d", len(items))
+	}
+
+	if _, ok := items[0].(RunItem); !ok {
+		t.Error("Expected RunItem for empty children")
+	}
+}
+
+func TestCollectWithPagebreak(t *testing.T) {
+	locator := &Locator{Current: 0}
+	splitLocator := locator.Split()
+	styles := StyleChain{}
+
+	children := []Pair{
+		{Element: &PagebreakElem{Weak: false}, Styles: styles},
+	}
+
+	items := Collect(children, splitLocator, styles)
+
+	// Strong pagebreak should produce an empty run before it
+	if len(items) < 1 {
+		t.Fatal("Expected at least 1 item")
+	}
+}
+
+func TestCollectWithWeakPagebreak(t *testing.T) {
+	locator := &Locator{Current: 0}
+	splitLocator := locator.Split()
+	styles := StyleChain{}
+
+	children := []Pair{
+		{Element: &PagebreakElem{Weak: true}, Styles: styles},
+	}
+
+	items := Collect(children, splitLocator, styles)
+
+	// Weak pagebreak alone should still produce items
+	if len(items) == 0 {
+		t.Error("Expected items for weak pagebreak")
+	}
+}
+
+func TestCollectWithParityPagebreak(t *testing.T) {
+	locator := &Locator{Current: 0}
+	splitLocator := locator.Split()
+	styles := StyleChain{}
+
+	evenParity := ParityEven
+	children := []Pair{
+		{Element: &PagebreakElem{Weak: true, To: &evenParity}, Styles: styles},
+	}
+
+	items := Collect(children, splitLocator, styles)
+
+	// Should have a parity item
+	hasParity := false
+	for _, item := range items {
+		if _, ok := item.(ParityItem); ok {
+			hasParity = true
+			break
+		}
+	}
+
+	if !hasParity {
+		t.Error("Expected ParityItem for pagebreak with To field")
+	}
+}
+
+func TestCollectWithTags(t *testing.T) {
+	locator := &Locator{Current: 0}
+	splitLocator := locator.Split()
+	styles := StyleChain{}
+
+	// Tags followed by a non-boundary pagebreak should produce a TagsItem
+	children := []Pair{
+		{Element: &TagElem{Tag: Tag{Kind: TagStart, Location: 1}}, Styles: styles},
+		{Element: &TagElem{Tag: Tag{Kind: TagEnd, Location: 1}}, Styles: styles},
+		{Element: &PagebreakElem{Weak: false, Boundary: false}, Styles: styles},
+	}
+
+	items := Collect(children, splitLocator, styles)
+
+	// Tags before a non-boundary pagebreak should produce a TagsItem
+	hasTags := false
+	for _, item := range items {
+		if _, ok := item.(TagsItem); ok {
+			hasTags = true
+			break
+		}
+	}
+
+	if !hasTags {
+		t.Error("Expected TagsItem for tags before pagebreak")
+	}
+}
+
+func TestCollectTagsAloneAtEnd(t *testing.T) {
+	locator := &Locator{Current: 0}
+	splitLocator := locator.Split()
+	styles := StyleChain{}
+
+	// Tags alone at end with staged_empty_page=true get included in the Run
+	// because of edge case handling in collect
+	children := []Pair{
+		{Element: &TagElem{Tag: Tag{Kind: TagStart, Location: 1}}, Styles: styles},
+	}
+
+	items := Collect(children, splitLocator, styles)
+
+	// Should produce items (either Run or Tags depending on edge case)
+	if len(items) == 0 {
+		t.Error("Expected at least one item")
+	}
+}
+
+func TestParityMatches(t *testing.T) {
+	tests := []struct {
+		parity    Parity
+		pageCount int
+		expected  bool
+	}{
+		{ParityEven, 0, false}, // 0 pages is even, don't need to add
+		{ParityEven, 1, true},  // 1 page is odd, need to add
+		{ParityEven, 2, false}, // 2 pages is even, don't need to add
+		{ParityOdd, 0, true},   // 0 pages is even, need to add
+		{ParityOdd, 1, false},  // 1 page is odd, don't need to add
+		{ParityOdd, 2, true},   // 2 pages is even, need to add
+	}
+
+	for _, tt := range tests {
+		result := tt.parity.Matches(tt.pageCount)
+		if result != tt.expected {
+			t.Errorf("Parity(%v).Matches(%d) = %v, want %v",
+				tt.parity, tt.pageCount, result, tt.expected)
+		}
+	}
+}
+
+func TestBindingSwap(t *testing.T) {
+	tests := []struct {
+		binding  Binding
+		pageNum  int
+		expected bool
+	}{
+		{BindingLeft, 0, false},  // First page (0-indexed), no swap
+		{BindingLeft, 1, true},   // Second page, swap
+		{BindingLeft, 2, false},  // Third page, no swap
+		{BindingRight, 0, true},  // First page, swap
+		{BindingRight, 1, false}, // Second page, no swap
+		{BindingRight, 2, true},  // Third page, swap
+	}
+
+	for _, tt := range tests {
+		result := tt.binding.Swap(tt.pageNum)
+		if result != tt.expected {
+			t.Errorf("Binding(%v).Swap(%d) = %v, want %v",
+				tt.binding, tt.pageNum, result, tt.expected)
+		}
+	}
+}
+
+func TestManualPageCounter(t *testing.T) {
+	counter := NewManualPageCounter()
+
+	if counter.Physical() != 0 {
+		t.Errorf("Initial physical = %d, want 0", counter.Physical())
+	}
+	if counter.Logical() != 1 {
+		t.Errorf("Initial logical = %d, want 1", counter.Logical())
+	}
+
+	counter.Step()
+
+	if counter.Physical() != 1 {
+		t.Errorf("After step physical = %d, want 1", counter.Physical())
+	}
+	if counter.Logical() != 2 {
+		t.Errorf("After step logical = %d, want 2", counter.Logical())
+	}
+}
+
+func TestFrameOperations(t *testing.T) {
+	frame := Hard(layout.Size{Width: 100, Height: 200})
+
+	if frame.Width() != 100 {
+		t.Errorf("Width = %v, want 100", frame.Width())
+	}
+	if frame.Height() != 200 {
+		t.Errorf("Height = %v, want 200", frame.Height())
+	}
+
+	// Test Push
+	frame.Push(layout.Point{X: 10, Y: 20}, TagItem{Tag: Tag{Kind: TagStart, Location: 1}})
+	if len(frame.Items) != 1 {
+		t.Errorf("Items count = %d, want 1", len(frame.Items))
+	}
+
+	// Test PushFrame
+	inner := Hard(layout.Size{Width: 50, Height: 50})
+	frame.PushFrame(layout.Point{X: 25, Y: 75}, inner)
+	if len(frame.Items) != 2 {
+		t.Errorf("Items count = %d, want 2", len(frame.Items))
+	}
+}
+
+func TestLayoutPageRun(t *testing.T) {
+	engine := &Engine{}
+	locator := Locator{Current: 0}
+	styles := StyleChain{}
+
+	pages, err := LayoutPageRun(engine, nil, locator, styles)
+	if err != nil {
+		t.Fatalf("LayoutPageRun failed: %v", err)
+	}
+
+	if len(pages) == 0 {
+		t.Error("Expected at least one page")
+	}
+}
+
+func TestLayoutBlankPage(t *testing.T) {
+	engine := &Engine{}
+	locator := Locator{Current: 0}
+	styles := StyleChain{}
+
+	page, err := LayoutBlankPage(engine, locator, styles)
+	if err != nil {
+		t.Fatalf("LayoutBlankPage failed: %v", err)
+	}
+
+	if page == nil {
+		t.Error("Expected non-nil page")
+	}
+}
+
+func TestFinalize(t *testing.T) {
+	engine := &Engine{}
+	counter := NewManualPageCounter()
+	tags := []Tag{}
+
+	layouted := LayoutedPage{
+		Inner:    Hard(layout.Size{Width: 500, Height: 700}),
+		Margin:   Sides[layout.Abs]{Left: 50, Top: 50, Right: 50, Bottom: 50},
+		Binding:  BindingLeft,
+		TwoSided: false,
+	}
+
+	page, err := Finalize(engine, counter, &tags, layouted)
+	if err != nil {
+		t.Fatalf("Finalize failed: %v", err)
+	}
+
+	if page == nil {
+		t.Fatal("Expected non-nil page")
+	}
+
+	// Check page dimensions (content + margins)
+	expectedWidth := layout.Abs(600)  // 500 + 50 + 50
+	expectedHeight := layout.Abs(800) // 700 + 50 + 50
+
+	if page.Frame.Width() != expectedWidth {
+		t.Errorf("Page width = %v, want %v", page.Frame.Width(), expectedWidth)
+	}
+	if page.Frame.Height() != expectedHeight {
+		t.Errorf("Page height = %v, want %v", page.Frame.Height(), expectedHeight)
+	}
+
+	if page.Number != 1 {
+		t.Errorf("Page number = %d, want 1", page.Number)
+	}
+}
+
+func TestFinalizeTwoSided(t *testing.T) {
+	engine := &Engine{}
+	tags := []Tag{}
+
+	// Test left-bound, second page (should swap margins)
+	counter := NewManualPageCounter()
+	counter.Step() // Move to page 2
+
+	layouted := LayoutedPage{
+		Inner:    Hard(layout.Size{Width: 500, Height: 700}),
+		Margin:   Sides[layout.Abs]{Left: 70, Top: 50, Right: 30, Bottom: 50},
+		Binding:  BindingLeft,
+		TwoSided: true,
+	}
+
+	page, err := Finalize(engine, counter, &tags, layouted)
+	if err != nil {
+		t.Fatalf("Finalize failed: %v", err)
+	}
+
+	// Margins should be swapped for second page with left binding
+	// The inner frame should be positioned with the swapped margins
+	if len(page.Frame.Items) == 0 {
+		t.Error("Expected items in frame")
+	}
+}
+
+func TestSidesSum(t *testing.T) {
+	sides := Sides[layout.Abs]{Left: 10, Top: 20, Right: 30, Bottom: 40}
+	sum := sides.SumByAxis()
+
+	if sum.Width != 40 { // 10 + 30
+		t.Errorf("Sum width = %v, want 40", sum.Width)
+	}
+	if sum.Height != 60 { // 20 + 40
+		t.Errorf("Sum height = %v, want 60", sum.Height)
+	}
+}
+
+func TestLocatorSplit(t *testing.T) {
+	locator := &Locator{Current: 100}
+	split := locator.Split()
+
+	loc1 := split.Next(nil)
+	if loc1.Current != 101 {
+		t.Errorf("First next = %d, want 101", loc1.Current)
+	}
+
+	loc2 := split.Next(nil)
+	if loc2.Current != 102 {
+		t.Errorf("Second next = %d, want 102", loc2.Current)
+	}
+
+	relayout := split.Relayout()
+	if relayout.Current != 102 {
+		t.Errorf("Relayout = %d, want 102", relayout.Current)
+	}
+}
