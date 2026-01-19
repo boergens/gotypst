@@ -376,6 +376,54 @@ func (n *SyntaxNode) Clone() *SyntaxNode {
 	return &SyntaxNode{data: n.data.clone()}
 }
 
+// Cast returns this node if it has the given kind, nil otherwise.
+func (n *SyntaxNode) Cast(kind SyntaxKind) *SyntaxNode {
+	if n == nil || n.Kind() != kind {
+		return nil
+	}
+	return n
+}
+
+// CastFirst returns the first child that has the given kind.
+func (n *SyntaxNode) CastFirst(kind SyntaxKind) *SyntaxNode {
+	if n == nil {
+		return nil
+	}
+	for _, child := range n.Children() {
+		if child.Kind() == kind {
+			return child
+		}
+	}
+	return nil
+}
+
+// CastAll returns all children that have the given kind.
+func (n *SyntaxNode) CastAll(kind SyntaxKind) []*SyntaxNode {
+	if n == nil {
+		return nil
+	}
+	var result []*SyntaxNode
+	for _, child := range n.Children() {
+		if child.Kind() == kind {
+			result = append(result, child)
+		}
+	}
+	return result
+}
+
+// CastFirstInSet returns the first child with a kind in the given set.
+func (n *SyntaxNode) CastFirstInSet(set SyntaxSet) *SyntaxNode {
+	if n == nil {
+		return nil
+	}
+	for _, child := range n.Children() {
+		if set.Contains(child.Kind()) {
+			return child
+		}
+	}
+	return nil
+}
+
 // IsLeaf returns true if this is a leaf node.
 func (n *SyntaxNode) IsLeaf() bool {
 	_, ok := n.data.(*leafNode)
