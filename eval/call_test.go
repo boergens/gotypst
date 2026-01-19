@@ -245,8 +245,7 @@ func TestBinaryOperators(t *testing.T) {
 		{"float+float", syntax.BinOpAdd, Float(1.5), Float(2.5), Float(4.0)},
 		{"int+float", syntax.BinOpAdd, Int(1), Float(2.5), Float(3.5)},
 		{"str+str", syntax.BinOpAdd, Str("hello"), Str(" world"), Str("hello world")},
-		{"bool and bool", syntax.BinOpAnd, True, False, False},
-		{"bool or bool", syntax.BinOpOr, True, False, True},
+		// Note: and/or are short-circuit operators and handled separately, not via applyBinaryOp
 		{"int==int true", syntax.BinOpEq, Int(5), Int(5), True},
 		{"int==int false", syntax.BinOpEq, Int(5), Int(6), False},
 		{"int<int true", syntax.BinOpLt, Int(3), Int(5), True},

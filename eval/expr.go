@@ -1066,7 +1066,7 @@ func bindParams(vm *Vm, params *syntax.ParamsNode, args *Args, defaults []Value)
 				argIndex++
 			} else {
 				// No argument provided
-				return &MissingArgumentError{Param: name, Span: ident.ToUntyped().Span()}
+				return &MissingArgumentError{What: name, Span: ident.ToUntyped().Span()}
 			}
 
 		case *syntax.NamedParam:
@@ -2003,25 +2003,6 @@ func (e *TypeError) Error() string {
 	return fmt.Sprintf("expected %s, got %s", e.Expected, e.Got)
 }
 
-// UnsupportedOperatorError is returned when applying an unsupported operator.
-type UnsupportedOperatorError struct {
-	Op   string
-	Span syntax.Span
-}
-
-func (e *UnsupportedOperatorError) Error() string {
-	return fmt.Sprintf("unsupported operator: %s", e.Op)
-}
-
-// InvalidAssignmentTargetError is returned when assigning to an invalid target.
-type InvalidAssignmentTargetError struct {
-	Span syntax.Span
-}
-
-func (e *InvalidAssignmentTargetError) Error() string {
-	return "invalid assignment target"
-}
-
 // FieldNotFoundError is returned when accessing a non-existent field.
 type FieldNotFoundError struct {
 	Field string
@@ -2031,14 +2012,4 @@ type FieldNotFoundError struct {
 
 func (e *FieldNotFoundError) Error() string {
 	return fmt.Sprintf("field %q not found on %s", e.Field, e.Type)
-}
-
-// MissingArgumentError is returned when a required argument is missing.
-type MissingArgumentError struct {
-	Param string
-	Span  syntax.Span
-}
-
-func (e *MissingArgumentError) Error() string {
-	return fmt.Sprintf("missing argument: %s", e.Param)
 }
