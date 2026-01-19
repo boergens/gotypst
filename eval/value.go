@@ -606,10 +606,12 @@ func (v StylesValue) Display() Content { return Content{} }
 func (v StylesValue) Clone() Value { return v }
 func (StylesValue) isValue()       {}
 
-// Styles represents a collection of style rules.
+// Styles represents a collection of style rules and recipes.
 type Styles struct {
-	// Rules contains the style rules.
+	// Rules contains the style rules (from set rules).
 	Rules []StyleRule
+	// Recipes contains the show rule recipes.
+	Recipes []*Recipe
 }
 
 // StyleRule represents a single style rule.

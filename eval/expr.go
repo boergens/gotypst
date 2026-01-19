@@ -1696,20 +1696,7 @@ func evalContextual(vm *Vm, e *syntax.ContextualExpr) (Value, error) {
 	return FuncValue{Func: fn}, nil
 }
 
-// ----------------------------------------------------------------------------
-// Set/Show Rule Stubs
-// ----------------------------------------------------------------------------
-
-func evalSetRule(vm *Vm, e *syntax.SetRuleExpr) (Value, error) {
-	// Set rules will be implemented in rules.go
-	return StylesValue{Styles: &Styles{}}, nil
-}
-
-func evalShowRule(vm *Vm, e *syntax.ShowRuleExpr) (Value, error) {
-	// Show rules will be implemented in rules.go
-	return StylesValue{Styles: &Styles{}}, nil
-}
-
+// Note: evalSetRule and evalShowRule are implemented in rules.go
 // Note: evalModuleImport and evalModuleInclude are implemented in import.go
 
 // ----------------------------------------------------------------------------
