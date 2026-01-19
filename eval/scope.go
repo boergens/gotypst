@@ -128,6 +128,15 @@ func (s *Scope) Iter() []scopeEntry {
 	return s.bindings
 }
 
+// All returns a map of all bindings in the scope.
+func (s *Scope) All() map[string]Binding {
+	result := make(map[string]Binding, len(s.bindings))
+	for _, entry := range s.bindings {
+		result[entry.name] = entry.binding
+	}
+	return result
+}
+
 // Clone creates a shallow copy of the scope.
 func (s *Scope) Clone() *Scope {
 	if s == nil {
