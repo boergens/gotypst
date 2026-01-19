@@ -1357,218 +1357,304 @@ func destructureAssign(vm *Vm, pattern *syntax.DestructuringNode, value Value) (
 
 func evalConditional(vm *Vm, e *syntax.ConditionalExpr) (Value, error) {
 	// Evaluate condition
-	cond, err := EvalExpr(vm, e.Condition())
+	condition := e.Condition()
+	cond, err := EvalExpr(vm, condition)
 	if err != nil {
 		return nil, err
 	}
 
 	condBool, ok := AsBool(cond)
 	if !ok {
-		return nil, &TypeError{Expected: TypeBool, Got: cond.Type(), Span: e.Condition().ToUntyped().Span()}
+		return nil, &TypeError{Expected: TypeBool, Got: cond.Type(), Span: condition.ToUntyped().Span()}
 	}
 
+	var output Value
 	if condBool {
 		if body := e.IfBody(); body != nil {
-			return EvalExpr(vm, body)
+			output, err = EvalExpr(vm, body)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			output = None
 		}
 	} else {
 		if body := e.ElseBody(); body != nil {
-			return EvalExpr(vm, body)
+			output, err = EvalExpr(vm, body)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			output = None
 		}
 	}
 
-	return None, nil
+	// Mark the return as conditional (it occurred inside an if/else branch)
+	MarkReturnAsConditional(vm)
+
+	return output, nil
 }
 
 func evalWhileLoop(vm *Vm, e *syntax.WhileLoopExpr) (Value, error) {
-	var result Value = None
+	// Save any existing flow event to restore after the loop
+	savedFlow := vm.TakeFlow()
+
+	var output Value = None
+	var i int
+
+	condition := e.Condition()
+	body := e.Body()
 
 	for {
 		// Check condition
-		cond, err := EvalExpr(vm, e.Condition())
+		cond, err := EvalExpr(vm, condition)
 		if err != nil {
 			return nil, err
 		}
 
 		condBool, ok := AsBool(cond)
 		if !ok {
-			return nil, &TypeError{Expected: TypeBool, Got: cond.Type(), Span: e.Condition().ToUntyped().Span()}
+			return nil, &TypeError{Expected: TypeBool, Got: cond.Type(), Span: condition.ToUntyped().Span()}
 		}
 
 		if !condBool {
 			break
 		}
 
+		// Check for infinite loop on first iteration
+		if i == 0 && body != nil {
+			condNode := condition.ToUntyped()
+			bodyNode := body.ToUntyped()
+			if isInvariant(condNode) && !canDiverge(bodyNode) {
+				return nil, &InfiniteLoopError{
+					Span:    condNode.Span(),
+					Message: "condition is always true",
+				}
+			}
+		} else if i >= MaxIterations {
+			return nil, &InfiniteLoopError{
+				Span:    e.ToUntyped().Span(),
+				Message: "loop seems to be infinite",
+			}
+		}
+
 		// Execute body
-		if body := e.Body(); body != nil {
+		if body != nil {
 			value, err := EvalExpr(vm, body)
 			if err != nil {
 				return nil, err
 			}
-			result, _ = joinValues(result, value)
+			output, _ = joinValues(output, value)
 		}
 
 		// Handle flow events
-		if vm.HasFlow() {
-			flow := vm.TakeFlow()
-			if IsBreak(flow) {
-				break
-			}
-			if IsContinue(flow) {
-				continue
-			}
-			// Return propagates up
-			vm.SetFlow(flow)
-			break
+		switch flow := vm.Flow.(type) {
+		case BreakEvent:
+			vm.ClearFlow()
+			goto done
+		case ContinueEvent:
+			vm.ClearFlow()
+		case ReturnEvent:
+			_ = flow // Return propagates up, exit loop
+			goto done
 		}
+
+		i++
 	}
 
-	return result, nil
+done:
+	// Restore saved flow if there was one
+	if savedFlow != nil {
+		vm.SetFlow(savedFlow)
+	}
+
+	// Mark the return as conditional (it occurred inside a loop)
+	MarkReturnAsConditional(vm)
+
+	return output, nil
 }
 
 func evalForLoop(vm *Vm, e *syntax.ForLoopExpr) (Value, error) {
-	var result Value = None
+	// Save any existing flow event to restore after the loop
+	savedFlow := vm.TakeFlow()
 
-	// Evaluate iterator
+	var output Value = None
+
+	// Evaluate iterable
 	iterExpr := e.Iter()
 	if iterExpr == nil {
 		return None, nil
 	}
 
-	iter, err := EvalExpr(vm, iterExpr)
+	iterable, err := EvalExpr(vm, iterExpr)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get pattern
 	pattern := e.Pattern()
+	iterableType := iterable.Type()
 
-	// Iterate based on type
-	switch v := iter.(type) {
+	// Helper to run the loop body and handle flow
+	runBody := func(vm *Vm, body syntax.Expr) (shouldBreak bool, err error) {
+		if body == nil {
+			return false, nil
+		}
+		value, err := EvalExpr(vm, body)
+		if err != nil {
+			return false, err
+		}
+		output, _ = joinValues(output, value)
+
+		// Handle flow events
+		switch flow := vm.Flow.(type) {
+		case BreakEvent:
+			vm.ClearFlow()
+			return true, nil
+		case ContinueEvent:
+			vm.ClearFlow()
+			return false, nil
+		case ReturnEvent:
+			_ = flow // Return propagates up
+			return true, nil
+		}
+		return false, nil
+	}
+
+	// Enter scope once for the entire loop
+	vm.EnterScope()
+
+	switch v := iterable.(type) {
 	case ArrayValue:
+		// Iterate over values of array
 		for _, elem := range v {
-			vm.EnterScope()
-
-			// Bind pattern
 			if _, err := destructure(vm, pattern, elem); err != nil {
 				vm.ExitScope()
 				return nil, err
 			}
 
-			// Execute body
-			if body := e.Body(); body != nil {
-				value, err := EvalExpr(vm, body)
-				if err != nil {
-					vm.ExitScope()
-					return nil, err
-				}
-				result, _ = joinValues(result, value)
+			shouldBreak, err := runBody(vm, e.Body())
+			if err != nil {
+				vm.ExitScope()
+				return nil, err
 			}
-
-			vm.ExitScope()
-
-			// Handle flow events
-			if vm.HasFlow() {
-				flow := vm.TakeFlow()
-				if IsBreak(flow) {
-					break
-				}
-				if IsContinue(flow) {
-					continue
-				}
-				vm.SetFlow(flow)
+			if shouldBreak {
 				break
 			}
 		}
 
 	case *DictValue, DictValue:
-		dict, _ := AsDict(iter)
+		// Iterate over key-value pairs of dict
+		dict, _ := AsDict(iterable)
 		for _, key := range dict.Keys() {
-			vm.EnterScope()
-
 			val, _ := dict.Get(key)
-			// For dict iteration, bind (key, value) pair
 			pair := ArrayValue{Str(key), val}
 			if _, err := destructure(vm, pattern, pair); err != nil {
 				vm.ExitScope()
 				return nil, err
 			}
 
-			if body := e.Body(); body != nil {
-				value, err := EvalExpr(vm, body)
-				if err != nil {
-					vm.ExitScope()
-					return nil, err
-				}
-				result, _ = joinValues(result, value)
+			shouldBreak, err := runBody(vm, e.Body())
+			if err != nil {
+				vm.ExitScope()
+				return nil, err
 			}
-
-			vm.ExitScope()
-
-			if vm.HasFlow() {
-				flow := vm.TakeFlow()
-				if IsBreak(flow) {
-					break
-				}
-				if IsContinue(flow) {
-					continue
-				}
-				vm.SetFlow(flow)
+			if shouldBreak {
 				break
 			}
 		}
 
 	case StrValue:
-		// Iterate over characters
+		// Check for destructuring pattern on string
+		if _, isDestructure := pattern.(*syntax.DestructuringPattern); isDestructure {
+			vm.ExitScope()
+			return nil, &IterationError{
+				Span:    pattern.ToUntyped().Span(),
+				Message: "cannot destructure values of " + iterableType.String(),
+			}
+		}
+		// Iterate over graphemes of string (using runes for now)
 		for _, ch := range string(v) {
-			vm.EnterScope()
-
 			if _, err := destructure(vm, pattern, Str(string(ch))); err != nil {
 				vm.ExitScope()
 				return nil, err
 			}
 
-			if body := e.Body(); body != nil {
-				value, err := EvalExpr(vm, body)
-				if err != nil {
-					vm.ExitScope()
-					return nil, err
-				}
-				result, _ = joinValues(result, value)
+			shouldBreak, err := runBody(vm, e.Body())
+			if err != nil {
+				vm.ExitScope()
+				return nil, err
 			}
-
-			vm.ExitScope()
-
-			if vm.HasFlow() {
-				flow := vm.TakeFlow()
-				if IsBreak(flow) {
-					break
-				}
-				if IsContinue(flow) {
-					continue
-				}
-				vm.SetFlow(flow)
+			if shouldBreak {
 				break
 			}
 		}
+
+	case BytesValue:
+		// Check for destructuring pattern on bytes
+		if _, isDestructure := pattern.(*syntax.DestructuringPattern); isDestructure {
+			vm.ExitScope()
+			return nil, &IterationError{
+				Span:    pattern.ToUntyped().Span(),
+				Message: "cannot destructure values of " + iterableType.String(),
+			}
+		}
+		// Iterate over the integers of bytes
+		for _, b := range v {
+			if _, err := destructure(vm, pattern, Int(int64(b))); err != nil {
+				vm.ExitScope()
+				return nil, err
+			}
+
+			shouldBreak, err := runBody(vm, e.Body())
+			if err != nil {
+				vm.ExitScope()
+				return nil, err
+			}
+			if shouldBreak {
+				break
+			}
+		}
+
+	default:
+		vm.ExitScope()
+		return nil, &IterationError{
+			Span:    iterExpr.ToUntyped().Span(),
+			Message: "cannot loop over " + iterableType.String(),
+		}
 	}
 
-	return result, nil
+	vm.ExitScope()
+
+	// Restore saved flow if there was one
+	if savedFlow != nil {
+		vm.SetFlow(savedFlow)
+	}
+
+	// Mark the return as conditional (it occurred inside a loop)
+	MarkReturnAsConditional(vm)
+
+	return output, nil
 }
 
 func evalLoopBreak(vm *Vm, e *syntax.LoopBreakExpr) (Value, error) {
-	vm.SetFlow(NewBreakEvent(e.ToUntyped().Span()))
+	// Only set break if no flow event is already pending
+	if !vm.HasFlow() {
+		vm.SetFlow(NewBreakEvent(e.ToUntyped().Span()))
+	}
 	return None, nil
 }
 
 func evalLoopContinue(vm *Vm, e *syntax.LoopContinueExpr) (Value, error) {
-	vm.SetFlow(NewContinueEvent(e.ToUntyped().Span()))
+	// Only set continue if no flow event is already pending
+	if !vm.HasFlow() {
+		vm.SetFlow(NewContinueEvent(e.ToUntyped().Span()))
+	}
 	return None, nil
 }
 
 func evalFuncReturn(vm *Vm, e *syntax.FuncReturnExpr) (Value, error) {
+	// Evaluate return value first (even if flow is already set)
 	var value Value = None
-
 	if body := e.Body(); body != nil {
 		var err error
 		value, err = EvalExpr(vm, body)
@@ -1577,7 +1663,10 @@ func evalFuncReturn(vm *Vm, e *syntax.FuncReturnExpr) (Value, error) {
 		}
 	}
 
-	vm.SetFlow(NewReturnEventWithValue(e.ToUntyped().Span(), value))
+	// Only set return if no flow event is already pending
+	if !vm.HasFlow() {
+		vm.SetFlow(NewReturnEventWithValue(e.ToUntyped().Span(), value))
+	}
 	return None, nil
 }
 
@@ -2001,6 +2090,16 @@ type TypeError struct {
 
 func (e *TypeError) Error() string {
 	return fmt.Sprintf("expected %s, got %s", e.Expected, e.Got)
+}
+
+// IterationError is returned when a loop iteration fails.
+type IterationError struct {
+	Message string
+	Span    syntax.Span
+}
+
+func (e *IterationError) Error() string {
+	return e.Message
 }
 
 // FieldNotFoundError is returned when accessing a non-existent field.
