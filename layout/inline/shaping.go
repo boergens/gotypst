@@ -6,6 +6,7 @@ import (
 	"sync"
 	"unicode"
 
+	"github.com/boergens/gotypst/layout"
 	"github.com/go-text/typesetting/di"
 	"github.com/go-text/typesetting/font"
 	"github.com/go-text/typesetting/language"
@@ -16,10 +17,10 @@ import (
 
 // Constants for special characters.
 const (
-	SHY       = '\u00ad' // Soft hyphen
-	SHYSTR    = "\u00ad"
-	Hyphen    = '-'
-	HyphenStr = "-"
+	SHY        = '\u00ad' // Soft hyphen
+	SHYSTR     = "\u00ad"
+	HyphenChar = '-'
+	HyphenStr  = "-"
 )
 
 // Dir represents text direction.
@@ -53,16 +54,16 @@ func (r Region) AsStr() string {
 	return string(r)
 }
 
-// Abs represents an absolute length in points (1/72 inch).
-type Abs float64
+// Abs is an alias for layout.Abs - an absolute length in points (1/72 inch).
+type Abs = layout.Abs
 
 // Zero returns an Abs of zero.
 func AbsZero() Abs {
 	return 0
 }
 
-// Em represents a font-relative unit.
-type Em float64
+// Em is an alias for layout.Em - a font-relative unit.
+type Em = layout.Em
 
 // Zero returns an Em of zero.
 func EmZero() Em {
@@ -72,11 +73,6 @@ func EmZero() Em {
 // One returns 1em.
 func EmOne() Em {
 	return 1.0
-}
-
-// At converts Em to Abs at a given font size.
-func (e Em) At(size Abs) Abs {
-	return Abs(float64(e) * float64(size))
 }
 
 // FromAbs creates Em from Abs at a given font size.
@@ -96,6 +92,11 @@ type Range struct {
 // Contains returns true if the range contains the given index.
 func (r Range) Contains(i int) bool {
 	return i >= r.Start && i < r.End
+}
+
+// Len returns the length of the range.
+func (r Range) Len() int {
+	return r.End - r.Start
 }
 
 // Adjustability represents how much a glyph can stretch or shrink.
