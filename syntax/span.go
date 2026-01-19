@@ -8,32 +8,6 @@ import (
 	"fmt"
 )
 
-// FileId identifies a source file. The zero value represents no file (detached).
-//
-// In the original Typst, FileId is backed by NonZeroU16 and has interning
-// capabilities. This Go version uses a simple uint16 wrapper where 0 represents
-// the absence of a file. Use a FileRegistry to map FileIds to paths.
-type FileId uint16
-
-// NoFile represents a detached/invalid file ID.
-const NoFile FileId = 0
-
-// FileIdFromRaw creates a FileId from a raw uint16 value.
-// Value 0 creates NoFile (detached).
-func FileIdFromRaw(v uint16) FileId {
-	return FileId(v)
-}
-
-// Raw returns the underlying uint16 value.
-func (id FileId) Raw() uint16 {
-	return uint16(id)
-}
-
-// IsValid returns true if this FileId points to a valid file.
-func (id FileId) IsValid() bool {
-	return id != NoFile
-}
-
 // Span defines a range in a source file.
 //
 // This is used throughout the compiler to track which source section an
@@ -96,7 +70,7 @@ func SpanFromNumber(id FileId, number uint64) (Span, bool) {
 	if number < spanFullStart || number >= spanFullEnd {
 		return Span{}, false
 	}
-	return packSpan(id, number), true
+	return packSpan(id.IntoRaw(), number), true
 }
 
 // SpanFromRange creates a new span from a raw byte range instead of a span number.
@@ -114,7 +88,7 @@ func SpanFromRange(id FileId, start, end int) Span {
 	}
 
 	number := (startU64 << spanRangePartShift) | endU64
-	return packSpan(id, spanRangeBase+number)
+	return packSpan(id.IntoRaw(), spanRangeBase+number)
 }
 
 // SpanFromRaw constructs a Span from a raw uint64 value.
@@ -123,9 +97,9 @@ func SpanFromRaw(v uint64) Span {
 	return Span{bits: v}
 }
 
-// packSpan packs a file ID and the low bits into a span.
-func packSpan(id FileId, low uint64) Span {
-	bits := (uint64(id) << spanFileIdShift) | low
+// packSpan packs a raw file ID (uint16) and the low bits into a span.
+func packSpan(fileId uint16, low uint64) Span {
+	bits := (uint64(fileId) << spanFileIdShift) | low
 	return Span{bits: bits}
 }
 
@@ -135,10 +109,23 @@ func (s Span) IsDetached() bool {
 }
 
 // Id returns the file id that the span points into.
-// Returns NoFile if the span is detached.
-func (s Span) Id() FileId {
-	fileIdBits := s.bits >> spanFileIdShift
-	return FileId(fileIdBits)
+// Returns nil if the span is detached (no file).
+func (s Span) Id() *FileId {
+	if s.IsDetached() {
+		return nil
+	}
+	fileIdBits := uint16(s.bits >> spanFileIdShift)
+	if fileIdBits == 0 {
+		return nil
+	}
+	id := FileId{id: fileIdBits}
+	return &id
+}
+
+// RawFileId returns the raw file id number from the span.
+// Returns 0 if the span is detached.
+func (s Span) RawFileId() uint16 {
+	return uint16(s.bits >> spanFileIdShift)
 }
 
 // Number returns the unique number of the span within its source.
@@ -180,9 +167,9 @@ func (s Span) String() string {
 		return "Span(detached)"
 	}
 	if start, end, ok := s.Range(); ok {
-		return fmt.Sprintf("Span(file=%d, range=%d..%d)", s.Id(), start, end)
+		return fmt.Sprintf("Span(file=%d, range=%d..%d)", s.RawFileId(), start, end)
 	}
-	return fmt.Sprintf("Span(file=%d, number=%d)", s.Id(), s.Number())
+	return fmt.Sprintf("Span(file=%d, number=%d)", s.RawFileId(), s.Number())
 }
 
 // FindSpan finds the first non-detached span in the slice.

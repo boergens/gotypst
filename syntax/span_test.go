@@ -11,8 +11,12 @@ func TestSpanDetached(t *testing.T) {
 		t.Error("Detached span should report IsDetached() == true")
 	}
 
-	if span.Id() != NoFile {
-		t.Errorf("Detached span should have NoFile id, got %d", span.Id())
+	if span.Id() != nil {
+		t.Errorf("Detached span should have nil id, got %v", span.Id())
+	}
+
+	if span.RawFileId() != 0 {
+		t.Errorf("Detached span should have raw file id 0, got %d", span.RawFileId())
 	}
 
 	if _, _, ok := span.Range(); ok {
@@ -28,8 +32,16 @@ func TestSpanNumberEncoding(t *testing.T) {
 		t.Fatal("SpanFromNumber should succeed for valid number")
 	}
 
-	if span.Id() != id {
-		t.Errorf("Expected file id %d, got %d", id, span.Id())
+	if span.RawFileId() != 5 {
+		t.Errorf("Expected raw file id 5, got %d", span.RawFileId())
+	}
+
+	gotId := span.Id()
+	if gotId == nil {
+		t.Fatal("Expected non-nil file id")
+	}
+	if gotId.IntoRaw() != 5 {
+		t.Errorf("Expected file id 5, got %d", gotId.IntoRaw())
 	}
 
 	if span.Number() != 10 {
@@ -83,8 +95,8 @@ func TestSpanRangeEncoding(t *testing.T) {
 	for _, tc := range testCases {
 		span := SpanFromRange(id, tc.start, tc.end)
 
-		if span.Id() != id {
-			t.Errorf("Range span: expected file id %d, got %d", id, span.Id())
+		if span.RawFileId() != 65535 {
+			t.Errorf("Range span: expected raw file id 65535, got %d", span.RawFileId())
 		}
 
 		start, end, ok := span.Range()
@@ -165,23 +177,6 @@ func TestFindSpan(t *testing.T) {
 	}
 }
 
-func TestFileId(t *testing.T) {
-	id := FileIdFromRaw(42)
-
-	if id.Raw() != 42 {
-		t.Errorf("Expected raw value 42, got %d", id.Raw())
-	}
-
-	if !id.IsValid() {
-		t.Error("FileId 42 should be valid")
-	}
-
-	noFile := NoFile
-	if noFile.IsValid() {
-		t.Error("NoFile should not be valid")
-	}
-}
-
 func TestSpanned(t *testing.T) {
 	id := FileIdFromRaw(1)
 	span, _ := SpanFromNumber(id, 100)
@@ -222,7 +217,7 @@ func TestSpanRawRoundtrip(t *testing.T) {
 	raw := original.Raw()
 	restored := SpanFromRaw(raw)
 
-	if restored.Id() != original.Id() {
+	if restored.RawFileId() != original.RawFileId() {
 		t.Error("Raw roundtrip should preserve file id")
 	}
 
