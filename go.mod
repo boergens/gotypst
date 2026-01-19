@@ -1,3 +1,3 @@
-module github.com/gotypst/gotypst
+module github.com/boergens/gotypst
 
 go 1.25.5
