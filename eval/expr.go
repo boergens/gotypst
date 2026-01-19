@@ -1231,9 +1231,12 @@ func evalLetBinding(vm *Vm, e *syntax.LetBindingExpr) (Value, error) {
 		return nil, err
 	}
 
-	// Destructure the pattern
+	// Destructure the pattern using the complete binding.go implementation
 	pattern := e.Pattern()
-	return destructure(vm, pattern, value)
+	if err := Destructure(vm, pattern, value); err != nil {
+		return nil, err
+	}
+	return None, nil
 }
 
 func evalDestructAssignment(vm *Vm, e *syntax.DestructAssignmentExpr) (Value, error) {
@@ -1248,106 +1251,17 @@ func evalDestructAssignment(vm *Vm, e *syntax.DestructAssignmentExpr) (Value, er
 		return nil, err
 	}
 
-	// Destructure into the pattern (reassignment)
-	pattern := e.Pattern()
-	if pattern == nil {
+	// Destructure into the pattern (reassignment) using the complete binding.go implementation
+	destructNode := e.Pattern()
+	if destructNode == nil {
 		return None, nil
 	}
 
-	// For reassignment, we need to update existing bindings
-	return destructureAssign(vm, pattern, value)
-}
-
-// destructure destructures a value according to a pattern, creating new bindings.
-func destructure(vm *Vm, pattern syntax.Pattern, value Value) (Value, error) {
-	if pattern == nil {
-		return None, nil
+	// Convert DestructuringNode to DestructuringPattern for DestructureAssign
+	pattern := syntax.DestructuringPatternFromNode(destructNode.ToUntyped())
+	if err := DestructureAssign(vm, pattern, value); err != nil {
+		return nil, err
 	}
-
-	switch p := pattern.(type) {
-	case *syntax.NormalPattern:
-		name := p.Name()
-		vm.Define(name, value)
-		return None, nil
-
-	case *syntax.PlaceholderPattern:
-		// Discard the value
-		return None, nil
-
-	case *syntax.DestructuringPattern:
-		// Array or dict destructuring
-		return destructureComplex(vm, p, value)
-
-	case *syntax.ParenthesizedPattern:
-		return destructure(vm, p.Pattern(), value)
-
-	default:
-		return None, nil
-	}
-}
-
-// destructureComplex handles complex destructuring patterns.
-func destructureComplex(vm *Vm, pattern *syntax.DestructuringPattern, value Value) (Value, error) {
-	items := pattern.Items()
-
-	switch v := value.(type) {
-	case ArrayValue:
-		// Array destructuring
-		for i, item := range items {
-			if i < len(v) {
-				switch binding := item.(type) {
-				case *syntax.DestructuringBinding:
-					if _, err := destructure(vm, binding.Pattern(), v[i]); err != nil {
-						return nil, err
-					}
-				}
-			}
-		}
-
-	case *DictValue, DictValue:
-		dict, _ := AsDict(value)
-		// Dict destructuring
-		for _, item := range items {
-			if named, ok := item.(*syntax.DestructuringNamed); ok {
-				ident := named.Name()
-				if ident == nil {
-					continue
-				}
-				name := ident.Get()
-				if val, exists := dict.Get(name); exists {
-					vm.Define(name, val)
-				}
-			}
-		}
-	}
-
-	return None, nil
-}
-
-// destructureAssign destructures a value according to a pattern, updating existing bindings.
-func destructureAssign(vm *Vm, pattern *syntax.DestructuringNode, value Value) (Value, error) {
-	// For reassignment, similar to destructure but calls Write instead of Define
-	items := pattern.Items()
-
-	switch v := value.(type) {
-	case ArrayValue:
-		for i, item := range items {
-			if i < len(v) {
-				if binding, ok := item.(*syntax.DestructuringBinding); ok {
-					if pat, ok := binding.Pattern().(*syntax.NormalPattern); ok {
-						name := pat.Name()
-						b := vm.GetMut(name)
-						if b != nil {
-							if err := b.Write(v[i]); err != nil {
-								return nil, err
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
 	return None, nil
 }
 
@@ -1527,7 +1441,7 @@ func evalForLoop(vm *Vm, e *syntax.ForLoopExpr) (Value, error) {
 	case ArrayValue:
 		// Iterate over values of array
 		for _, elem := range v {
-			if _, err := destructure(vm, pattern, elem); err != nil {
+			if err := Destructure(vm, pattern, elem); err != nil {
 				vm.ExitScope()
 				return nil, err
 			}
@@ -1548,7 +1462,7 @@ func evalForLoop(vm *Vm, e *syntax.ForLoopExpr) (Value, error) {
 		for _, key := range dict.Keys() {
 			val, _ := dict.Get(key)
 			pair := ArrayValue{Str(key), val}
-			if _, err := destructure(vm, pattern, pair); err != nil {
+			if err := Destructure(vm, pattern, pair); err != nil {
 				vm.ExitScope()
 				return nil, err
 			}
@@ -1574,7 +1488,7 @@ func evalForLoop(vm *Vm, e *syntax.ForLoopExpr) (Value, error) {
 		}
 		// Iterate over graphemes of string (using runes for now)
 		for _, ch := range string(v) {
-			if _, err := destructure(vm, pattern, Str(string(ch))); err != nil {
+			if err := Destructure(vm, pattern, Str(string(ch))); err != nil {
 				vm.ExitScope()
 				return nil, err
 			}
@@ -1600,7 +1514,7 @@ func evalForLoop(vm *Vm, e *syntax.ForLoopExpr) (Value, error) {
 		}
 		// Iterate over the integers of bytes
 		for _, b := range v {
-			if _, err := destructure(vm, pattern, Int(int64(b))); err != nil {
+			if err := Destructure(vm, pattern, Int(int64(b))); err != nil {
 				vm.ExitScope()
 				return nil, err
 			}

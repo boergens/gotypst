@@ -336,9 +336,9 @@ func callClosure(vm *Vm, f *Func, closure *Closure, args *Args) (Value, error) {
 				if err != nil {
 					return nil, err
 				}
-				// Convert DestructuringNode to DestructuringPattern for the destructure function
+				// Convert DestructuringNode to DestructuringPattern for Destructure
 				pattern := syntax.DestructuringPatternFromNode(p.Pattern().ToUntyped())
-				if _, err := destructure(vm, pattern, val.V); err != nil {
+				if err := Destructure(vm, pattern, val.V); err != nil {
 					return nil, err
 				}
 			}
