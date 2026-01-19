@@ -104,6 +104,72 @@ type TagItem struct {
 
 func (TagItem) isFrameItem() {}
 
+// ImageItem represents an embedded image.
+type ImageItem struct {
+	// Image contains the image data and metadata.
+	Image Image
+	// Size is the rendered size of the image.
+	Size layout.Size
+}
+
+func (ImageItem) isFrameItem() {}
+
+// Image represents image data for embedding.
+type Image struct {
+	// Data is the raw image bytes.
+	Data []byte
+	// Format specifies the image format.
+	Format ImageFormat
+	// Width is the natural image width in pixels.
+	Width int
+	// Height is the natural image height in pixels.
+	Height int
+	// BitsPerComponent is typically 8.
+	BitsPerComponent int
+	// ColorSpace specifies the color space (e.g., DeviceRGB, DeviceGray).
+	ColorSpace ColorSpace
+	// Alpha contains optional alpha channel data.
+	Alpha []byte
+}
+
+// ImageFormat specifies the image encoding format.
+type ImageFormat int
+
+const (
+	// ImageFormatJPEG represents JPEG/DCTDecode encoded images.
+	ImageFormatJPEG ImageFormat = iota
+	// ImageFormatPNG represents PNG/FlateDecode encoded images.
+	ImageFormatPNG
+	// ImageFormatRaw represents uncompressed raw pixel data.
+	ImageFormatRaw
+)
+
+// ColorSpace specifies the PDF color space.
+type ColorSpace int
+
+const (
+	// ColorSpaceDeviceRGB represents the RGB color space.
+	ColorSpaceDeviceRGB ColorSpace = iota
+	// ColorSpaceDeviceGray represents the grayscale color space.
+	ColorSpaceDeviceGray
+	// ColorSpaceDeviceCMYK represents the CMYK color space.
+	ColorSpaceDeviceCMYK
+)
+
+// String returns the PDF name for the color space.
+func (cs ColorSpace) String() string {
+	switch cs {
+	case ColorSpaceDeviceRGB:
+		return "DeviceRGB"
+	case ColorSpaceDeviceGray:
+		return "DeviceGray"
+	case ColorSpaceDeviceCMYK:
+		return "DeviceCMYK"
+	default:
+		return "DeviceRGB"
+	}
+}
+
 // Tag represents an introspection tag.
 type Tag struct {
 	Kind     TagKind

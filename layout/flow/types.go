@@ -371,6 +371,22 @@ type FrameItemFrame struct {
 
 func (FrameItemFrame) isFrameItem() {}
 
+// FrameItemImage represents an image in a frame.
+type FrameItemImage struct {
+	// Data is the raw image bytes.
+	Data []byte
+	// Format specifies the image format (jpeg, png, raw).
+	Format string
+	// Width is the natural image width in pixels.
+	Width int
+	// Height is the natural image height in pixels.
+	Height int
+	// RenderSize is the size to render the image at.
+	RenderSize layout.Size
+}
+
+func (FrameItemImage) isFrameItem() {}
+
 // Region represents a single layout region.
 type Region struct {
 	Size   layout.Size
