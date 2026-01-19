@@ -2,6 +2,9 @@ package eval
 
 import "github.com/boergens/gotypst/syntax"
 
+// MaxIterations is the maximum number of loop iterations allowed.
+const MaxIterations = 10_000
+
 // FlowEvent represents a control flow event during evaluation.
 //
 // When a break, continue, or return statement is executed, a FlowEvent
@@ -135,4 +138,91 @@ func CheckForbiddenFlow(e FlowEvent, allowBreak, allowContinue, allowReturn bool
 		}
 	}
 	return nil
+}
+
+// MarkReturnAsConditional marks a return event as conditional if present.
+// This is called after evaluating conditional/loop bodies to indicate
+// that the return may not always execute.
+func MarkReturnAsConditional(vm *Vm) {
+	if ret, ok := vm.Flow.(ReturnEvent); ok {
+		ret.Conditional = true
+		vm.Flow = ret
+	}
+}
+
+// InfiniteLoopError is returned when an infinite loop is detected.
+type InfiniteLoopError struct {
+	Span    syntax.Span
+	Message string
+}
+
+func (e *InfiniteLoopError) Error() string {
+	return e.Message
+}
+
+// isInvariant checks if an expression always evaluates to the same value.
+// This is used to detect infinite loops with constant conditions.
+func isInvariant(node *syntax.SyntaxNode) bool {
+	if node == nil {
+		return true
+	}
+
+	kind := node.Kind()
+
+	// Identifiers and math identifiers can change (variables)
+	if kind == syntax.Ident || kind == syntax.MathIdent {
+		return false
+	}
+
+	// For field access, check if the target is invariant
+	if kind == syntax.FieldAccess {
+		children := node.Children()
+		if len(children) > 0 {
+			return isInvariant(children[0])
+		}
+		return true
+	}
+
+	// For function calls, both callee and args must be invariant
+	if kind == syntax.FuncCall {
+		children := node.Children()
+		for _, child := range children {
+			if !isInvariant(child) {
+				return false
+			}
+		}
+		return true
+	}
+
+	// For all other nodes, check all children
+	for _, child := range node.Children() {
+		if !isInvariant(child) {
+			return false
+		}
+	}
+	return true
+}
+
+// canDiverge checks if an expression contains a break or return that could
+// exit the loop early. This is used alongside isInvariant to detect infinite loops.
+func canDiverge(node *syntax.SyntaxNode) bool {
+	if node == nil {
+		return false
+	}
+
+	kind := node.Kind()
+
+	// Break and return can exit early
+	if kind == syntax.Break || kind == syntax.Return ||
+		kind == syntax.LoopBreak || kind == syntax.FuncReturn {
+		return true
+	}
+
+	// Recursively check children
+	for _, child := range node.Children() {
+		if canDiverge(child) {
+			return true
+		}
+	}
+	return false
 }
