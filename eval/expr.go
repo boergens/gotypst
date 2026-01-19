@@ -1756,14 +1756,28 @@ func evalLabel(_ *Vm, e *syntax.LabelExpr) (Value, error) {
 	return LabelValue(e.Get()), nil
 }
 
-func evalRef(_ *Vm, e *syntax.RefExpr) (Value, error) {
+func evalRef(vm *Vm, e *syntax.RefExpr) (Value, error) {
+	// Evaluate optional supplement content
+	var supplement *Content
+	if supp := e.Supplement(); supp != nil {
+		suppValue, err := EvalExpr(vm, supp)
+		if err != nil {
+			return nil, err
+		}
+		if c, ok := suppValue.(ContentValue); ok {
+			supplement = &c.Content
+		}
+	}
+
 	return ContentValue{Content: Content{
-		Elements: []ContentElement{&RefElement{Target: e.Target()}},
+		Elements: []ContentElement{&RefElement{Target: e.Target(), Supplement: supplement}},
 	}}, nil
 }
 
+// RefElement represents a reference to a labeled element.
 type RefElement struct {
-	Target string
+	Target     string   // The label being referenced
+	Supplement *Content // Optional supplement content (e.g., @label[supplement])
 }
 
 func (*RefElement) isContentElement() {}
@@ -1872,30 +1886,85 @@ type TermItemElement struct {
 func (*TermItemElement) isContentElement() {}
 
 func evalEscape(_ *Vm, e *syntax.EscapeExpr) (Value, error) {
+	// Get the full escape text to handle Unicode escapes
+	text := e.ToUntyped().Text()
+	char := parseEscapeSequence(text)
 	return ContentValue{Content: Content{
-		Elements: []ContentElement{&TextElement{Text: string(e.Get())}},
+		Elements: []ContentElement{&TextElement{Text: char}},
 	}}, nil
+}
+
+// parseEscapeSequence parses an escape sequence and returns the resulting character(s).
+func parseEscapeSequence(text string) string {
+	if len(text) < 2 || text[0] != '\\' {
+		return text
+	}
+
+	// Handle Unicode escape: \u{XXXX}
+	if len(text) >= 4 && text[1] == 'u' && text[2] == '{' {
+		// Find closing brace
+		end := 3
+		for end < len(text) && text[end] != '}' {
+			end++
+		}
+		if end < len(text) {
+			hex := text[3:end]
+			if codepoint, err := strconv.ParseUint(hex, 16, 32); err == nil {
+				return string(rune(codepoint))
+			}
+		}
+	}
+
+	// Simple escape: \X returns X
+	return string(text[1])
 }
 
 func evalShorthand(_ *Vm, e *syntax.ShorthandExpr) (Value, error) {
-	// Convert shorthand to its symbol
+	// Convert shorthand to its Unicode symbol
+	text := e.Get()
+	symbol := shorthandToSymbol(text)
 	return ContentValue{Content: Content{
-		Elements: []ContentElement{&TextElement{Text: e.Get()}},
+		Elements: []ContentElement{&TextElement{Text: symbol}},
 	}}, nil
 }
 
-func evalSmartQuote(_ *Vm, e *syntax.SmartQuoteExpr) (Value, error) {
-	// Smart quotes depend on context (opening vs closing)
-	// For now, use straight quotes
-	if e.Double() {
-		return ContentValue{Content: Content{
-			Elements: []ContentElement{&TextElement{Text: "\""}},
-		}}, nil
+// shorthandToSymbol converts a shorthand text to its Unicode symbol.
+func shorthandToSymbol(text string) string {
+	switch text {
+	case "~":
+		return "\u00A0" // Non-breaking space
+	case "---":
+		return "\u2014" // Em dash
+	case "--":
+		return "\u2013" // En dash
+	case "-?":
+		return "\u00AD" // Soft hyphen
+	case "...":
+		return "\u2026" // Horizontal ellipsis
+	default:
+		// Check for minus sign before numbers (e.g., "-1")
+		if len(text) >= 2 && text[0] == '-' && text[1] >= '0' && text[1] <= '9' {
+			return "\u2212" + text[1:] // Minus sign + number
+		}
+		return text
 	}
+}
+
+func evalSmartQuote(_ *Vm, e *syntax.SmartQuoteExpr) (Value, error) {
+	// Create a SmartQuoteElement that tracks the quote type
+	// The actual opening/closing determination happens during layout/rendering
 	return ContentValue{Content: Content{
-		Elements: []ContentElement{&TextElement{Text: "'"}},
+		Elements: []ContentElement{&SmartQuoteElement{Double: e.Double()}},
 	}}, nil
 }
+
+// SmartQuoteElement represents a smart quote in content.
+// The actual quote character is determined during layout based on context.
+type SmartQuoteElement struct {
+	Double bool // true for double quotes, false for single quotes
+}
+
+func (*SmartQuoteElement) isContentElement() {}
 
 // ----------------------------------------------------------------------------
 // Math Expression Stubs
