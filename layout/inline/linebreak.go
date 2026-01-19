@@ -585,10 +585,12 @@ func computeEstimates(p *Preparation) *Estimates {
 
 	for _, pi := range p.Items {
 		if ti, ok := pi.Item.(*TextItem); ok && ti.shaped != nil {
-			for _, g := range ti.shaped.Glyphs {
+			for _, g := range ti.shaped.Glyphs.Kept() {
 				byteLen := g.Range.Len()
-				stretch := (g.Adjustability.StretchLeft + g.Adjustability.StretchRight).At(g.Size)
-				shrink := (g.Adjustability.ShrinkLeft + g.Adjustability.ShrinkRight).At(g.Size)
+				stretchVals := g.Stretchability()
+				shrinkVals := g.Shrinkability()
+				stretch := (stretchVals[0] + stretchVals[1]).At(g.Size)
+				shrink := (shrinkVals[0] + shrinkVals[1]).At(g.Size)
 				widths.push(byteLen, g.XAdvance.At(g.Size))
 				stretchability.push(byteLen, stretch)
 				shrinkability.push(byteLen, shrink)

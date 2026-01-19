@@ -288,17 +288,18 @@ func TestLinebreakSimple(t *testing.T) {
 	offset := 0
 	words := []string{"Hello ", "world ", "this ", "is ", "a ", "test"}
 	for _, word := range words {
-		shaped := &ShapedText{
-			Text: word,
-			Size: layout.Abs(12.0),
-		}
-		// Add glyphs with some width
+		// Create glyphs for this word
+		glyphs := make([]ShapedGlyph, 0, len(word))
 		for i := range word {
-			shaped.Glyphs = append(shaped.Glyphs, ShapedGlyph{
+			glyphs = append(glyphs, ShapedGlyph{
 				XAdvance: layout.Em(0.5), // 6pt per char at 12pt font
 				Size:     layout.Abs(12.0),
 				Range:    Range{Start: i, End: i + 1},
 			})
+		}
+		shaped := &ShapedText{
+			Text:   word,
+			Glyphs: NewGlyphsFromSlice(glyphs),
 		}
 		items = append(items, PreparedItem{
 			Range: Range{Start: offset, End: offset + len(word)},
@@ -333,18 +334,20 @@ func TestLinebreakSimple(t *testing.T) {
 func TestLinebreakOptimized(t *testing.T) {
 	text := "Hello world"
 
-	items := make([]PreparedItem, 0)
-	shaped := &ShapedText{
-		Text: text,
-		Size: layout.Abs(12.0),
-	}
+	// Create glyphs for the text
+	glyphs := make([]ShapedGlyph, 0, len(text))
 	for i := range text {
-		shaped.Glyphs = append(shaped.Glyphs, ShapedGlyph{
+		glyphs = append(glyphs, ShapedGlyph{
 			XAdvance:      layout.Em(0.5),
 			Size:          layout.Abs(12.0),
 			Range:         Range{Start: i, End: i + 1},
 			IsJustifiable: text[i] == ' ',
 		})
+	}
+	items := make([]PreparedItem, 0)
+	shaped := &ShapedText{
+		Text:   text,
+		Glyphs: NewGlyphsFromSlice(glyphs),
 	}
 	items = append(items, PreparedItem{
 		Range: Range{Start: 0, End: len(text)},

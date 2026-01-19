@@ -4,22 +4,12 @@ import (
 	"github.com/boergens/gotypst/layout"
 )
 
-// Range represents a byte range in the text.
-type Range struct {
-	Start, End int
-}
-
-// Len returns the length of the range.
-func (r Range) Len() int {
-	return r.End - r.Start
-}
-
 // Item represents a prepared item in inline layout.
 type Item interface {
 	// isItem is a marker method to seal the interface.
 	isItem()
 	// NaturalWidth returns the natural layouted width of the item.
-	NaturalWidth() layout.Abs
+	NaturalWidth() Abs
 	// Textual returns the textual representation of this item.
 	Textual() string
 }
@@ -32,7 +22,7 @@ type TextItem struct {
 func (*TextItem) isItem() {}
 
 // NaturalWidth returns the width of the shaped text.
-func (t *TextItem) NaturalWidth() layout.Abs {
+func (t *TextItem) NaturalWidth() Abs {
 	if t.shaped == nil {
 		return 0
 	}
@@ -54,14 +44,14 @@ func (t *TextItem) Text() *ShapedText {
 
 // AbsoluteItem represents absolute spacing between items.
 type AbsoluteItem struct {
-	Amount layout.Abs
+	Amount Abs
 	Weak   bool
 }
 
 func (*AbsoluteItem) isItem() {}
 
 // NaturalWidth returns the spacing amount.
-func (a *AbsoluteItem) NaturalWidth() layout.Abs {
+func (a *AbsoluteItem) NaturalWidth() Abs {
 	return a.Amount
 }
 
@@ -78,7 +68,7 @@ type FractionalItem struct {
 func (*FractionalItem) isItem() {}
 
 // NaturalWidth returns zero for fractional items.
-func (*FractionalItem) NaturalWidth() layout.Abs {
+func (*FractionalItem) NaturalWidth() Abs {
 	return 0
 }
 
@@ -87,20 +77,20 @@ func (*FractionalItem) Textual() string {
 	return " "
 }
 
-// FrameItem represents layouted inline-level content.
-type FrameItem struct {
-	width layout.Abs
+// InlineFrameItem represents layouted inline-level content.
+type InlineFrameItem struct {
+	width Abs
 }
 
-func (*FrameItem) isItem() {}
+func (*InlineFrameItem) isItem() {}
 
 // NaturalWidth returns the frame width.
-func (f *FrameItem) NaturalWidth() layout.Abs {
+func (f *InlineFrameItem) NaturalWidth() Abs {
 	return f.width
 }
 
 // Textual returns an object replacement character.
-func (*FrameItem) Textual() string {
+func (*InlineFrameItem) Textual() string {
 	return "\uFFFC"
 }
 
@@ -110,7 +100,7 @@ type TagItem struct{}
 func (*TagItem) isItem() {}
 
 // NaturalWidth returns zero for tags.
-func (*TagItem) NaturalWidth() layout.Abs {
+func (*TagItem) NaturalWidth() Abs {
 	return 0
 }
 
@@ -127,7 +117,7 @@ type SkipItem struct {
 func (*SkipItem) isItem() {}
 
 // NaturalWidth returns zero for skip items.
-func (*SkipItem) NaturalWidth() layout.Abs {
+func (*SkipItem) NaturalWidth() Abs {
 	return 0
 }
 
@@ -153,14 +143,14 @@ type Line struct {
 	// Items contains the items the line is made of.
 	Items []Item
 	// Width is the exact natural width of the line.
-	Width layout.Abs
+	Width Abs
 	// Justify indicates whether the line should be justified.
 	Justify bool
 	// Dash indicates if the line ends with a hyphen or dash.
 	Dash Dash
 }
 
-// Empty creates an empty line.
+// EmptyLine creates an empty line.
 func EmptyLine() Line {
 	return Line{
 		Items:   nil,
@@ -188,8 +178,8 @@ func (l *Line) Justifiables() int {
 }
 
 // Stretchability returns how much the line can stretch.
-func (l *Line) Stretchability() layout.Abs {
-	var total layout.Abs
+func (l *Line) Stretchability() Abs {
+	var total Abs
 	for _, item := range l.Items {
 		if ti, ok := item.(*TextItem); ok && ti.shaped != nil {
 			total += ti.shaped.Stretchability()
@@ -199,8 +189,8 @@ func (l *Line) Stretchability() layout.Abs {
 }
 
 // Shrinkability returns how much the line can shrink.
-func (l *Line) Shrinkability() layout.Abs {
-	var total layout.Abs
+func (l *Line) Shrinkability() Abs {
+	var total Abs
 	for _, item := range l.Items {
 		if ti, ok := item.(*TextItem); ok && ti.shaped != nil {
 			total += ti.shaped.Shrinkability()
@@ -217,7 +207,7 @@ func (l *Line) HasNegativeWidthItems() bool {
 			if it.Amount < 0 {
 				return true
 			}
-		case *FrameItem:
+		case *InlineFrameItem:
 			if it.width < 0 {
 				return true
 			}
@@ -235,93 +225,6 @@ func (l *Line) Fr() layout.Fr {
 		}
 	}
 	return total
-}
-
-// TrailingText returns the last text item in the line.
-func (l *Line) TrailingText() *ShapedText {
-	for i := len(l.Items) - 1; i >= 0; i-- {
-		if ti, ok := l.Items[i].(*TextItem); ok && ti.shaped != nil {
-			return ti.shaped
-		}
-	}
-	return nil
-}
-
-// ShapedText represents shaped text from the shaping engine.
-// This is a placeholder that will be filled in by the shaping module.
-type ShapedText struct {
-	Text   string
-	Glyphs []ShapedGlyph
-	Lang   layout.Lang
-	Size   layout.Abs
-}
-
-// Width returns the total width of the shaped text.
-func (s *ShapedText) Width() layout.Abs {
-	var total layout.Abs
-	for _, g := range s.Glyphs {
-		total += g.XAdvance.At(g.Size)
-	}
-	return total
-}
-
-// Justifiables returns the number of justifiable glyphs.
-func (s *ShapedText) Justifiables() int {
-	count := 0
-	for _, g := range s.Glyphs {
-		if g.IsJustifiable {
-			count++
-		}
-	}
-	return count
-}
-
-// CJKJustifiableAtLast returns true if the last glyph is CJK justifiable.
-func (s *ShapedText) CJKJustifiableAtLast() bool {
-	if len(s.Glyphs) == 0 {
-		return false
-	}
-	return s.Glyphs[len(s.Glyphs)-1].IsCJKJustifiable
-}
-
-// Stretchability returns how much the text can stretch.
-func (s *ShapedText) Stretchability() layout.Abs {
-	var total layout.Abs
-	for _, g := range s.Glyphs {
-		stretch := g.Adjustability.StretchLeft + g.Adjustability.StretchRight
-		total += stretch.At(g.Size)
-	}
-	return total
-}
-
-// Shrinkability returns how much the text can shrink.
-func (s *ShapedText) Shrinkability() layout.Abs {
-	var total layout.Abs
-	for _, g := range s.Glyphs {
-		shrink := g.Adjustability.ShrinkLeft + g.Adjustability.ShrinkRight
-		total += shrink.At(g.Size)
-	}
-	return total
-}
-
-// ShapedGlyph represents a single shaped glyph.
-type ShapedGlyph struct {
-	GlyphID         uint16
-	XAdvance        layout.Em
-	XOffset         layout.Em
-	Size            layout.Abs
-	IsJustifiable   bool
-	IsCJKJustifiable bool
-	Adjustability   Adjustability
-	Range           Range
-}
-
-// Adjustability represents how much a glyph can be adjusted.
-type Adjustability struct {
-	StretchLeft  layout.Em
-	StretchRight layout.Em
-	ShrinkLeft   layout.Em
-	ShrinkRight  layout.Em
 }
 
 // Costs represents costs for various layout decisions.
@@ -345,19 +248,19 @@ type Config struct {
 	// Linebreaks is the line breaking algorithm to use.
 	Linebreaks layout.Linebreaks
 	// FirstLineIndent is the indent for the first line.
-	FirstLineIndent layout.Abs
+	FirstLineIndent Abs
 	// HangingIndent is the indent for subsequent lines.
-	HangingIndent layout.Abs
+	HangingIndent Abs
 	// Align is the horizontal alignment.
 	Align layout.Alignment
 	// FontSize is the text size.
-	FontSize layout.Abs
+	FontSize Abs
 	// Dir is the dominant text direction.
-	Dir layout.Dir
+	Dir Dir
 	// Hyphenate is the hyphenation setting (nil means auto).
 	Hyphenate *bool
 	// Lang is the text language (nil means auto per-item).
-	Lang *layout.Lang
+	Lang *Lang
 	// Fallback indicates whether font fallback is enabled.
 	Fallback bool
 	// CJKLatinSpacing indicates whether to add CJK-Latin spacing.
