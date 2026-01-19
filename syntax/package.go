@@ -281,7 +281,7 @@ func parseNamespace(sc *scanner) (string, error) {
 	if namespace == "" {
 		return "", errors.New("package specification is missing namespace")
 	}
-	if !IsIdent(namespace) {
+	if !IsNamespaceIdent(namespace) {
 		return "", fmt.Errorf("`%s` is not a valid package namespace", namespace)
 	}
 
@@ -295,7 +295,7 @@ func parseName(sc *scanner) (string, error) {
 	if name == "" {
 		return "", errors.New("package specification is missing name")
 	}
-	if !IsIdent(name) {
+	if !IsNamespaceIdent(name) {
 		return "", fmt.Errorf("`%s` is not a valid package name", name)
 	}
 
@@ -313,10 +313,10 @@ func parseVersion(sc *scanner) (PackageVersion, error) {
 	return ParsePackageVersion(versionStr)
 }
 
-// IsIdent checks if a string is a valid identifier.
-// An identifier consists of lowercase letters, digits, and hyphens,
+// IsNamespaceIdent checks if a string is a valid namespace identifier.
+// A namespace identifier consists of lowercase letters, digits, and hyphens,
 // must start with a letter, and cannot end with a hyphen.
-func IsIdent(s string) bool {
+func IsNamespaceIdent(s string) bool {
 	if len(s) == 0 {
 		return false
 	}

@@ -17,25 +17,22 @@ func TestSyntaxNodeBasics(t *testing.T) {
 	}
 
 	// Test basic node
-	node := NewSyntaxNode(Ident, "foo", nil, Span{0, 3})
+	node := NewSyntaxNode(Ident, "foo", nil)
 	if node.Kind() != Ident {
 		t.Errorf("Expected Ident, got %v", node.Kind())
 	}
 	if node.Text() != "foo" {
 		t.Errorf("Expected 'foo', got %q", node.Text())
 	}
-	if node.Span().Start != 0 || node.Span().End != 3 {
-		t.Errorf("Unexpected span: %v", node.Span())
-	}
 }
 
 // TestSyntaxNodeCast tests the cast operations on SyntaxNode.
 func TestSyntaxNodeCast(t *testing.T) {
-	child1 := NewSyntaxNode(Ident, "x", nil, Span{0, 1})
-	child2 := NewSyntaxNode(Plus, "+", nil, Span{2, 3})
-	child3 := NewSyntaxNode(Ident, "y", nil, Span{4, 5})
+	child1 := NewSyntaxNode(Ident, "x", nil)
+	child2 := NewSyntaxNode(Plus, "+", nil)
+	child3 := NewSyntaxNode(Ident, "y", nil)
 
-	parent := NewSyntaxNode(Binary, "", []*SyntaxNode{child1, child2, child3}, Span{0, 5})
+	parent := NewSyntaxNode(Binary, "", []*SyntaxNode{child1, child2, child3})
 
 	// Test Cast
 	if parent.Cast(Binary) == nil {
@@ -78,7 +75,7 @@ func TestExprFromNode(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		node := NewSyntaxNode(tt.kind, "", nil, Span{})
+		node := NewSyntaxNode(tt.kind, "", nil)
 		expr := ExprFromNode(node)
 
 		if tt.wantNil {
@@ -102,7 +99,7 @@ func TestExprFromNode(t *testing.T) {
 
 // TestTextExpr tests TextExpr functionality.
 func TestTextExpr(t *testing.T) {
-	node := NewSyntaxNode(Text, "hello world", nil, Span{0, 11})
+	node := NewSyntaxNode(Text, "hello world", nil)
 	expr := TextExprFromNode(node)
 
 	if expr == nil {
@@ -116,7 +113,7 @@ func TestTextExpr(t *testing.T) {
 	}
 
 	// Test wrong kind
-	wrongNode := NewSyntaxNode(Ident, "x", nil, Span{})
+	wrongNode := NewSyntaxNode(Ident, "x", nil)
 	if TextExprFromNode(wrongNode) != nil {
 		t.Error("TextExprFromNode should return nil for non-Text node")
 	}
@@ -124,8 +121,8 @@ func TestTextExpr(t *testing.T) {
 
 // TestBoolExpr tests BoolExpr functionality.
 func TestBoolExpr(t *testing.T) {
-	trueNode := NewSyntaxNode(Bool, "true", nil, Span{})
-	falseNode := NewSyntaxNode(Bool, "false", nil, Span{})
+	trueNode := NewSyntaxNode(Bool, "true", nil)
+	falseNode := NewSyntaxNode(Bool, "false", nil)
 
 	trueExpr := BoolExprFromNode(trueNode)
 	if trueExpr == nil || !trueExpr.Get() {
@@ -140,7 +137,7 @@ func TestBoolExpr(t *testing.T) {
 
 // TestIntExpr tests IntExpr functionality.
 func TestIntExpr(t *testing.T) {
-	node := NewSyntaxNode(Int, "42", nil, Span{})
+	node := NewSyntaxNode(Int, "42", nil)
 	expr := IntExprFromNode(node)
 
 	if expr == nil {
@@ -153,7 +150,7 @@ func TestIntExpr(t *testing.T) {
 
 // TestFloatExpr tests FloatExpr functionality.
 func TestFloatExpr(t *testing.T) {
-	node := NewSyntaxNode(Float, "3.14", nil, Span{})
+	node := NewSyntaxNode(Float, "3.14", nil)
 	expr := FloatExprFromNode(node)
 
 	if expr == nil {
@@ -168,7 +165,7 @@ func TestFloatExpr(t *testing.T) {
 
 // TestStrExpr tests StrExpr functionality.
 func TestStrExpr(t *testing.T) {
-	node := NewSyntaxNode(Str, "\"hello\"", nil, Span{})
+	node := NewSyntaxNode(Str, "\"hello\"", nil)
 	expr := StrExprFromNode(node)
 
 	if expr == nil {
@@ -181,7 +178,7 @@ func TestStrExpr(t *testing.T) {
 
 // TestIdentExpr tests IdentExpr functionality.
 func TestIdentExpr(t *testing.T) {
-	node := NewSyntaxNode(Ident, "myVar", nil, Span{})
+	node := NewSyntaxNode(Ident, "myVar", nil)
 	expr := IdentExprFromNode(node)
 
 	if expr == nil {
@@ -194,7 +191,7 @@ func TestIdentExpr(t *testing.T) {
 
 // TestLabelExpr tests LabelExpr functionality.
 func TestLabelExpr(t *testing.T) {
-	node := NewSyntaxNode(Label, "<fig:chart>", nil, Span{})
+	node := NewSyntaxNode(Label, "<fig:chart>", nil)
 	expr := LabelExprFromNode(node)
 
 	if expr == nil {
@@ -207,8 +204,8 @@ func TestLabelExpr(t *testing.T) {
 
 // TestSmartQuoteExpr tests SmartQuoteExpr functionality.
 func TestSmartQuoteExpr(t *testing.T) {
-	singleNode := NewSyntaxNode(SmartQuote, "'", nil, Span{})
-	doubleNode := NewSyntaxNode(SmartQuote, "\"", nil, Span{})
+	singleNode := NewSyntaxNode(SmartQuote, "'", nil)
+	doubleNode := NewSyntaxNode(SmartQuote, "\"", nil)
 
 	singleExpr := SmartQuoteExprFromNode(singleNode)
 	if singleExpr.Double() {
@@ -223,9 +220,9 @@ func TestSmartQuoteExpr(t *testing.T) {
 
 // TestUnaryExpr tests UnaryExpr functionality.
 func TestUnaryExpr(t *testing.T) {
-	minusNode := NewSyntaxNode(Minus, "-", nil, Span{0, 1})
-	numNode := NewSyntaxNode(Int, "5", nil, Span{1, 2})
-	unaryNode := NewSyntaxNode(Unary, "", []*SyntaxNode{minusNode, numNode}, Span{0, 2})
+	minusNode := NewSyntaxNode(Minus, "-", nil)
+	numNode := NewSyntaxNode(Int, "5", nil)
+	unaryNode := NewSyntaxNode(Unary, "", []*SyntaxNode{minusNode, numNode})
 
 	expr := UnaryExprFromNode(unaryNode)
 	if expr == nil {
@@ -244,10 +241,10 @@ func TestUnaryExpr(t *testing.T) {
 
 // TestBinaryExpr tests BinaryExpr functionality.
 func TestBinaryExpr(t *testing.T) {
-	lhsNode := NewSyntaxNode(Int, "1", nil, Span{0, 1})
-	opNode := NewSyntaxNode(Plus, "+", nil, Span{2, 3})
-	rhsNode := NewSyntaxNode(Int, "2", nil, Span{4, 5})
-	binaryNode := NewSyntaxNode(Binary, "", []*SyntaxNode{lhsNode, opNode, rhsNode}, Span{0, 5})
+	lhsNode := NewSyntaxNode(Int, "1", nil)
+	opNode := NewSyntaxNode(Plus, "+", nil)
+	rhsNode := NewSyntaxNode(Int, "2", nil)
+	binaryNode := NewSyntaxNode(Binary, "", []*SyntaxNode{lhsNode, opNode, rhsNode})
 
 	expr := BinaryExprFromNode(binaryNode)
 	if expr == nil {
@@ -271,9 +268,9 @@ func TestBinaryExpr(t *testing.T) {
 
 // TestHeadingExpr tests HeadingExpr functionality.
 func TestHeadingExpr(t *testing.T) {
-	markerNode := NewSyntaxNode(HeadingMarker, "==", nil, Span{0, 2})
-	markupNode := NewSyntaxNode(Markup, "", nil, Span{3, 10})
-	headingNode := NewSyntaxNode(Heading, "", []*SyntaxNode{markerNode, markupNode}, Span{0, 10})
+	markerNode := NewSyntaxNode(HeadingMarker, "==", nil)
+	markupNode := NewSyntaxNode(Markup, "", nil)
+	headingNode := NewSyntaxNode(Heading, "", []*SyntaxNode{markerNode, markupNode})
 
 	expr := HeadingExprFromNode(headingNode)
 	if expr == nil {
@@ -291,10 +288,10 @@ func TestHeadingExpr(t *testing.T) {
 
 // TestRawExpr tests RawExpr functionality.
 func TestRawExpr(t *testing.T) {
-	delimNode := NewSyntaxNode(RawDelim, "```", nil, Span{0, 3})
-	langNode := NewSyntaxNode(RawLang, "go", nil, Span{3, 5})
-	textNode := NewSyntaxNode(Text, "code here", nil, Span{6, 15})
-	rawNode := NewSyntaxNode(Raw, "", []*SyntaxNode{delimNode, langNode, textNode}, Span{0, 18})
+	delimNode := NewSyntaxNode(RawDelim, "```", nil)
+	langNode := NewSyntaxNode(RawLang, "go", nil)
+	textNode := NewSyntaxNode(Text, "code here", nil)
+	rawNode := NewSyntaxNode(Raw, "", []*SyntaxNode{delimNode, langNode, textNode})
 
 	expr := RawExprFromNode(rawNode)
 	if expr == nil {
@@ -329,7 +326,7 @@ func TestNumericExpr(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		node := NewSyntaxNode(Numeric, tt.text, nil, Span{})
+		node := NewSyntaxNode(Numeric, tt.text, nil)
 		expr := NumericExprFromNode(node)
 
 		if expr == nil {
@@ -353,11 +350,11 @@ func TestNumericExpr(t *testing.T) {
 func TestAstNodeInterface(t *testing.T) {
 	// Create various expressions
 	exprs := []Expr{
-		&TextExpr{node: NewSyntaxNode(Text, "", nil, Span{})},
-		&IdentExpr{node: NewSyntaxNode(Ident, "", nil, Span{})},
-		&IntExpr{node: NewSyntaxNode(Int, "", nil, Span{})},
-		&BinaryExpr{node: NewSyntaxNode(Binary, "", nil, Span{})},
-		&FuncCallExpr{node: NewSyntaxNode(FuncCall, "", nil, Span{})},
+		&TextExpr{node: NewSyntaxNode(Text, "", nil)},
+		&IdentExpr{node: NewSyntaxNode(Ident, "", nil)},
+		&IntExpr{node: NewSyntaxNode(Int, "", nil)},
+		&BinaryExpr{node: NewSyntaxNode(Binary, "", nil)},
+		&FuncCallExpr{node: NewSyntaxNode(FuncCall, "", nil)},
 	}
 
 	for _, expr := range exprs {

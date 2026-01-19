@@ -127,7 +127,7 @@ func TestPackageSpecString(t *testing.T) {
 	}
 }
 
-func TestIsIdent(t *testing.T) {
+func TestIsNamespaceIdent(t *testing.T) {
 	tests := []struct {
 		input string
 		want  bool
@@ -145,8 +145,8 @@ func TestIsIdent(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if got := IsIdent(tt.input); got != tt.want {
-			t.Errorf("IsIdent(%q) = %v, want %v", tt.input, got, tt.want)
+		if got := IsNamespaceIdent(tt.input); got != tt.want {
+			t.Errorf("IsNamespaceIdent(%q) = %v, want %v", tt.input, got, tt.want)
 		}
 	}
 }

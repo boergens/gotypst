@@ -4,7 +4,7 @@ import "testing"
 
 func TestPatternFromNode(t *testing.T) {
 	// Test normal pattern (identifier)
-	identNode := NewSyntaxNode(Ident, "x", nil, Span{})
+	identNode := NewSyntaxNode(Ident, "x", nil)
 	pattern := PatternFromNode(identNode)
 	if pattern == nil {
 		t.Error("PatternFromNode(Ident) should not return nil")
@@ -14,7 +14,7 @@ func TestPatternFromNode(t *testing.T) {
 	}
 
 	// Test placeholder pattern
-	underscoreNode := NewSyntaxNode(Underscore, "_", nil, Span{})
+	underscoreNode := NewSyntaxNode(Underscore, "_", nil)
 	pattern = PatternFromNode(underscoreNode)
 	if pattern == nil {
 		t.Error("PatternFromNode(Underscore) should not return nil")
@@ -30,7 +30,7 @@ func TestPatternFromNode(t *testing.T) {
 }
 
 func TestNormalPattern(t *testing.T) {
-	node := NewSyntaxNode(Ident, "myVar", nil, Span{})
+	node := NewSyntaxNode(Ident, "myVar", nil)
 	pattern := NormalPatternFromNode(node)
 
 	if pattern == nil {
@@ -46,14 +46,14 @@ func TestNormalPattern(t *testing.T) {
 	}
 
 	// Test wrong kind
-	wrongNode := NewSyntaxNode(Underscore, "_", nil, Span{})
+	wrongNode := NewSyntaxNode(Underscore, "_", nil)
 	if NormalPatternFromNode(wrongNode) != nil {
 		t.Error("NormalPatternFromNode should return nil for non-Ident node")
 	}
 }
 
 func TestPlaceholderPattern(t *testing.T) {
-	node := NewSyntaxNode(Underscore, "_", nil, Span{})
+	node := NewSyntaxNode(Underscore, "_", nil)
 	pattern := PlaceholderPatternFromNode(node)
 
 	if pattern == nil {
@@ -65,17 +65,17 @@ func TestPlaceholderPattern(t *testing.T) {
 	}
 
 	// Test wrong kind
-	wrongNode := NewSyntaxNode(Ident, "x", nil, Span{})
+	wrongNode := NewSyntaxNode(Ident, "x", nil)
 	if PlaceholderPatternFromNode(wrongNode) != nil {
 		t.Error("PlaceholderPatternFromNode should return nil for non-Underscore node")
 	}
 }
 
 func TestParenthesizedPattern(t *testing.T) {
-	innerNode := NewSyntaxNode(Ident, "x", nil, Span{1, 2})
-	leftParen := NewSyntaxNode(LeftParen, "(", nil, Span{0, 1})
-	rightParen := NewSyntaxNode(RightParen, ")", nil, Span{2, 3})
-	parenNode := NewSyntaxNode(Parenthesized, "", []*SyntaxNode{leftParen, innerNode, rightParen}, Span{0, 3})
+	innerNode := NewSyntaxNode(Ident, "x", nil)
+	leftParen := NewSyntaxNode(LeftParen, "(", nil)
+	rightParen := NewSyntaxNode(RightParen, ")", nil)
+	parenNode := NewSyntaxNode(Parenthesized, "", []*SyntaxNode{leftParen, innerNode, rightParen})
 
 	pattern := ParenthesizedPatternFromNode(parenNode)
 	if pattern == nil {
@@ -92,16 +92,16 @@ func TestParenthesizedPattern(t *testing.T) {
 	}
 
 	// Test wrong kind
-	wrongNode := NewSyntaxNode(Ident, "x", nil, Span{})
+	wrongNode := NewSyntaxNode(Ident, "x", nil)
 	if ParenthesizedPatternFromNode(wrongNode) != nil {
 		t.Error("ParenthesizedPatternFromNode should return nil for non-Parenthesized node")
 	}
 }
 
 func TestDestructuringPattern(t *testing.T) {
-	aNode := NewSyntaxNode(Ident, "a", nil, Span{1, 2})
-	bNode := NewSyntaxNode(Ident, "b", nil, Span{4, 5})
-	destructNode := NewSyntaxNode(Destructuring, "", []*SyntaxNode{aNode, bNode}, Span{0, 6})
+	aNode := NewSyntaxNode(Ident, "a", nil)
+	bNode := NewSyntaxNode(Ident, "b", nil)
+	destructNode := NewSyntaxNode(Destructuring, "", []*SyntaxNode{aNode, bNode})
 
 	pattern := DestructuringPatternFromNode(destructNode)
 	if pattern == nil {
@@ -114,7 +114,7 @@ func TestDestructuringPattern(t *testing.T) {
 	}
 
 	// Test wrong kind
-	wrongNode := NewSyntaxNode(Ident, "x", nil, Span{})
+	wrongNode := NewSyntaxNode(Ident, "x", nil)
 	if DestructuringPatternFromNode(wrongNode) != nil {
 		t.Error("DestructuringPatternFromNode should return nil for non-Destructuring node")
 	}
@@ -122,7 +122,7 @@ func TestDestructuringPattern(t *testing.T) {
 
 func TestDestructuringItemFromNode(t *testing.T) {
 	// Test binding item (identifier)
-	identNode := NewSyntaxNode(Ident, "x", nil, Span{})
+	identNode := NewSyntaxNode(Ident, "x", nil)
 	item := DestructuringItemFromNode(identNode)
 	if item == nil {
 		t.Error("DestructuringItemFromNode(Ident) should not return nil")
@@ -132,9 +132,9 @@ func TestDestructuringItemFromNode(t *testing.T) {
 	}
 
 	// Test spread item
-	dotsNode := NewSyntaxNode(Dots, "..", nil, Span{0, 2})
-	restNode := NewSyntaxNode(Ident, "rest", nil, Span{2, 6})
-	spreadNode := NewSyntaxNode(Spread, "", []*SyntaxNode{dotsNode, restNode}, Span{0, 6})
+	dotsNode := NewSyntaxNode(Dots, "..", nil)
+	restNode := NewSyntaxNode(Ident, "rest", nil)
+	spreadNode := NewSyntaxNode(Spread, "", []*SyntaxNode{dotsNode, restNode})
 	item = DestructuringItemFromNode(spreadNode)
 	if item == nil {
 		t.Error("DestructuringItemFromNode(Spread) should not return nil")
@@ -144,10 +144,10 @@ func TestDestructuringItemFromNode(t *testing.T) {
 	}
 
 	// Test named item
-	nameNode := NewSyntaxNode(Ident, "field", nil, Span{0, 5})
-	colonNode := NewSyntaxNode(Colon, ":", nil, Span{5, 6})
-	valueNode := NewSyntaxNode(Ident, "x", nil, Span{7, 8})
-	namedNode := NewSyntaxNode(Named, "", []*SyntaxNode{nameNode, colonNode, valueNode}, Span{0, 8})
+	nameNode := NewSyntaxNode(Ident, "field", nil)
+	colonNode := NewSyntaxNode(Colon, ":", nil)
+	valueNode := NewSyntaxNode(Ident, "x", nil)
+	namedNode := NewSyntaxNode(Named, "", []*SyntaxNode{nameNode, colonNode, valueNode})
 	item = DestructuringItemFromNode(namedNode)
 	if item == nil {
 		t.Error("DestructuringItemFromNode(Named) should not return nil")
@@ -163,7 +163,7 @@ func TestDestructuringItemFromNode(t *testing.T) {
 }
 
 func TestDestructuringBinding(t *testing.T) {
-	identNode := NewSyntaxNode(Ident, "x", nil, Span{})
+	identNode := NewSyntaxNode(Ident, "x", nil)
 	pattern := NormalPatternFromNode(identNode)
 	binding := &DestructuringBinding{pattern: pattern}
 
@@ -173,10 +173,10 @@ func TestDestructuringBinding(t *testing.T) {
 }
 
 func TestDestructuringNamed(t *testing.T) {
-	nameNode := NewSyntaxNode(Ident, "field", nil, Span{0, 5})
-	colonNode := NewSyntaxNode(Colon, ":", nil, Span{5, 6})
-	valueNode := NewSyntaxNode(Ident, "x", nil, Span{7, 8})
-	namedNode := NewSyntaxNode(Named, "", []*SyntaxNode{nameNode, colonNode, valueNode}, Span{0, 8})
+	nameNode := NewSyntaxNode(Ident, "field", nil)
+	colonNode := NewSyntaxNode(Colon, ":", nil)
+	valueNode := NewSyntaxNode(Ident, "x", nil)
+	namedNode := NewSyntaxNode(Named, "", []*SyntaxNode{nameNode, colonNode, valueNode})
 
 	named := &DestructuringNamed{node: namedNode}
 
@@ -192,9 +192,9 @@ func TestDestructuringNamed(t *testing.T) {
 }
 
 func TestDestructuringSpread(t *testing.T) {
-	dotsNode := NewSyntaxNode(Dots, "..", nil, Span{0, 2})
-	restNode := NewSyntaxNode(Ident, "rest", nil, Span{2, 6})
-	spreadNode := NewSyntaxNode(Spread, "", []*SyntaxNode{dotsNode, restNode}, Span{0, 6})
+	dotsNode := NewSyntaxNode(Dots, "..", nil)
+	restNode := NewSyntaxNode(Ident, "rest", nil)
+	spreadNode := NewSyntaxNode(Spread, "", []*SyntaxNode{dotsNode, restNode})
 
 	spread := &DestructuringSpread{node: spreadNode}
 
@@ -207,7 +207,7 @@ func TestDestructuringSpread(t *testing.T) {
 	}
 
 	// Test spread without sink
-	justDots := NewSyntaxNode(Spread, "", []*SyntaxNode{dotsNode}, Span{0, 2})
+	justDots := NewSyntaxNode(Spread, "", []*SyntaxNode{dotsNode})
 	spreadNoSink := &DestructuringSpread{node: justDots}
 	if spreadNoSink.Sink() != nil {
 		t.Error("Sink() should return nil when there's no sink pattern")
@@ -217,10 +217,10 @@ func TestDestructuringSpread(t *testing.T) {
 func TestPatternInterface(t *testing.T) {
 	// All pattern types should implement Pattern interface
 	patterns := []Pattern{
-		&NormalPattern{node: NewSyntaxNode(Ident, "", nil, Span{})},
-		&PlaceholderPattern{node: NewSyntaxNode(Underscore, "", nil, Span{})},
-		&ParenthesizedPattern{node: NewSyntaxNode(Parenthesized, "", nil, Span{})},
-		&DestructuringPattern{node: NewSyntaxNode(Destructuring, "", nil, Span{})},
+		&NormalPattern{node: NewSyntaxNode(Ident, "", nil)},
+		&PlaceholderPattern{node: NewSyntaxNode(Underscore, "", nil)},
+		&ParenthesizedPattern{node: NewSyntaxNode(Parenthesized, "", nil)},
+		&DestructuringPattern{node: NewSyntaxNode(Destructuring, "", nil)},
 	}
 
 	for _, p := range patterns {
