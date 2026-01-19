@@ -1621,19 +1621,7 @@ func evalShowRule(vm *Vm, e *syntax.ShowRuleExpr) (Value, error) {
 	return StylesValue{Styles: &Styles{}}, nil
 }
 
-// ----------------------------------------------------------------------------
-// Module Import Stubs
-// ----------------------------------------------------------------------------
-
-func evalModuleImport(vm *Vm, e *syntax.ModuleImportExpr) (Value, error) {
-	// Module imports will be implemented in import.go
-	return None, nil
-}
-
-func evalModuleInclude(vm *Vm, e *syntax.ModuleIncludeExpr) (Value, error) {
-	// Module includes will be implemented in import.go
-	return None, nil
-}
+// Note: evalModuleImport and evalModuleInclude are implemented in import.go
 
 // ----------------------------------------------------------------------------
 // Markup Evaluators
