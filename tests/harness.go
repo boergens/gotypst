@@ -231,40 +231,20 @@ func (r *TestRunner) RunTest(tc *TestCase) *TestResult {
 		Passed: true,
 	}
 
-	// Determine the lexer mode based on the test code
-	mode := syntax.ModeMarkup
-	if strings.HasPrefix(strings.TrimSpace(tc.Code), "#") {
-		// If code starts with #, it's likely code mode
-		mode = syntax.ModeMarkup // Still start in markup, # switches to code
-	}
+	// Parse the test code using the full parser
+	// This handles mode switching (markup -> code, markup -> math) correctly
+	root := syntax.Parse(tc.Code)
 
-	// Lex the test code
-	lexer := syntax.NewLexer(tc.Code, mode)
+	// Collect tokens by walking the parse tree
 	var tokens []*TokenInfo
-
-	for {
-		kind, node := lexer.Next()
-		if kind == syntax.End {
-			break
-		}
-
-		span := Span{
-			Start: lexer.Cursor() - node.Len(),
-			End:   lexer.Cursor(),
-		}
-
-		tokens = append(tokens, &TokenInfo{
-			Kind: kind,
-			Text: node.Text(),
-			Span: span,
-		})
-
-		if kind == syntax.Error && getFirstError(node) != nil {
-			result.Errors = append(result.Errors, getFirstError(node).Message)
-		}
-	}
-
+	offset := 0
+	collectTokens(root, &tokens, &offset)
 	result.Tokens = tokens
+
+	// Collect errors from the parse tree
+	for _, err := range root.Errors() {
+		result.Errors = append(result.Errors, err.Message)
+	}
 
 	// Validate expected errors
 	if len(tc.Errors) > 0 {
@@ -296,6 +276,27 @@ func (r *TestRunner) RunTest(tc *TestCase) *TestResult {
 	}
 
 	return result
+}
+
+// collectTokens recursively collects leaf tokens from a syntax tree.
+func collectTokens(node *syntax.SyntaxNode, tokens *[]*TokenInfo, offset *int) {
+	children := node.Children()
+	if len(children) == 0 {
+		// Leaf node
+		start := *offset
+		end := start + node.Len()
+		*tokens = append(*tokens, &TokenInfo{
+			Kind: node.Kind(),
+			Text: node.Text(),
+			Span: Span{Start: start, End: end},
+		})
+		*offset = end
+	} else {
+		// Inner node - recurse into children
+		for _, child := range children {
+			collectTokens(child, tokens, offset)
+		}
+	}
 }
 
 // RunAll runs all loaded test cases.
