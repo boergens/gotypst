@@ -1994,6 +1994,104 @@ type SmartQuoteElement struct {
 
 func (*SmartQuoteElement) IsContentElement() {}
 
+// PageElement represents a page configuration element.
+// It can be used to set page properties and optionally wrap content.
+// When used as `#page()[content]`, it creates a page break and applies
+// the properties to that specific page.
+type PageElement struct {
+	// Body is the optional content for this page.
+	// If nil, this element only applies set-rule style configuration.
+	Body *Content
+
+	// Width is the page width in points.
+	// If nil, uses default (A4 width: 595.276pt).
+	Width *float64
+
+	// Height is the page height in points.
+	// If nil, uses default (A4 height: 841.89pt).
+	Height *float64
+
+	// Margin specifies page margins.
+	// Individual margins (top, bottom, left, right) can be set independently.
+	Margin *PageMargin
+
+	// Flipped indicates whether width and height should be swapped.
+	// If nil, uses default (false).
+	Flipped *bool
+
+	// Fill is the page background fill (color or gradient).
+	// If nil, uses default (none/transparent).
+	Fill *Color
+
+	// Numbering is the page numbering pattern (e.g., "1", "i", "a").
+	// If nil, uses default (no numbering).
+	Numbering *string
+
+	// NumberAlign specifies where page numbers are placed.
+	// Values: "center", "left", "right", or combined like "center + bottom".
+	// If nil, uses default ("center + bottom").
+	NumberAlign *Alignment2D
+
+	// Header is the header content.
+	// Can be content or a function receiving page context.
+	// If nil, uses default (none).
+	Header *Content
+
+	// Footer is the footer content.
+	// Can be content or a function receiving page context.
+	// If nil, uses default (none).
+	Footer *Content
+
+	// HeaderAscent is the space between header baseline and main content.
+	// If nil, uses default (30% of top margin).
+	HeaderAscent *float64
+
+	// FooterDescent is the space between footer baseline and main content.
+	// If nil, uses default (30% of bottom margin).
+	FooterDescent *float64
+
+	// Background is content placed behind the page content.
+	// If nil, uses default (none).
+	Background *Content
+
+	// Foreground is content placed in front of the page content.
+	// If nil, uses default (none).
+	Foreground *Content
+
+	// Columns is the number of columns for the page.
+	// If nil, uses default (1).
+	Columns *int
+
+	// Binding specifies which side the page is bound.
+	// Values: "left" or "right".
+	// If nil, uses default based on text direction (left for LTR).
+	Binding *string
+}
+
+func (*PageElement) IsContentElement() {}
+
+// PageMargin represents page margin configuration.
+type PageMargin struct {
+	// Top margin in points. If nil, uses default.
+	Top *float64
+	// Bottom margin in points. If nil, uses default.
+	Bottom *float64
+	// Left margin in points. If nil, uses default.
+	Left *float64
+	// Right margin in points. If nil, uses default.
+	Right *float64
+	// Inside margin for two-sided documents. If nil, uses Left.
+	Inside *float64
+	// Outside margin for two-sided documents. If nil, uses Right.
+	Outside *float64
+	// X sets both left and right margins. If nil, uses individual values.
+	X *float64
+	// Y sets both top and bottom margins. If nil, uses individual values.
+	Y *float64
+	// Rest sets all unspecified margins. If nil, uses default.
+	Rest *float64
+}
+
 // ----------------------------------------------------------------------------
 // Error Types
 // ----------------------------------------------------------------------------

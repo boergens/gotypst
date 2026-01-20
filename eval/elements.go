@@ -738,6 +738,506 @@ func headingNative(vm *Vm, args *Args) (Value, error) {
 }
 
 // ----------------------------------------------------------------------------
+// Page Element
+// ----------------------------------------------------------------------------
+
+// PageFunc creates the page element function.
+func PageFunc() *Func {
+	name := "page"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: pageNative,
+			Info: &FuncInfo{
+				Name: "page",
+				Params: []ParamInfo{
+					{Name: "body", Type: TypeContent, Default: None, Named: false},
+					{Name: "width", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "height", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "flipped", Type: TypeBool, Default: False, Named: true},
+					{Name: "margin", Type: TypeDyn, Default: Auto, Named: true},
+					{Name: "fill", Type: TypeColor, Default: None, Named: true},
+					{Name: "numbering", Type: TypeStr, Default: None, Named: true},
+					{Name: "number-align", Type: TypeDyn, Default: Auto, Named: true},
+					{Name: "header", Type: TypeContent, Default: None, Named: true},
+					{Name: "footer", Type: TypeContent, Default: None, Named: true},
+					{Name: "header-ascent", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "footer-descent", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "background", Type: TypeContent, Default: None, Named: true},
+					{Name: "foreground", Type: TypeContent, Default: None, Named: true},
+					{Name: "columns", Type: TypeInt, Default: Int(1), Named: true},
+					{Name: "binding", Type: TypeDyn, Default: Auto, Named: true},
+				},
+			},
+		},
+	}
+}
+
+// pageNative implements the page() function.
+// Creates a PageElement with the given configuration.
+//
+// Arguments:
+//   - body (positional, content or none): Content for this page (creates page break)
+//   - width (named, length, default: auto): Page width
+//   - height (named, length, default: auto): Page height
+//   - flipped (named, bool, default: false): Swap width and height
+//   - margin (named, length or dict, default: auto): Page margins
+//   - fill (named, color, default: none): Background fill
+//   - numbering (named, str, default: none): Page numbering pattern
+//   - number-align (named, alignment, default: auto): Page number alignment
+//   - header (named, content, default: none): Header content
+//   - footer (named, content, default: none): Footer content
+//   - header-ascent (named, length, default: auto): Header ascent space
+//   - footer-descent (named, length, default: auto): Footer descent space
+//   - background (named, content, default: none): Background content
+//   - foreground (named, content, default: none): Foreground content
+//   - columns (named, int, default: 1): Number of columns
+//   - binding (named, alignment, default: auto): Binding side
+func pageNative(vm *Vm, args *Args) (Value, error) {
+	elem := &PageElement{}
+
+	// Get optional body argument (positional)
+	if bodyArg := args.Find("body"); bodyArg != nil {
+		if !IsNone(bodyArg.V) {
+			if cv, ok := bodyArg.V.(ContentValue); ok {
+				elem.Body = &cv.Content
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or none",
+					Got:      bodyArg.V.Type().String(),
+					Span:     bodyArg.Span,
+				}
+			}
+		}
+	} else if bodyArg := args.Eat(); bodyArg != nil {
+		if !IsNone(bodyArg.V) {
+			if cv, ok := bodyArg.V.(ContentValue); ok {
+				elem.Body = &cv.Content
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or none",
+					Got:      bodyArg.V.Type().String(),
+					Span:     bodyArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional width argument
+	if widthArg := args.Find("width"); widthArg != nil {
+		if !IsAuto(widthArg.V) && !IsNone(widthArg.V) {
+			if lv, ok := widthArg.V.(LengthValue); ok {
+				w := lv.Length.Points
+				elem.Width = &w
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      widthArg.V.Type().String(),
+					Span:     widthArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional height argument
+	if heightArg := args.Find("height"); heightArg != nil {
+		if !IsAuto(heightArg.V) && !IsNone(heightArg.V) {
+			if lv, ok := heightArg.V.(LengthValue); ok {
+				h := lv.Length.Points
+				elem.Height = &h
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      heightArg.V.Type().String(),
+					Span:     heightArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional flipped argument
+	if flippedArg := args.Find("flipped"); flippedArg != nil {
+		if !IsAuto(flippedArg.V) && !IsNone(flippedArg.V) {
+			if fv, ok := AsBool(flippedArg.V); ok {
+				elem.Flipped = &fv
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "bool",
+					Got:      flippedArg.V.Type().String(),
+					Span:     flippedArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional margin argument (can be length or dict)
+	if marginArg := args.Find("margin"); marginArg != nil {
+		if !IsAuto(marginArg.V) && !IsNone(marginArg.V) {
+			margin, err := parsePageMargin(marginArg.V, marginArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Margin = margin
+		}
+	}
+
+	// Get optional fill argument
+	if fillArg := args.Find("fill"); fillArg != nil {
+		if !IsNone(fillArg.V) && !IsAuto(fillArg.V) {
+			if cv, ok := fillArg.V.(ColorValue); ok {
+				elem.Fill = &cv.Color
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "color or none",
+					Got:      fillArg.V.Type().String(),
+					Span:     fillArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional numbering argument
+	if numberingArg := args.Find("numbering"); numberingArg != nil {
+		if !IsNone(numberingArg.V) && !IsAuto(numberingArg.V) {
+			if nv, ok := AsStr(numberingArg.V); ok {
+				elem.Numbering = &nv
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "string or none",
+					Got:      numberingArg.V.Type().String(),
+					Span:     numberingArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional number-align argument
+	if numberAlignArg := args.Find("number-align"); numberAlignArg != nil {
+		if !IsAuto(numberAlignArg.V) && !IsNone(numberAlignArg.V) {
+			alignment, err := parseAlignment(numberAlignArg.V, numberAlignArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.NumberAlign = &alignment
+		}
+	}
+
+	// Get optional header argument
+	if headerArg := args.Find("header"); headerArg != nil {
+		if !IsNone(headerArg.V) && !IsAuto(headerArg.V) {
+			if cv, ok := headerArg.V.(ContentValue); ok {
+				elem.Header = &cv.Content
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or none",
+					Got:      headerArg.V.Type().String(),
+					Span:     headerArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional footer argument
+	if footerArg := args.Find("footer"); footerArg != nil {
+		if !IsNone(footerArg.V) && !IsAuto(footerArg.V) {
+			if cv, ok := footerArg.V.(ContentValue); ok {
+				elem.Footer = &cv.Content
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or none",
+					Got:      footerArg.V.Type().String(),
+					Span:     footerArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional header-ascent argument
+	if headerAscentArg := args.Find("header-ascent"); headerAscentArg != nil {
+		if !IsAuto(headerAscentArg.V) && !IsNone(headerAscentArg.V) {
+			if lv, ok := headerAscentArg.V.(LengthValue); ok {
+				ha := lv.Length.Points
+				elem.HeaderAscent = &ha
+			} else if rv, ok := headerAscentArg.V.(RatioValue); ok {
+				// Ratio values are relative to the margin
+				ha := rv.Ratio.Value * 100 // Store as percentage for later resolution
+				elem.HeaderAscent = &ha
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      headerAscentArg.V.Type().String(),
+					Span:     headerAscentArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional footer-descent argument
+	if footerDescentArg := args.Find("footer-descent"); footerDescentArg != nil {
+		if !IsAuto(footerDescentArg.V) && !IsNone(footerDescentArg.V) {
+			if lv, ok := footerDescentArg.V.(LengthValue); ok {
+				fd := lv.Length.Points
+				elem.FooterDescent = &fd
+			} else if rv, ok := footerDescentArg.V.(RatioValue); ok {
+				// Ratio values are relative to the margin
+				fd := rv.Ratio.Value * 100 // Store as percentage for later resolution
+				elem.FooterDescent = &fd
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      footerDescentArg.V.Type().String(),
+					Span:     footerDescentArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional background argument
+	if backgroundArg := args.Find("background"); backgroundArg != nil {
+		if !IsNone(backgroundArg.V) && !IsAuto(backgroundArg.V) {
+			if cv, ok := backgroundArg.V.(ContentValue); ok {
+				elem.Background = &cv.Content
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or none",
+					Got:      backgroundArg.V.Type().String(),
+					Span:     backgroundArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional foreground argument
+	if foregroundArg := args.Find("foreground"); foregroundArg != nil {
+		if !IsNone(foregroundArg.V) && !IsAuto(foregroundArg.V) {
+			if cv, ok := foregroundArg.V.(ContentValue); ok {
+				elem.Foreground = &cv.Content
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or none",
+					Got:      foregroundArg.V.Type().String(),
+					Span:     foregroundArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional columns argument
+	if columnsArg := args.Find("columns"); columnsArg != nil {
+		if !IsAuto(columnsArg.V) && !IsNone(columnsArg.V) {
+			if cv, ok := AsInt(columnsArg.V); ok {
+				cols := int(cv)
+				if cols < 1 {
+					return nil, &ConstructorError{
+						Message: "columns must be at least 1",
+						Span:    columnsArg.Span,
+					}
+				}
+				elem.Columns = &cols
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "integer",
+					Got:      columnsArg.V.Type().String(),
+					Span:     columnsArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional binding argument
+	if bindingArg := args.Find("binding"); bindingArg != nil {
+		if !IsAuto(bindingArg.V) && !IsNone(bindingArg.V) {
+			if sv, ok := AsStr(bindingArg.V); ok {
+				// Validate binding value
+				if sv != "left" && sv != "right" {
+					return nil, &TypeMismatchError{
+						Expected: "\"left\" or \"right\"",
+						Got:      "\"" + sv + "\"",
+						Span:     bindingArg.Span,
+					}
+				}
+				elem.Binding = &sv
+			} else if av, ok := bindingArg.V.(AlignmentValue); ok {
+				// Handle alignment values (left, right)
+				if av.Alignment.H != nil {
+					if *av.Alignment.H < 0 {
+						binding := "left"
+						elem.Binding = &binding
+					} else if *av.Alignment.H > 0 {
+						binding := "right"
+						elem.Binding = &binding
+					}
+				}
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "alignment or auto",
+					Got:      bindingArg.V.Type().String(),
+					Span:     bindingArg.Span,
+				}
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the PageElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// parsePageMargin parses margin configuration from a value.
+// Supports:
+//   - Single length: applied to all sides
+//   - Dictionary with keys: top, bottom, left, right, inside, outside, x, y, rest
+func parsePageMargin(v Value, span syntax.Span) (*PageMargin, error) {
+	margin := &PageMargin{}
+
+	// Single length value applies to all sides
+	if lv, ok := v.(LengthValue); ok {
+		m := lv.Length.Points
+		margin.Top = &m
+		margin.Bottom = &m
+		margin.Left = &m
+		margin.Right = &m
+		return margin, nil
+	}
+
+	// Dictionary with named margins
+	if dv, ok := AsDict(v); ok {
+		// Extract named margin values
+		if val, exists := dv.Get("top"); exists {
+			if lv, ok := val.(LengthValue); ok {
+				m := lv.Length.Points
+				margin.Top = &m
+			} else if !IsAuto(val) && !IsNone(val) {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      val.Type().String(),
+					Span:     span,
+				}
+			}
+		}
+
+		if val, exists := dv.Get("bottom"); exists {
+			if lv, ok := val.(LengthValue); ok {
+				m := lv.Length.Points
+				margin.Bottom = &m
+			} else if !IsAuto(val) && !IsNone(val) {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      val.Type().String(),
+					Span:     span,
+				}
+			}
+		}
+
+		if val, exists := dv.Get("left"); exists {
+			if lv, ok := val.(LengthValue); ok {
+				m := lv.Length.Points
+				margin.Left = &m
+			} else if !IsAuto(val) && !IsNone(val) {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      val.Type().String(),
+					Span:     span,
+				}
+			}
+		}
+
+		if val, exists := dv.Get("right"); exists {
+			if lv, ok := val.(LengthValue); ok {
+				m := lv.Length.Points
+				margin.Right = &m
+			} else if !IsAuto(val) && !IsNone(val) {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      val.Type().String(),
+					Span:     span,
+				}
+			}
+		}
+
+		if val, exists := dv.Get("inside"); exists {
+			if lv, ok := val.(LengthValue); ok {
+				m := lv.Length.Points
+				margin.Inside = &m
+			} else if !IsAuto(val) && !IsNone(val) {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      val.Type().String(),
+					Span:     span,
+				}
+			}
+		}
+
+		if val, exists := dv.Get("outside"); exists {
+			if lv, ok := val.(LengthValue); ok {
+				m := lv.Length.Points
+				margin.Outside = &m
+			} else if !IsAuto(val) && !IsNone(val) {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      val.Type().String(),
+					Span:     span,
+				}
+			}
+		}
+
+		if val, exists := dv.Get("x"); exists {
+			if lv, ok := val.(LengthValue); ok {
+				m := lv.Length.Points
+				margin.X = &m
+			} else if !IsAuto(val) && !IsNone(val) {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      val.Type().String(),
+					Span:     span,
+				}
+			}
+		}
+
+		if val, exists := dv.Get("y"); exists {
+			if lv, ok := val.(LengthValue); ok {
+				m := lv.Length.Points
+				margin.Y = &m
+			} else if !IsAuto(val) && !IsNone(val) {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      val.Type().String(),
+					Span:     span,
+				}
+			}
+		}
+
+		if val, exists := dv.Get("rest"); exists {
+			if lv, ok := val.(LengthValue); ok {
+				m := lv.Length.Points
+				margin.Rest = &m
+			} else if !IsAuto(val) && !IsNone(val) {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      val.Type().String(),
+					Span:     span,
+				}
+			}
+		}
+
+		return margin, nil
+	}
+
+	return nil, &TypeMismatchError{
+		Expected: "length or dictionary",
+		Got:      v.Type().String(),
+		Span:     span,
+	}
+}
+
+// ----------------------------------------------------------------------------
 // Library Registration
 // ----------------------------------------------------------------------------
 
@@ -756,6 +1256,8 @@ func RegisterElementFunctions(scope *Scope) {
 	scope.DefineFunc("align", AlignFunc())
 	// Register heading element function
 	scope.DefineFunc("heading", HeadingFunc())
+	// Register page element function
+	scope.DefineFunc("page", PageFunc())
 }
 
 // ElementFunctions returns a map of all element function names to their functions.
@@ -768,5 +1270,6 @@ func ElementFunctions() map[string]*Func {
 		"stack":    StackFunc(),
 		"align":    AlignFunc(),
 		"heading":  HeadingFunc(),
+		"page":     PageFunc(),
 	}
 }
