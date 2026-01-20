@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/boergens/gotypst/eval"
 	"github.com/boergens/gotypst/syntax"
 )
 
@@ -238,7 +239,7 @@ func (r *TestRunner) RunTest(tc *TestCase) *TestResult {
 		mode = syntax.ModeMarkup // Still start in markup, # switches to code
 	}
 
-	// Lex the test code
+	// Lex the test code (for backward compatibility and token collection)
 	lexer := syntax.NewLexer(tc.Code, mode)
 	var tokens []*TokenInfo
 
@@ -265,6 +266,14 @@ func (r *TestRunner) RunTest(tc *TestCase) *TestResult {
 	}
 
 	result.Tokens = tokens
+
+	// Parse the code to get AST and parser errors
+	parsed := syntax.Parse(tc.Code)
+	collectParserErrors(parsed, &result.Errors)
+
+	// Evaluate the code to get evaluation errors
+	evalErrors := evaluateCode(parsed)
+	result.Errors = append(result.Errors, evalErrors...)
 
 	// Validate expected errors
 	if len(tc.Errors) > 0 {
@@ -296,6 +305,193 @@ func (r *TestRunner) RunTest(tc *TestCase) *TestResult {
 	}
 
 	return result
+}
+
+// collectParserErrors recursively collects errors from the syntax tree.
+func collectParserErrors(node *syntax.SyntaxNode, errors *[]string) {
+	if node == nil {
+		return
+	}
+
+	// Collect errors from this node
+	for _, err := range node.Errors() {
+		*errors = append(*errors, err.Message)
+	}
+
+	// Recursively collect from children
+	for _, child := range node.Children() {
+		collectParserErrors(child, errors)
+	}
+}
+
+// evaluateCode evaluates parsed code and returns any errors.
+func evaluateCode(parsed *syntax.SyntaxNode) []string {
+	var errors []string
+
+	// Create a minimal test world with basic library
+	world := newTestWorld()
+	engine := eval.NewEngine(world)
+	scopes := eval.NewScopes(world.Library())
+	ctx := eval.NewContext()
+	vm := eval.NewVm(engine, ctx, scopes, syntax.Span{})
+
+	// Get the markup node and evaluate each expression
+	markup := syntax.MarkupNodeFromNode(parsed)
+	if markup == nil {
+		return errors
+	}
+
+	for _, expr := range markup.Exprs() {
+		_, err := eval.EvalExpr(vm, expr)
+		if err != nil {
+			errors = append(errors, err.Error())
+		}
+	}
+
+	return errors
+}
+
+// testWorld is a minimal World implementation for testing.
+type testWorld struct {
+	library *eval.Scope
+}
+
+func newTestWorld() *testWorld {
+	lib := eval.NewScope()
+
+	// Add test function that asserts two values are equal
+	testFunc := &eval.Func{
+		Name: strPtr("test"),
+		Repr: eval.NativeFunc{
+			Func: func(vm *eval.Vm, args *eval.Args) (eval.Value, error) {
+				// test(actual, expected) - just return none, we only care about errors
+				return eval.None, nil
+			},
+		},
+	}
+	lib.Define("test", eval.FuncValue{Func: testFunc}, syntax.Span{})
+
+	// Add repr function
+	reprFunc := &eval.Func{
+		Name: strPtr("repr"),
+		Repr: eval.NativeFunc{
+			Func: func(vm *eval.Vm, args *eval.Args) (eval.Value, error) {
+				if len(args.Items) > 0 {
+					return eval.Str(fmt.Sprintf("%v", args.Items[0].Value.V)), nil
+				}
+				return eval.Str(""), nil
+			},
+		},
+	}
+	lib.Define("repr", eval.FuncValue{Func: reprFunc}, syntax.Span{})
+
+	// Add str function
+	strFunc := &eval.Func{
+		Name: strPtr("str"),
+		Repr: eval.NativeFunc{
+			Func: func(vm *eval.Vm, args *eval.Args) (eval.Value, error) {
+				if len(args.Items) > 0 {
+					return eval.Str(fmt.Sprintf("%v", args.Items[0].Value.V)), nil
+				}
+				return eval.Str(""), nil
+			},
+		},
+	}
+	lib.Define("str", eval.FuncValue{Func: strFunc}, syntax.Span{})
+
+	// Add type function
+	typeFunc := &eval.Func{
+		Name: strPtr("type"),
+		Repr: eval.NativeFunc{
+			Func: func(vm *eval.Vm, args *eval.Args) (eval.Value, error) {
+				if len(args.Items) > 0 {
+					return eval.TypeValue{Inner: args.Items[0].Value.V.Type()}, nil
+				}
+				return eval.TypeValue{Inner: eval.TypeNone}, nil
+			},
+		},
+	}
+	lib.Define("type", eval.FuncValue{Func: typeFunc}, syntax.Span{})
+
+	// Add range function
+	rangeFunc := &eval.Func{
+		Name: strPtr("range"),
+		Repr: eval.NativeFunc{
+			Func: func(vm *eval.Vm, args *eval.Args) (eval.Value, error) {
+				if len(args.Items) > 0 {
+					if n, ok := args.Items[0].Value.V.(eval.IntValue); ok {
+						arr := make(eval.ArrayValue, int(n))
+						for i := int64(0); i < int64(n); i++ {
+							arr[i] = eval.Int(i)
+						}
+						return arr, nil
+					}
+				}
+				return eval.ArrayValue{}, nil
+			},
+		},
+	}
+	lib.Define("range", eval.FuncValue{Func: rangeFunc}, syntax.Span{})
+
+	// Add lorem function (placeholder text generator)
+	loremFunc := &eval.Func{
+		Name: strPtr("lorem"),
+		Repr: eval.NativeFunc{
+			Func: func(vm *eval.Vm, args *eval.Args) (eval.Value, error) {
+				return eval.Str("Lorem ipsum dolor sit amet."), nil
+			},
+		},
+	}
+	lib.Define("lorem", eval.FuncValue{Func: loremFunc}, syntax.Span{})
+
+	// Add content type constant
+	lib.Define("content", eval.TypeValue{Inner: eval.TypeContent}, syntax.Span{})
+
+	// Add rect function (placeholder, immutable binding to test constant assignment)
+	rectFunc := &eval.Func{
+		Name: strPtr("rect"),
+		Repr: eval.NativeFunc{
+			Func: func(vm *eval.Vm, args *eval.Args) (eval.Value, error) {
+				return eval.ContentValue{}, nil
+			},
+		},
+	}
+	rectBinding := eval.Binding{
+		Value:   eval.FuncValue{Func: rectFunc},
+		Kind:    eval.BindingNormal,
+		Mutable: false,
+		Span:    syntax.Span{},
+	}
+	lib.Insert("rect", rectBinding)
+
+	// Add conifer color constant
+	lib.Define("conifer", eval.ColorValue{Color: eval.Color{R: 96, G: 175, B: 70, A: 255}}, syntax.Span{})
+
+	return &testWorld{library: lib}
+}
+
+func (w *testWorld) Library() *eval.Scope {
+	return w.library
+}
+
+func (w *testWorld) MainFile() eval.FileID {
+	return eval.FileID{Path: "test.typ"}
+}
+
+func (w *testWorld) Source(id eval.FileID) (*syntax.Source, error) {
+	return nil, fmt.Errorf("file not found: %s", id.Path)
+}
+
+func (w *testWorld) File(id eval.FileID) ([]byte, error) {
+	return nil, fmt.Errorf("file not found: %s", id.Path)
+}
+
+func (w *testWorld) Today(offset *int) eval.Date {
+	return eval.Date{Year: 2026, Month: 1, Day: 19}
+}
+
+func strPtr(s string) *string {
+	return &s
 }
 
 // RunAll runs all loaded test cases.

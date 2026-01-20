@@ -1372,9 +1372,14 @@ func (e *UnaryExpr) Op() UnOp {
 // Expr returns the operand.
 func (e *UnaryExpr) Expr() Expr {
 	for _, child := range e.node.Children() {
-		if child.Kind() != Plus && child.Kind() != Minus && child.Kind() != Not {
-			return ExprFromNode(child)
+		// Skip operators and trivia
+		kind := child.Kind()
+		if kind == Plus || kind == Minus || kind == Not ||
+			kind == Space || kind == LineComment || kind == BlockComment ||
+			kind == Parbreak {
+			continue
 		}
+		return ExprFromNode(child)
 	}
 	return nil
 }
@@ -1397,11 +1402,29 @@ func (e *BinaryExpr) ToUntyped() *SyntaxNode { return e.node }
 func (e *BinaryExpr) isAstNode()            {}
 func (e *BinaryExpr) isExpr()               {}
 
+// isBinaryOperator checks if the kind is a binary operator token.
+func isBinaryOperator(kind SyntaxKind) bool {
+	switch kind {
+	case Plus, Minus, Star, Slash, And, Or, EqEq, ExclEq, Lt, LtEq, Gt, GtEq, Eq, In, Not, PlusEq, HyphEq, StarEq, SlashEq:
+		return true
+	}
+	return false
+}
+
 // Lhs returns the left-hand side.
 func (e *BinaryExpr) Lhs() Expr {
-	children := e.node.Children()
-	if len(children) > 0 {
-		return ExprFromNode(children[0])
+	for _, child := range e.node.Children() {
+		// Skip trivia
+		kind := child.Kind()
+		if kind == Space || kind == LineComment || kind == BlockComment || kind == Parbreak {
+			continue
+		}
+		// Skip operators
+		if isBinaryOperator(kind) {
+			continue
+		}
+		// Return the first expression
+		return ExprFromNode(child)
 	}
 	return nil
 }
@@ -1453,9 +1476,22 @@ func (e *BinaryExpr) Op() BinOp {
 
 // Rhs returns the right-hand side.
 func (e *BinaryExpr) Rhs() Expr {
-	children := e.node.Children()
-	if len(children) >= 3 {
-		return ExprFromNode(children[2])
+	foundOp := false
+	for _, child := range e.node.Children() {
+		kind := child.Kind()
+		// Skip trivia
+		if kind == Space || kind == LineComment || kind == BlockComment || kind == Parbreak {
+			continue
+		}
+		// Check if we've seen an operator
+		if isBinaryOperator(kind) {
+			foundOp = true
+			continue
+		}
+		// Return the first expression after the operator
+		if foundOp {
+			return ExprFromNode(child)
+		}
 	}
 	return nil
 }

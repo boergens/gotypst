@@ -582,8 +582,10 @@ func applyPos(v Value, span syntax.Span) (Value, error) {
 		return val, nil
 	case FractionValue:
 		return val, nil
+	case RelativeValue:
+		return val, nil
 	default:
-		return nil, &TypeError{Expected: TypeInt, Got: v.Type(), Span: span}
+		return nil, &UnaryOperatorError{Op: "unary '+'", Type: v.Type(), Span: span}
 	}
 }
 
@@ -601,15 +603,20 @@ func applyNeg(v Value, span syntax.Span) (Value, error) {
 		return RatioValue{Ratio: Ratio{Value: -val.Ratio.Value}}, nil
 	case FractionValue:
 		return FractionValue{Fraction: Fraction{Value: -val.Fraction.Value}}, nil
+	case RelativeValue:
+		return RelativeValue{Relative: Relative{
+			Abs: Length{Points: -val.Relative.Abs.Points},
+			Rel: Ratio{Value: -val.Relative.Rel.Value},
+		}}, nil
 	default:
-		return nil, &TypeError{Expected: TypeInt, Got: v.Type(), Span: span}
+		return nil, &UnaryOperatorError{Op: "'-'", Type: v.Type(), Span: span}
 	}
 }
 
 func applyNot(v Value, span syntax.Span) (Value, error) {
 	b, ok := AsBool(v)
 	if !ok {
-		return nil, &TypeError{Expected: TypeBool, Got: v.Type(), Span: span}
+		return nil, &UnaryOperatorError{Op: "'not'", Type: v.Type(), Span: span}
 	}
 	return Bool(!b), nil
 }
@@ -729,6 +736,9 @@ func assignToExpr(vm *Vm, expr syntax.Expr, value Value) (Value, error) {
 		binding := vm.GetMut(name)
 		if binding == nil {
 			return nil, &UndefinedVariableError{Name: name, Span: e.ToUntyped().Span()}
+		}
+		if !binding.Mutable {
+			return nil, &ImmutableBindingError{Name: name, Span: e.ToUntyped().Span()}
 		}
 		if err := binding.Write(value); err != nil {
 			return nil, err
@@ -1991,3 +2001,15 @@ type FieldNotFoundError struct {
 func (e *FieldNotFoundError) Error() string {
 	return fmt.Sprintf("field %q not found on %s", e.Field, e.Type)
 }
+
+// UnaryOperatorError is returned when a unary operator cannot be applied.
+type UnaryOperatorError struct {
+	Op   string
+	Type Type
+	Span syntax.Span
+}
+
+func (e *UnaryOperatorError) Error() string {
+	return fmt.Sprintf("cannot apply %s to %s", e.Op, e.Type)
+}
+
