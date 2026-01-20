@@ -1634,7 +1634,7 @@ func evalText(_ *Vm, e *syntax.TextExpr) (Value, error) {
 
 func evalSpace(_ *Vm, _ *syntax.SpaceExpr) (Value, error) {
 	return ContentValue{Content: Content{
-		Elements: []ContentElement{&TextElement{Text: " "}},
+		Elements: []ContentElement{&SpaceElement{}},
 	}}, nil
 }
 
