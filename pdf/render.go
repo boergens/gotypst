@@ -5,12 +5,13 @@ import (
 	"github.com/boergens/gotypst/layout/flow"
 	"github.com/boergens/gotypst/layout/inline"
 	"github.com/boergens/gotypst/layout/pages"
+	"github.com/go-text/typesetting/font"
 )
 
 // Renderer generates PDF content streams from laid out frames.
 type Renderer struct {
-	// FontMap maps font faces to PDF font resource names (e.g., "/F1").
-	FontMap FontMapper
+	// FontManager manages CID fonts for the document.
+	FontManager *FontManager
 
 	// pageHeight is used to convert coordinates (PDF has origin at bottom-left).
 	pageHeight layout.Abs
@@ -34,7 +35,7 @@ func (DefaultFontMapper) FontName(face interface{}) string {
 // NewRenderer creates a new PDF renderer.
 func NewRenderer() *Renderer {
 	return &Renderer{
-		FontMap: DefaultFontMapper{},
+		FontManager: NewFontManager(),
 	}
 }
 
@@ -94,6 +95,13 @@ func (r *Renderer) renderPagesFrameItem(cs *ContentStream, item pages.FrameItem,
 		r.renderPagesFrame(cs, &it.Frame, pos)
 	case pages.TagItem:
 		// Tags are metadata, not rendered
+	case pages.InlineItem:
+		// Inline text content
+		if frame, ok := it.Frame.(*inline.FinalFrame); ok {
+			r.RenderInlineFrame(cs, frame, pos)
+		}
+	case pages.ImageItem:
+		// Images are handled by the writer
 	}
 }
 
@@ -153,13 +161,17 @@ func (r *Renderer) renderShapedText(cs *ContentStream, text *inline.ShapedText, 
 
 	// Get font info from first glyph
 	firstGlyph := &glyphs[0]
-	fontName := r.FontMap.FontName(firstGlyph.Font)
 	fontSize := firstGlyph.Size
+
+	// Register the first glyph and get font name
+	// Width in font units (1000 units per em)
+	widthUnits := int(float64(firstGlyph.XAdvance) * 1000)
+	fontName := r.FontManager.RegisterGlyph(firstGlyph.Font, firstGlyph.GlyphID, firstGlyph.Char, widthUnits)
 
 	cs.BeginText()
 
 	// Set font
-	cs.SetFont(fontName, fontSize)
+	cs.SetFont("/"+fontName, fontSize)
 
 	// Convert to PDF coordinates (origin at bottom-left)
 	// pos.Y is top-down, so we need to flip it
@@ -168,12 +180,30 @@ func (r *Renderer) renderShapedText(cs *ContentStream, text *inline.ShapedText, 
 
 	cs.SetTextMatrixPos(pdfX, pdfY)
 
-	// Build TJ array with glyph positioning
+	// Build TJ array with glyph positioning using CID encoding
 	var items []TextPositionItem
-	var currentX layout.Abs
+	var currentFont *font.Face = firstGlyph.Font
 
 	for i := range glyphs {
 		g := &glyphs[i]
+
+		// Check for font change
+		if g.Font != currentFont {
+			// Flush current text and switch fonts
+			if len(items) > 0 {
+				cs.ShowTextWithPositioning(items)
+				items = items[:0]
+			}
+
+			widthUnits := int(float64(g.XAdvance) * 1000)
+			newFontName := r.FontManager.RegisterGlyph(g.Font, g.GlyphID, g.Char, widthUnits)
+			cs.SetFont("/"+newFontName, g.Size)
+			currentFont = g.Font
+		} else {
+			// Register glyph with current font
+			widthUnits := int(float64(g.XAdvance) * 1000)
+			r.FontManager.RegisterGlyph(g.Font, g.GlyphID, g.Char, widthUnits)
+		}
 
 		// Handle x-offset if present
 		if g.XOffset != 0 {
@@ -182,20 +212,14 @@ func (r *Renderer) renderShapedText(cs *ContentStream, text *inline.ShapedText, 
 			items = append(items, TextPositionOffset(offsetUnits))
 		}
 
-		// Add the glyph character
-		// Note: In production, this would use glyph IDs and proper encoding
-		items = append(items, TextPositionString(string(g.Char)))
+		// Add the glyph using its CID (glyph ID) encoded as 2 bytes big-endian
+		// For Identity-H encoding, CID equals glyph ID
+		gidBytes := []byte{byte(g.GlyphID >> 8), byte(g.GlyphID)}
+		items = append(items, TextPositionHex(gidBytes))
 
 		// Track position for next glyph
 		advance := g.XAdvance.At(g.Size)
-		currentX += advance
-
-		// If there's extra spacing between glyphs (beyond normal advance),
-		// add a positioning adjustment
-		if i+1 < len(glyphs) {
-			// This would handle justification adjustments
-			// For now, we rely on standard advance widths
-		}
+		_ = advance // currentX tracked for potential future justification
 	}
 
 	cs.ShowTextWithPositioning(items)
