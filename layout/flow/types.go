@@ -513,9 +513,23 @@ type Composer struct {
 	Engine *Engine
 	Work   *Work
 	Config *Config
+	// State holds the composition state including insertions.
+	State *ComposerState
+}
+
+// NewComposer creates a new composer with the given parameters.
+func NewComposer(engine *Engine, work *Work, config *Config) *Composer {
+	return &Composer{
+		Engine: engine,
+		Work:   work,
+		Config: config,
+		State:  NewComposerState(),
+	}
 }
 
 // Footnotes processes footnotes discovered in a frame.
+// It searches the frame for footnote references and layouts them
+// at the bottom of the region.
 func (c *Composer) Footnotes(
 	regions *Regions,
 	frame *Frame,
@@ -523,23 +537,131 @@ func (c *Composer) Footnotes(
 	breakable bool,
 	migratable bool,
 ) error {
-	// TODO: Implement footnote handling
+	if c.State == nil {
+		c.State = NewComposerState()
+	}
+
+	// In a full implementation, this would:
+	// 1. Recursively search the frame for footnote references
+	// 2. Resolve each reference to its footnote content
+	// 3. Layout the footnote and add it to insertions
+	// 4. Handle cases where footnotes don't fit
+	//
+	// For now, footnote discovery requires introspection support
+	// which will be added in a follow-up task (go-in2mz.5).
 	return nil
 }
 
 // Float processes a floating placed child.
+// It attempts to place the float in the current region, or queues it
+// for later processing if there isn't enough space.
 func (c *Composer) Float(
 	placed *PlacedChild,
 	regions *Regions,
 	clearance bool,
 	migratable bool,
 ) error {
-	// TODO: Implement float handling
+	if c.State == nil {
+		c.State = NewComposerState()
+	}
+
+	// Check if we should skip this float (already processed).
+	if _, skip := c.Work.Skips[placed.Location()]; skip {
+		return nil
+	}
+
+	// Layout the float.
+	frame, err := placed.Layout(c.Engine, regions.Base())
+	if err != nil {
+		return err
+	}
+
+	// Determine vertical alignment.
+	alignY := FixedAlignStart
+	if placed.AlignY != nil {
+		alignY = *placed.AlignY
+	}
+
+	// Check if the float fits in the available space.
+	// Need space for both the frame and its clearance.
+	needed := frame.Height() + placed.Clearance
+	available := regions.Size.Height - c.State.Insertions.Height()
+	if !available.Fits(needed) {
+		// Queue the float for later processing.
+		c.Work.Floats = append(c.Work.Floats, placed)
+		return nil
+	}
+
+	// Place the float.
+	c.State.Insertions.PushFloat(placed, frame, alignY)
+
+	// Mark this location to skip on relayout.
+	c.Work.Skips[placed.Location()] = struct{}{}
+
+	// Shrink available region.
+	reduction := frame.Height() + placed.Clearance
+	regions.Size.Height -= reduction
+
 	return nil
 }
 
 // InsertionWidth returns the width occupied by insertions (floats/footnotes).
 func (c *Composer) InsertionWidth() layout.Abs {
-	// TODO: Implement insertion width calculation
-	return 0
+	if c.State == nil || c.State.Insertions == nil {
+		return 0
+	}
+	return c.State.Insertions.Width()
+}
+
+// ResetInsertions clears the insertion state for a new composition pass.
+func (c *Composer) ResetInsertions() {
+	if c.State != nil {
+		c.State.Insertions = NewInsertions()
+	}
+}
+
+// FinalizeInsertions composes all insertions with the content frame.
+func (c *Composer) FinalizeInsertions(content Frame, regionSize layout.Size) Frame {
+	if c.State == nil || c.State.Insertions == nil || c.State.Insertions.IsEmpty() {
+		return content
+	}
+	return c.State.Insertions.Finalize(content, regionSize)
+}
+
+// ProcessQueuedFloats attempts to place any queued floats.
+func (c *Composer) ProcessQueuedFloats(regions *Regions) error {
+	if c.State == nil {
+		c.State = NewComposerState()
+	}
+
+	remaining := make([]*PlacedChild, 0, len(c.Work.Floats))
+
+	for _, placed := range c.Work.Floats {
+		if _, skip := c.Work.Skips[placed.Location()]; skip {
+			continue
+		}
+
+		frame, err := placed.Layout(c.Engine, regions.Base())
+		if err != nil {
+			return err
+		}
+
+		alignY := FixedAlignStart
+		if placed.AlignY != nil {
+			alignY = *placed.AlignY
+		}
+
+		needed := frame.Height() + placed.Clearance
+		available := regions.Size.Height - c.State.Insertions.Height()
+		if available.Fits(needed) {
+			c.State.Insertions.PushFloat(placed, frame, alignY)
+			c.Work.Skips[placed.Location()] = struct{}{}
+			regions.Size.Height -= needed
+		} else {
+			remaining = append(remaining, placed)
+		}
+	}
+
+	c.Work.Floats = remaining
+	return nil
 }
