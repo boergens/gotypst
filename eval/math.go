@@ -79,6 +79,92 @@ type MathSymbolElement struct {
 
 func (*MathSymbolElement) IsContentElement() {}
 
+// AccentKind represents the type of math accent.
+type AccentKind int
+
+const (
+	// AccentHat is the circumflex/hat accent (̂).
+	AccentHat AccentKind = iota
+	// AccentTilde is the tilde accent (̃).
+	AccentTilde
+	// AccentBar is the macron/bar/overline accent (̄).
+	AccentBar
+	// AccentVec is the vector arrow accent (⃗).
+	AccentVec
+	// AccentDot is the dot accent (̇).
+	AccentDot
+	// AccentDDot is the double dot/umlaut accent (̈).
+	AccentDDot
+	// AccentBreve is the breve accent (̆).
+	AccentBreve
+	// AccentAcute is the acute accent (́).
+	AccentAcute
+	// AccentGrave is the grave accent (̀).
+	AccentGrave
+)
+
+// String returns the name of the accent kind.
+func (k AccentKind) String() string {
+	switch k {
+	case AccentHat:
+		return "hat"
+	case AccentTilde:
+		return "tilde"
+	case AccentBar:
+		return "bar"
+	case AccentVec:
+		return "vec"
+	case AccentDot:
+		return "dot"
+	case AccentDDot:
+		return "dot.double"
+	case AccentBreve:
+		return "breve"
+	case AccentAcute:
+		return "acute"
+	case AccentGrave:
+		return "grave"
+	default:
+		return "unknown"
+	}
+}
+
+// AccentChar returns the combining Unicode character for this accent.
+func (k AccentKind) AccentChar() rune {
+	switch k {
+	case AccentHat:
+		return '\u0302' // COMBINING CIRCUMFLEX ACCENT
+	case AccentTilde:
+		return '\u0303' // COMBINING TILDE
+	case AccentBar:
+		return '\u0304' // COMBINING MACRON
+	case AccentVec:
+		return '\u20D7' // COMBINING RIGHT ARROW ABOVE
+	case AccentDot:
+		return '\u0307' // COMBINING DOT ABOVE
+	case AccentDDot:
+		return '\u0308' // COMBINING DIAERESIS
+	case AccentBreve:
+		return '\u0306' // COMBINING BREVE
+	case AccentAcute:
+		return '\u0301' // COMBINING ACUTE ACCENT
+	case AccentGrave:
+		return '\u0300' // COMBINING GRAVE ACCENT
+	default:
+		return '\u0302' // Default to hat
+	}
+}
+
+// MathAccentElement represents a math accent (hat, tilde, bar, vec, etc.).
+type MathAccentElement struct {
+	// Base is the content being accented.
+	Base Content
+	// Accent is the type of accent.
+	Accent AccentKind
+}
+
+func (*MathAccentElement) IsContentElement() {}
+
 // ----------------------------------------------------------------------------
 // Math Expression Evaluators
 // ----------------------------------------------------------------------------

@@ -297,3 +297,155 @@ func (a *AlignFragment) Class() MathClass { return ClassNone }
 
 // ItalicsCorrection returns zero.
 func (a *AlignFragment) ItalicsCorrection() layout.Abs { return 0 }
+
+// AccentKind represents the type of math accent decoration.
+type AccentKind int
+
+const (
+	// AccentHat is the circumflex/hat accent (̂).
+	AccentHat AccentKind = iota
+	// AccentTilde is the tilde accent (̃).
+	AccentTilde
+	// AccentBar is the macron/bar/overline accent (̄).
+	AccentBar
+	// AccentVec is the vector arrow accent (⃗).
+	AccentVec
+	// AccentDot is the dot accent (̇).
+	AccentDot
+	// AccentDDot is the double dot/umlaut accent (̈).
+	AccentDDot
+	// AccentBreve is the breve accent (̆).
+	AccentBreve
+	// AccentAcute is the acute accent (́).
+	AccentAcute
+	// AccentGrave is the grave accent (̀).
+	AccentGrave
+)
+
+// String returns the name of the accent kind.
+func (k AccentKind) String() string {
+	switch k {
+	case AccentHat:
+		return "hat"
+	case AccentTilde:
+		return "tilde"
+	case AccentBar:
+		return "bar"
+	case AccentVec:
+		return "vec"
+	case AccentDot:
+		return "dot"
+	case AccentDDot:
+		return "ddot"
+	case AccentBreve:
+		return "breve"
+	case AccentAcute:
+		return "acute"
+	case AccentGrave:
+		return "grave"
+	default:
+		return "unknown"
+	}
+}
+
+// AccentGlyphID returns the Unicode code point for the accent glyph.
+// These are the standalone (non-combining) forms used for display.
+func (k AccentKind) AccentGlyphID() rune {
+	switch k {
+	case AccentHat:
+		return '\u0302' // COMBINING CIRCUMFLEX ACCENT
+	case AccentTilde:
+		return '\u0303' // COMBINING TILDE
+	case AccentBar:
+		return '\u0304' // COMBINING MACRON
+	case AccentVec:
+		return '\u20D7' // COMBINING RIGHT ARROW ABOVE
+	case AccentDot:
+		return '\u0307' // COMBINING DOT ABOVE
+	case AccentDDot:
+		return '\u0308' // COMBINING DIAERESIS
+	case AccentBreve:
+		return '\u0306' // COMBINING BREVE
+	case AccentAcute:
+		return '\u0301' // COMBINING ACUTE ACCENT
+	case AccentGrave:
+		return '\u0300' // COMBINING GRAVE ACCENT
+	default:
+		return '\u0302' // Default to hat
+	}
+}
+
+// AccentFragment represents an accent positioned over base content.
+// This implements math accents like hat (̂), tilde (̃), bar (̄), vec (⃗), etc.
+type AccentFragment struct {
+	// Base is the content fragment being accented.
+	Base MathFragment
+	// Accent is the accent glyph fragment positioned above the base.
+	Accent MathFragment
+	// Kind is the type of accent (hat, tilde, bar, vec, etc.).
+	Kind AccentKind
+	// AccentGap is the vertical gap between the base and accent.
+	AccentGap layout.Abs
+}
+
+func (*AccentFragment) isMathFragment() {}
+
+// Width returns the maximum of base and accent widths.
+func (a *AccentFragment) Width() layout.Abs {
+	baseW := a.Base.Width()
+	accentW := a.Accent.Width()
+	if accentW > baseW {
+		return accentW
+	}
+	return baseW
+}
+
+// Height returns the total height (base height + gap + accent height).
+func (a *AccentFragment) Height() layout.Abs {
+	return a.Ascent() + a.Descent()
+}
+
+// Ascent returns the distance from baseline to top (base ascent + gap + accent).
+func (a *AccentFragment) Ascent() layout.Abs {
+	return a.Base.Ascent() + a.AccentGap + a.Accent.Height()
+}
+
+// Descent returns the descent from the base.
+func (a *AccentFragment) Descent() layout.Abs {
+	return a.Base.Descent()
+}
+
+// Class returns the math class of the base (accents inherit base class).
+func (a *AccentFragment) Class() MathClass {
+	return a.Base.Class()
+}
+
+// ItalicsCorrection returns the italics correction from the base.
+func (a *AccentFragment) ItalicsCorrection() layout.Abs {
+	return a.Base.ItalicsCorrection()
+}
+
+// BaseOffset returns the horizontal offset to center the base under the accent.
+func (a *AccentFragment) BaseOffset() layout.Abs {
+	accentW := a.Accent.Width()
+	baseW := a.Base.Width()
+	if accentW > baseW {
+		return (accentW - baseW) / 2
+	}
+	return 0
+}
+
+// AccentOffset returns the horizontal offset to center the accent over the base.
+func (a *AccentFragment) AccentOffset() layout.Abs {
+	baseW := a.Base.Width()
+	accentW := a.Accent.Width()
+	if baseW > accentW {
+		return (baseW - accentW) / 2
+	}
+	return 0
+}
+
+// AccentY returns the vertical position of the accent (relative to baseline).
+func (a *AccentFragment) AccentY() layout.Abs {
+	return a.Base.Ascent() + a.AccentGap
+}

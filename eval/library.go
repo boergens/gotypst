@@ -15,6 +15,7 @@ import (
 //   - Type values (int, str, float, bool, etc.)
 //   - The calc module with mathematical functions
 //   - Element functions (raw, par, parbreak)
+//   - Math accent functions (hat, tilde, bar, vec, etc.)
 func Library() *Scope {
 	scope := NewScope()
 
@@ -32,6 +33,9 @@ func Library() *Scope {
 
 	// Register element functions
 	RegisterElementFunctions(scope)
+
+	// Register math accent functions
+	registerMathAccentFunctions(scope)
 
 	return scope
 }
@@ -1367,6 +1371,73 @@ func calcQuoFunc() *Func {
 					{Name: "dividend", Type: TypeFloat},
 					{Name: "divisor", Type: TypeFloat},
 				},
+			},
+		},
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Math Accent Functions
+// ----------------------------------------------------------------------------
+
+// registerMathAccentFunctions adds math accent functions to the scope.
+// These functions create accented math content (hat, tilde, bar, vec, etc.).
+func registerMathAccentFunctions(scope *Scope) {
+	// Primary accent functions
+	scope.DefineFunc("hat", mathAccentFunc("hat", AccentHat))
+	scope.DefineFunc("tilde", mathAccentFunc("tilde", AccentTilde))
+	scope.DefineFunc("bar", mathAccentFunc("bar", AccentBar))
+	scope.DefineFunc("overline", mathAccentFunc("overline", AccentBar)) // Alias for bar
+	scope.DefineFunc("vec", mathAccentFunc("vec", AccentVec))
+
+	// Additional accent functions
+	scope.DefineFunc("dot", mathAccentFunc("dot", AccentDot))
+	scope.DefineFunc("ddot", mathAccentFunc("ddot", AccentDDot))
+	scope.DefineFunc("breve", mathAccentFunc("breve", AccentBreve))
+	scope.DefineFunc("acute", mathAccentFunc("acute", AccentAcute))
+	scope.DefineFunc("grave", mathAccentFunc("grave", AccentGrave))
+}
+
+// mathAccentFunc creates a math accent function for the given accent kind.
+func mathAccentFunc(name string, kind AccentKind) *Func {
+	funcName := name
+	return &Func{
+		Name: &funcName,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: func(vm *Vm, args *Args) (Value, error) {
+				// Get required base argument (content)
+				baseArg, err := args.Expect("base")
+				if err != nil {
+					return nil, err
+				}
+
+				if err := args.Finish(); err != nil {
+					return nil, err
+				}
+
+				// Convert argument to content
+				var baseContent Content
+				switch v := baseArg.V.(type) {
+				case ContentValue:
+					baseContent = v.Content
+				case StrValue:
+					baseContent = Content{Elements: []ContentElement{&TextElement{Text: string(v)}}}
+				default:
+					baseContent = Content{Elements: []ContentElement{&TextElement{Text: v.Display().String()}}}
+				}
+
+				// Create the accent element
+				return ContentValue{Content: Content{
+					Elements: []ContentElement{&MathAccentElement{
+						Base:   baseContent,
+						Accent: kind,
+					}},
+				}}, nil
+			},
+			Info: &FuncInfo{
+				Name:   name,
+				Params: []ParamInfo{{Name: "base", Type: TypeContent}},
 			},
 		},
 	}
