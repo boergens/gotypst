@@ -19,6 +19,10 @@ type Writer struct {
 	images map[*pages.Image]Ref
 	// pageRefs stores references to page objects.
 	pageRefs []Ref
+	// tagManager handles PDF/UA accessibility tagging.
+	tagManager *TagManager
+	// tagged indicates whether to generate tagged PDF output.
+	tagged bool
 }
 
 // NewWriter creates a new PDF writer.
@@ -27,6 +31,27 @@ func NewWriter() *Writer {
 		nextID: 1,
 		images: make(map[*pages.Image]Ref),
 	}
+}
+
+// NewTaggedWriter creates a new PDF writer with accessibility tagging enabled.
+func NewTaggedWriter() *Writer {
+	w := NewWriter()
+	w.tagged = true
+	w.tagManager = NewTagManager()
+	return w
+}
+
+// EnableTagging enables PDF/UA accessibility tagging.
+func (w *Writer) EnableTagging() {
+	w.tagged = true
+	if w.tagManager == nil {
+		w.tagManager = NewTagManager()
+	}
+}
+
+// TagManager returns the tag manager for this writer.
+func (w *Writer) TagManager() *TagManager {
+	return w.tagManager
 }
 
 // allocRef allocates a new object reference.
@@ -54,11 +79,22 @@ func (w *Writer) Write(doc *pages.PagedDocument, out io.Writer) error {
 	catalogRef := w.allocRef()
 	pagesRef := w.allocRef()
 
+	// Reserve struct tree root ref if tagged
+	var structTreeRootRef Ref
+	if w.tagged && w.tagManager != nil {
+		structTreeRootRef = w.allocRef()
+	}
+
 	// Process all pages and collect image XObjects
 	var pageContentsRefs []Ref
 	var pageImageRefs []map[string]Ref // per-page image resources
 
-	for _, page := range doc.Pages {
+	for i, page := range doc.Pages {
+		// Set current page in tag manager
+		if w.tagManager != nil {
+			w.tagManager.SetCurrentPage(i)
+		}
+
 		contentRef, imageRefs, err := w.processPage(&page, pagesRef)
 		if err != nil {
 			return err
@@ -71,6 +107,11 @@ func (w *Writer) Write(doc *pages.PagedDocument, out io.Writer) error {
 	for i, page := range doc.Pages {
 		pageRef := w.allocRef()
 		w.pageRefs = append(w.pageRefs, pageRef)
+
+		// Register page ref with tag manager
+		if w.tagManager != nil {
+			w.tagManager.SetPageRef(i, pageRef)
+		}
 
 		pageDict := Dict{
 			Name("Type"):     Name("Page"),
@@ -106,6 +147,11 @@ func (w *Writer) Write(doc *pages.PagedDocument, out io.Writer) error {
 
 		pageDict[Name("Resources")] = resources
 
+		// Add StructParents if tagged
+		if w.tagged {
+			pageDict[Name("StructParents")] = Int(i)
+		}
+
 		w.addObjectWithRef(pageRef, pageDict)
 	}
 
@@ -121,11 +167,26 @@ func (w *Writer) Write(doc *pages.PagedDocument, out io.Writer) error {
 		Name("Count"): Int(len(w.pageRefs)),
 	})
 
+	// Build structure tree if tagged
+	if w.tagged && w.tagManager != nil && w.tagManager.HasTags() {
+		w.buildStructTree(structTreeRootRef)
+	}
+
 	// Create catalog
-	w.addObjectWithRef(catalogRef, Dict{
+	catalogDict := Dict{
 		Name("Type"):  Name("Catalog"),
 		Name("Pages"): pagesRef,
-	})
+	}
+
+	// Add StructTreeRoot and MarkInfo if tagged
+	if w.tagged && w.tagManager != nil && w.tagManager.HasTags() {
+		catalogDict[Name("StructTreeRoot")] = structTreeRootRef
+		catalogDict[Name("MarkInfo")] = Dict{
+			Name("Marked"): Bool(true),
+		}
+	}
+
+	w.addObjectWithRef(catalogRef, catalogDict)
 
 	// Add document info if present
 	var infoRef *Ref
@@ -143,6 +204,142 @@ func (w *Writer) Write(doc *pages.PagedDocument, out io.Writer) error {
 
 	// Write PDF
 	return w.writePDF(out, catalogRef, infoRef)
+}
+
+// buildStructTree builds the PDF structure tree for accessibility.
+func (w *Writer) buildStructTree(rootRef Ref) {
+	if w.tagManager == nil {
+		return
+	}
+
+	// Assign refs to all structure elements
+	w.tagManager.AssignRefs(w.allocRef)
+
+	// Build parent tree (maps MCID to struct elem)
+	parentTree := w.tagManager.BuildParentTree()
+	var parentTreeRef Ref
+	if len(parentTree) > 0 {
+		parentTreeRef = w.buildParentTree(parentTree)
+	}
+
+	// Build role map if there are custom roles
+	customRoles := w.tagManager.CustomRoles()
+	var roleMapRef *Ref
+	if len(customRoles) > 0 {
+		ref := w.buildRoleMap(customRoles)
+		roleMapRef = &ref
+	}
+
+	// Create struct elem objects
+	for _, elem := range w.tagManager.StructElements() {
+		w.buildStructElem(elem)
+	}
+
+	// Create root struct tree dict
+	rootDict := Dict{
+		Name("Type"): Name("StructTreeRoot"),
+		Name("K"):    w.tagManager.RootElement().Ref,
+	}
+
+	if parentTreeRef.ID != 0 {
+		rootDict[Name("ParentTree")] = parentTreeRef
+	}
+
+	if roleMapRef != nil {
+		rootDict[Name("RoleMap")] = *roleMapRef
+	}
+
+	w.addObjectWithRef(rootRef, rootDict)
+}
+
+// buildStructElem creates a PDF object for a structure element.
+func (w *Writer) buildStructElem(elem *StructElem) {
+	dict := Dict{
+		Name("Type"): Name("StructElem"),
+		Name("S"):    Name(string(elem.Role)),
+	}
+
+	// Add parent if not root
+	if elem.Parent.ID != 0 {
+		dict[Name("P")] = elem.Parent
+	}
+
+	// Add kids
+	if len(elem.Kids) > 0 {
+		kids := make(Array, len(elem.Kids))
+		for i, kid := range elem.Kids {
+			switch k := kid.(type) {
+			case StructKidElem:
+				kids[i] = k.Ref
+			case StructKidMCID:
+				kids[i] = Int(k.MCID)
+			}
+		}
+		if len(kids) == 1 {
+			dict[Name("K")] = kids[0]
+		} else {
+			dict[Name("K")] = kids
+		}
+	}
+
+	// Add page reference if present
+	if elem.PageRef.ID != 0 {
+		dict[Name("Pg")] = elem.PageRef
+	}
+
+	// Add alt text if present
+	if elem.AltText != "" {
+		dict[Name("Alt")] = String(elem.AltText)
+	}
+
+	// Add actual text if present
+	if elem.ActualText != "" {
+		dict[Name("ActualText")] = String(elem.ActualText)
+	}
+
+	// Add language if present
+	if elem.Lang != "" {
+		dict[Name("Lang")] = String(elem.Lang)
+	}
+
+	w.addObjectWithRef(elem.Ref, dict)
+}
+
+// buildParentTree builds the parent tree number tree.
+func (w *Writer) buildParentTree(parentTree map[int]Ref) Ref {
+	// Build nums array (pairs of MCID and struct elem ref)
+	nums := make(Array, 0, len(parentTree)*2)
+
+	// Sort MCIDs for consistent output
+	mcids := make([]int, 0, len(parentTree))
+	for mcid := range parentTree {
+		mcids = append(mcids, mcid)
+	}
+	// Simple insertion sort for small arrays
+	for i := 1; i < len(mcids); i++ {
+		for j := i; j > 0 && mcids[j-1] > mcids[j]; j-- {
+			mcids[j-1], mcids[j] = mcids[j], mcids[j-1]
+		}
+	}
+
+	for _, mcid := range mcids {
+		nums = append(nums, Int(mcid), parentTree[mcid])
+	}
+
+	dict := Dict{
+		Name("Nums"): nums,
+	}
+
+	return w.addObject(dict)
+}
+
+// buildRoleMap builds the role mapping dictionary.
+func (w *Writer) buildRoleMap(customRoles map[string]StructRole) Ref {
+	dict := make(Dict)
+	for custom, standard := range customRoles {
+		dict[Name(custom)] = Name(string(standard))
+	}
+	return w.addObject(dict)
 }
 
 // processPage processes a page frame and returns content stream ref and image refs.
@@ -341,5 +538,11 @@ func (w *Writer) writePDF(out io.Writer, catalogRef Ref, infoRef *Ref) error {
 // Export is a convenience function that exports a PagedDocument to PDF.
 func Export(doc *pages.PagedDocument, out io.Writer) error {
 	w := NewWriter()
+	return w.Write(doc, out)
+}
+
+// ExportTagged exports a PagedDocument to PDF with accessibility tagging enabled.
+func ExportTagged(doc *pages.PagedDocument, out io.Writer) error {
+	w := NewTaggedWriter()
 	return w.Write(doc, out)
 }

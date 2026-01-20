@@ -497,3 +497,73 @@ func (cs *ContentStream) ApplyStrokeStyle(stroke *inline.FixedStroke) {
 		cs.SetStrokeColor(c)
 	}
 }
+
+// Marked Content Operators (for PDF/UA accessibility)
+
+// BeginMarkedContent begins a marked content sequence with a tag (BMC operator).
+// This is a simple marked content without properties.
+func (cs *ContentStream) BeginMarkedContent(tag string) {
+	cs.buf.WriteByte('/')
+	cs.buf.WriteString(tag)
+	cs.buf.WriteString(" BMC\n")
+}
+
+// BeginMarkedContentWithProps begins a marked content sequence with properties (BDC operator).
+// The properties dict should contain MCID for structure tree reference.
+func (cs *ContentStream) BeginMarkedContentWithProps(tag string, mcid int) {
+	cs.buf.WriteByte('/')
+	cs.buf.WriteString(tag)
+	cs.buf.WriteString(" <</MCID ")
+	fmt.Fprintf(&cs.buf, "%d", mcid)
+	cs.buf.WriteString(">> BDC\n")
+}
+
+// BeginMarkedContentDict begins a marked content sequence with a full properties dict.
+func (cs *ContentStream) BeginMarkedContentDict(tag string, props map[string]interface{}) {
+	cs.buf.WriteByte('/')
+	cs.buf.WriteString(tag)
+	cs.buf.WriteString(" <<")
+	for k, v := range props {
+		cs.buf.WriteByte('/')
+		cs.buf.WriteString(k)
+		cs.buf.WriteByte(' ')
+		switch val := v.(type) {
+		case int:
+			fmt.Fprintf(&cs.buf, "%d", val)
+		case string:
+			cs.buf.WriteByte('/')
+			cs.buf.WriteString(val)
+		case bool:
+			if val {
+				cs.buf.WriteString("true")
+			} else {
+				cs.buf.WriteString("false")
+			}
+		default:
+			fmt.Fprintf(&cs.buf, "%v", val)
+		}
+	}
+	cs.buf.WriteString(">> BDC\n")
+}
+
+// EndMarkedContent ends a marked content sequence (EMC operator).
+func (cs *ContentStream) EndMarkedContent() {
+	cs.writeOp("EMC")
+}
+
+// BeginArtifact marks the beginning of an artifact (non-meaningful content like page numbers).
+func (cs *ContentStream) BeginArtifact(artifactType string) {
+	cs.buf.WriteString("/Artifact ")
+	if artifactType != "" {
+		cs.buf.WriteString("<</Type /")
+		cs.buf.WriteString(artifactType)
+		cs.buf.WriteString(">> BDC\n")
+	} else {
+		cs.buf.WriteString("BMC\n")
+	}
+}
+
+// EndArtifact ends an artifact marking (alias for EndMarkedContent).
+func (cs *ContentStream) EndArtifact() {
+	cs.EndMarkedContent()
+}

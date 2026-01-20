@@ -14,6 +14,12 @@ type Renderer struct {
 
 	// pageHeight is used to convert coordinates (PDF has origin at bottom-left).
 	pageHeight layout.Abs
+
+	// tagManager handles PDF/UA accessibility tagging.
+	tagManager *TagManager
+
+	// activeTagCount tracks the number of active marked content regions.
+	activeTagCount int
 }
 
 // FontMapper maps fonts to PDF resource names.
@@ -36,6 +42,16 @@ func NewRenderer() *Renderer {
 	return &Renderer{
 		FontMap: DefaultFontMapper{},
 	}
+}
+
+// SetTagManager sets the tag manager for accessibility tagging.
+func (r *Renderer) SetTagManager(tm *TagManager) {
+	r.tagManager = tm
+}
+
+// TagManager returns the current tag manager.
+func (r *Renderer) TagManager() *TagManager {
+	return r.tagManager
 }
 
 // RenderDocument renders a full document to content streams.
@@ -93,10 +109,35 @@ func (r *Renderer) renderPagesFrameItem(cs *ContentStream, item pages.FrameItem,
 		// Nested frame - recurse
 		r.renderPagesFrame(cs, &it.Frame, pos)
 	case pages.TagItem:
-		// Tags are metadata, not rendered
+		// Process accessibility tags
+		r.processTag(cs, &it.Tag)
 	case pages.TextItem:
 		// Render text directly
 		r.renderSimpleText(cs, it.Text, it.FontSize, pos)
+	}
+}
+
+// processTag processes an accessibility tag and emits marked content operators.
+func (r *Renderer) processTag(cs *ContentStream, tag *pages.Tag) {
+	if r.tagManager == nil {
+		return
+	}
+
+	if tag.Kind == pages.TagStart {
+		// Process the tag and get the role and MCID
+		role, mcid, isStart := r.tagManager.ProcessTag(tag)
+		if isStart {
+			// Emit BDC operator with the role and MCID
+			cs.BeginMarkedContentWithProps(string(role), mcid)
+			r.activeTagCount++
+		}
+	} else {
+		// End tag - emit EMC operator
+		if r.activeTagCount > 0 {
+			cs.EndMarkedContent()
+			r.activeTagCount--
+			r.tagManager.EndTag()
+		}
 	}
 }
 
