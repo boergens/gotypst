@@ -126,6 +126,132 @@ func (s *SkipItem) Textual() string {
 	return s.Content
 }
 
+// MathRootItem represents a mathematical root (square root, nth root).
+type MathRootItem struct {
+	// Index is the optional root index frame (nil for square root).
+	Index *MathFrame
+	// Radicand is the content under the root sign.
+	Radicand *MathFrame
+	// width is the calculated total width.
+	width Abs
+	// height is the calculated total height.
+	height Abs
+	// baseline is the baseline offset from top.
+	baseline Abs
+}
+
+func (*MathRootItem) isItem() {}
+
+// NaturalWidth returns the total width of the root item.
+func (r *MathRootItem) NaturalWidth() Abs {
+	return r.width
+}
+
+// Textual returns a placeholder for root content.
+func (*MathRootItem) Textual() string {
+	return "\u221A" // Square root symbol
+}
+
+// MathFracItem represents a mathematical fraction.
+type MathFracItem struct {
+	// Num is the numerator frame.
+	Num *MathFrame
+	// Denom is the denominator frame.
+	Denom *MathFrame
+	// width is the calculated total width.
+	width Abs
+	// height is the calculated total height.
+	height Abs
+	// baseline is the baseline offset from top.
+	baseline Abs
+}
+
+func (*MathFracItem) isItem() {}
+
+// NaturalWidth returns the total width of the fraction.
+func (f *MathFracItem) NaturalWidth() Abs {
+	return f.width
+}
+
+// Textual returns a placeholder for fraction content.
+func (*MathFracItem) Textual() string {
+	return "\uFFFC" // Object replacement character
+}
+
+// MathAttachItem represents subscripts and superscripts.
+type MathAttachItem struct {
+	// Base is the base expression frame.
+	Base *MathFrame
+	// Subscript is the subscript frame (may be nil).
+	Subscript *MathFrame
+	// Superscript is the superscript frame (may be nil).
+	Superscript *MathFrame
+	// Primes is the number of prime marks.
+	Primes int
+	// width is the calculated total width.
+	width Abs
+	// height is the calculated total height.
+	height Abs
+	// baseline is the baseline offset from top.
+	baseline Abs
+}
+
+func (*MathAttachItem) isItem() {}
+
+// NaturalWidth returns the total width of the attach item.
+func (a *MathAttachItem) NaturalWidth() Abs {
+	return a.width
+}
+
+// Textual returns a placeholder for attach content.
+func (*MathAttachItem) Textual() string {
+	return "\uFFFC" // Object replacement character
+}
+
+// MathDelimitedItem represents delimited math content.
+type MathDelimitedItem struct {
+	// Open is the opening delimiter.
+	Open string
+	// Close is the closing delimiter.
+	Close string
+	// Body is the content between delimiters.
+	Body *MathFrame
+	// OpenFrame is the shaped opening delimiter.
+	OpenFrame *MathFrame
+	// CloseFrame is the shaped closing delimiter.
+	CloseFrame *MathFrame
+	// width is the calculated total width.
+	width Abs
+	// height is the calculated total height.
+	height Abs
+	// baseline is the baseline offset from top.
+	baseline Abs
+}
+
+func (*MathDelimitedItem) isItem() {}
+
+// NaturalWidth returns the total width of the delimited item.
+func (d *MathDelimitedItem) NaturalWidth() Abs {
+	return d.width
+}
+
+// Textual returns a placeholder for delimited content.
+func (*MathDelimitedItem) Textual() string {
+	return "\uFFFC" // Object replacement character
+}
+
+// MathFrame holds a layouted math sub-expression.
+type MathFrame struct {
+	// Items contains the items in this frame.
+	Items []Item
+	// Width is the frame width.
+	Width Abs
+	// Height is the frame height.
+	Height Abs
+	// Baseline is the baseline offset from top.
+	Baseline Abs
+}
+
 // Dash represents a dash at the end of a line.
 type Dash int
 

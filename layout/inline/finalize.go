@@ -248,6 +248,70 @@ func Commit(
 
 		case *SkipItem:
 			// Skip items are invisible
+
+		case *MathRootItem:
+			// Build frame for math root
+			ctx := &MathContext{
+				Config:   DefaultMathLayoutConfig(p.Config.FontSize),
+				FontSize: p.Config.FontSize,
+			}
+			frame := BuildMathRootFrame(it, ctx)
+			if frame.Baseline > top {
+				top = frame.Baseline
+			}
+			if frame.Size.Height-frame.Baseline > bottom {
+				bottom = frame.Size.Height - frame.Baseline
+			}
+			posFrames = append(posFrames, positionedFrame{offset, frame, idx})
+			offset += frame.Size.Width
+
+		case *MathFracItem:
+			// Build frame for math fraction
+			ctx := &MathContext{
+				Config:   DefaultMathLayoutConfig(p.Config.FontSize),
+				FontSize: p.Config.FontSize,
+			}
+			frame := BuildMathFracFrame(it, ctx)
+			if frame.Baseline > top {
+				top = frame.Baseline
+			}
+			if frame.Size.Height-frame.Baseline > bottom {
+				bottom = frame.Size.Height - frame.Baseline
+			}
+			posFrames = append(posFrames, positionedFrame{offset, frame, idx})
+			offset += frame.Size.Width
+
+		case *MathAttachItem:
+			// Build frame for math attach (subscripts/superscripts)
+			ctx := &MathContext{
+				Config:   DefaultMathLayoutConfig(p.Config.FontSize),
+				FontSize: p.Config.FontSize,
+			}
+			frame := BuildMathAttachFrame(it, ctx)
+			if frame.Baseline > top {
+				top = frame.Baseline
+			}
+			if frame.Size.Height-frame.Baseline > bottom {
+				bottom = frame.Size.Height - frame.Baseline
+			}
+			posFrames = append(posFrames, positionedFrame{offset, frame, idx})
+			offset += frame.Size.Width
+
+		case *MathDelimitedItem:
+			// Build frame for delimited math
+			ctx := &MathContext{
+				Config:   DefaultMathLayoutConfig(p.Config.FontSize),
+				FontSize: p.Config.FontSize,
+			}
+			frame := BuildMathDelimitedFrame(it, ctx)
+			if frame.Baseline > top {
+				top = frame.Baseline
+			}
+			if frame.Size.Height-frame.Baseline > bottom {
+				bottom = frame.Size.Height - frame.Baseline
+			}
+			posFrames = append(posFrames, positionedFrame{offset, frame, idx})
+			offset += frame.Size.Width
 		}
 	}
 
