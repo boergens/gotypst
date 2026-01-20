@@ -59,6 +59,7 @@ func loadTTC(data []byte, path string) ([]*Font, error) {
 			Info:  info,
 			Path:  path,
 			Index: i,
+			Data:  data,
 		})
 	}
 
@@ -79,6 +80,7 @@ func loadSingle(data []byte, path string, index int) ([]*Font, error) {
 		Info:  info,
 		Path:  path,
 		Index: index,
+		Data:  data,
 	}}, nil
 }
 

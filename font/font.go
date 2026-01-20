@@ -27,6 +27,10 @@ type Font struct {
 	// Index is the face index within a font collection (TTC).
 	// Zero for single-face fonts (TTF/OTF).
 	Index int
+
+	// Data is the raw font file data for subsetting and embedding.
+	// For TTC files, this is the full collection data.
+	Data []byte
 }
 
 // Family returns the font family name.

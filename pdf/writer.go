@@ -19,14 +19,24 @@ type Writer struct {
 	images map[*pages.Image]Ref
 	// pageRefs stores references to page objects.
 	pageRefs []Ref
+	// fontRefs maps font names to their PDF references.
+	fontRefs map[string]Ref
+	// glyphCollector tracks glyph usage for font subsetting.
+	glyphCollector *GlyphCollector
 }
 
 // NewWriter creates a new PDF writer.
 func NewWriter() *Writer {
 	return &Writer{
-		nextID: 1,
-		images: make(map[*pages.Image]Ref),
+		nextID:   1,
+		images:   make(map[*pages.Image]Ref),
+		fontRefs: make(map[string]Ref),
 	}
+}
+
+// SetGlyphCollector sets the glyph collector for font subsetting.
+func (w *Writer) SetGlyphCollector(gc *GlyphCollector) {
+	w.glyphCollector = gc
 }
 
 // allocRef allocates a new object reference.
@@ -53,6 +63,11 @@ func (w *Writer) Write(doc *pages.PagedDocument, out io.Writer) error {
 	// Reserve object IDs for catalog and page tree
 	catalogRef := w.allocRef()
 	pagesRef := w.allocRef()
+
+	// Embed fonts from glyph collector
+	if err := w.embedFonts(); err != nil {
+		return fmt.Errorf("embed fonts: %w", err)
+	}
 
 	// Process all pages and collect image XObjects
 	var pageContentsRefs []Ref
@@ -83,15 +98,29 @@ func (w *Writer) Write(doc *pages.PagedDocument, out io.Writer) error {
 			},
 		}
 
-		// Add resources if there are images
+		// Build resources dictionary
+		resources := make(Dict)
+
+		// Add font resources
+		if len(w.fontRefs) > 0 {
+			fonts := make(Dict)
+			for name, ref := range w.fontRefs {
+				fonts[Name(name)] = ref
+			}
+			resources[Name("Font")] = fonts
+		}
+
+		// Add image resources
 		if len(pageImageRefs[i]) > 0 {
 			xobjects := make(Dict)
 			for name, ref := range pageImageRefs[i] {
 				xobjects[Name(name)] = ref
 			}
-			pageDict[Name("Resources")] = Dict{
-				Name("XObject"): xobjects,
-			}
+			resources[Name("XObject")] = xobjects
+		}
+
+		if len(resources) > 0 {
+			pageDict[Name("Resources")] = resources
 		}
 
 		w.addObjectWithRef(pageRef, pageDict)
@@ -295,6 +324,175 @@ func (w *Writer) writePDF(out io.Writer, catalogRef Ref, infoRef *Ref) error {
 	// Write to output
 	_, err := out.Write(buf.Bytes())
 	return err
+}
+
+// embedFonts creates PDF font objects for all collected fonts.
+func (w *Writer) embedFonts() error {
+	if w.glyphCollector == nil {
+		return nil
+	}
+
+	fonts := w.glyphCollector.Fonts()
+	if len(fonts) == 0 {
+		return nil
+	}
+
+	for _, gs := range fonts {
+		if gs.Font == nil || len(gs.Font.Data) == 0 {
+			// Skip fonts without data - they can't be embedded
+			continue
+		}
+
+		// Create subset font
+		fontXObj, err := SubsetFont(gs)
+		if err != nil {
+			// If subsetting fails, skip this font
+			// In production, might want to fall back to full embedding
+			continue
+		}
+
+		// Create font file stream (the embedded font data)
+		fontFileRef := w.allocRef()
+		fontFileStream := Stream{
+			Dict: Dict{
+				Name("Filter"): Name("FlateDecode"),
+				Name("Length1"): Int(len(fontXObj.SubsetData)), // Original length hint
+			},
+			Data: fontXObj.SubsetData,
+		}
+		w.addObjectWithRef(fontFileRef, fontFileStream)
+
+		// Create CIDSystemInfo dictionary
+		cidSystemInfo := Dict{
+			Name("Registry"):   String("Adobe"),
+			Name("Ordering"):   String("Identity"),
+			Name("Supplement"): Int(0),
+		}
+
+		// Create font descriptor
+		fontDescRef := w.allocRef()
+		fontDesc := Dict{
+			Name("Type"):        Name("FontDescriptor"),
+			Name("FontName"):    Name(fontXObj.BaseFont),
+			Name("Flags"):       Int(32), // Symbolic font
+			Name("FontBBox"):    Array{Int(0), Int(-200), Int(1000), Int(1000)},
+			Name("ItalicAngle"): Int(0),
+			Name("Ascent"):      Int(800),
+			Name("Descent"):     Int(-200),
+			Name("CapHeight"):   Int(700),
+			Name("StemV"):       Int(80),
+			Name("FontFile2"):   fontFileRef, // TrueType font
+		}
+		w.addObjectWithRef(fontDescRef, fontDesc)
+
+		// Create CIDFont dictionary
+		cidFontRef := w.allocRef()
+
+		// Build widths array for CID font
+		widthsArray := buildCIDWidthsArray(fontXObj.Widths)
+
+		cidFont := Dict{
+			Name("Type"):           Name("Font"),
+			Name("Subtype"):        Name("CIDFontType2"),
+			Name("BaseFont"):       Name(fontXObj.BaseFont),
+			Name("CIDSystemInfo"):  cidSystemInfo,
+			Name("FontDescriptor"): fontDescRef,
+			Name("W"):              widthsArray,
+			Name("CIDToGIDMap"):    Name("Identity"),
+		}
+		w.addObjectWithRef(cidFontRef, cidFont)
+
+		// Create ToUnicode CMap for text extraction
+		toUnicodeRef := w.allocRef()
+		toUnicodeData := buildToUnicodeCMap(gs)
+		toUnicodeStream := Stream{
+			Dict: make(Dict),
+			Data: []byte(toUnicodeData),
+		}
+		if err := toUnicodeStream.Compress(); err != nil {
+			return err
+		}
+		w.addObjectWithRef(toUnicodeRef, toUnicodeStream)
+
+		// Create Type0 composite font
+		fontRef := w.allocRef()
+		font := Dict{
+			Name("Type"):            Name("Font"),
+			Name("Subtype"):         Name("Type0"),
+			Name("BaseFont"):        Name(fontXObj.BaseFont),
+			Name("Encoding"):        Name("Identity-H"),
+			Name("DescendantFonts"): Array{cidFontRef},
+			Name("ToUnicode"):       toUnicodeRef,
+		}
+		w.addObjectWithRef(fontRef, font)
+
+		// Store font reference
+		w.fontRefs[gs.Name] = fontRef
+	}
+
+	return nil
+}
+
+// buildCIDWidthsArray builds the /W array for CID font widths.
+// Format: [cid [w1 w2 w3...]] for consecutive glyphs starting at cid
+func buildCIDWidthsArray(widths []int) Array {
+	if len(widths) == 0 {
+		return Array{}
+	}
+
+	// Simple approach: list all widths starting from CID 0
+	widthArray := make(Array, len(widths))
+	for i, w := range widths {
+		widthArray[i] = Int(w)
+	}
+
+	return Array{Int(0), widthArray}
+}
+
+// buildToUnicodeCMap creates a ToUnicode CMap for text extraction.
+func buildToUnicodeCMap(gs *GlyphSet) string {
+	var b bytes.Buffer
+
+	b.WriteString("/CIDInit /ProcSet findresource begin\n")
+	b.WriteString("12 dict begin\n")
+	b.WriteString("begincmap\n")
+	b.WriteString("/CIDSystemInfo <<\n")
+	b.WriteString("/Registry (Adobe)\n")
+	b.WriteString("/Ordering (UCS)\n")
+	b.WriteString("/Supplement 0\n")
+	b.WriteString(">> def\n")
+	b.WriteString("/CMapName /Adobe-Identity-UCS def\n")
+	b.WriteString("/CMapType 2 def\n")
+	b.WriteString("1 begincodespacerange\n")
+	b.WriteString("<0000> <FFFF>\n")
+	b.WriteString("endcodespacerange\n")
+
+	// Build character mappings
+	glyphIDs := gs.SortedGlyphIDs()
+	if len(glyphIDs) > 0 {
+		// Write mappings in batches of 100 (PDF limit)
+		for i := 0; i < len(glyphIDs); i += 100 {
+			end := i + 100
+			if end > len(glyphIDs) {
+				end = len(glyphIDs)
+			}
+			batch := glyphIDs[i:end]
+
+			fmt.Fprintf(&b, "%d beginbfchar\n", len(batch))
+			for _, gid := range batch {
+				char := gs.Glyphs[gid]
+				fmt.Fprintf(&b, "<%04X> <%04X>\n", gid, char)
+			}
+			b.WriteString("endbfchar\n")
+		}
+	}
+
+	b.WriteString("endcmap\n")
+	b.WriteString("CMapName currentdict /CMap defineresource pop\n")
+	b.WriteString("end\n")
+	b.WriteString("end\n")
+
+	return b.String()
 }
 
 // Export is a convenience function that exports a PagedDocument to PDF.

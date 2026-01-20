@@ -14,6 +14,9 @@ type Renderer struct {
 
 	// pageHeight is used to convert coordinates (PDF has origin at bottom-left).
 	pageHeight layout.Abs
+
+	// GlyphCollector tracks glyph usage for font subsetting.
+	GlyphCollector *GlyphCollector
 }
 
 // FontMapper maps fonts to PDF resource names.
@@ -33,8 +36,10 @@ func (DefaultFontMapper) FontName(face interface{}) string {
 
 // NewRenderer creates a new PDF renderer.
 func NewRenderer() *Renderer {
+	gc := NewGlyphCollector()
 	return &Renderer{
-		FontMap: DefaultFontMapper{},
+		FontMap:        gc, // Use the glyph collector as font mapper
+		GlyphCollector: gc,
 	}
 }
 
@@ -156,6 +161,14 @@ func (r *Renderer) renderShapedText(cs *ContentStream, text *inline.ShapedText, 
 	fontName := r.FontMap.FontName(firstGlyph.Font)
 	fontSize := firstGlyph.Size
 
+	// Record glyph usage for font subsetting
+	if r.GlyphCollector != nil {
+		for i := range glyphs {
+			g := &glyphs[i]
+			r.GlyphCollector.Record(g.Font, g.GlyphID, g.Char)
+		}
+	}
+
 	cs.BeginText()
 
 	// Set font
@@ -169,6 +182,7 @@ func (r *Renderer) renderShapedText(cs *ContentStream, text *inline.ShapedText, 
 	cs.SetTextMatrixPos(pdfX, pdfY)
 
 	// Build TJ array with glyph positioning
+	// Use glyph IDs encoded as 2-byte big-endian values for CID fonts
 	var items []TextPositionItem
 	var currentX layout.Abs
 
@@ -182,9 +196,9 @@ func (r *Renderer) renderShapedText(cs *ContentStream, text *inline.ShapedText, 
 			items = append(items, TextPositionOffset(offsetUnits))
 		}
 
-		// Add the glyph character
-		// Note: In production, this would use glyph IDs and proper encoding
-		items = append(items, TextPositionString(string(g.Char)))
+		// Encode glyph ID as 2-byte big-endian for CID font
+		glyphBytes := []byte{byte(g.GlyphID >> 8), byte(g.GlyphID & 0xFF)}
+		items = append(items, TextPositionString(string(glyphBytes)))
 
 		// Track position for next glyph
 		advance := g.XAdvance.At(g.Size)
