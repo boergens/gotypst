@@ -144,8 +144,96 @@ const (
 // Helper functions for style resolution
 
 func resolveStyles(children []Pair, initial StyleChain) StyleChain {
-	// TODO: Merge styles from children with initial
-	return initial
+	// Start with initial styles
+	result := initial
+	if result.Styles == nil {
+		result.Styles = make(map[string]interface{})
+	}
+
+	// Look for PageElement in children and merge its properties
+	for _, pair := range children {
+		if pe, ok := pair.Element.(*eval.PageElement); ok {
+			// Apply page element properties to style chain
+			if pe.Width != nil {
+				result.Styles["page.width"] = layout.Abs(*pe.Width)
+			}
+			if pe.Height != nil {
+				result.Styles["page.height"] = layout.Abs(*pe.Height)
+			}
+			if pe.Flipped != nil {
+				result.Styles["page.flipped"] = *pe.Flipped
+			}
+			if pe.Margin != nil {
+				result.Styles["page.margin"] = layout.Abs(*pe.Margin)
+			}
+			if pe.MarginTop != nil {
+				result.Styles["page.margin.top"] = layout.Abs(*pe.MarginTop)
+			}
+			if pe.MarginBottom != nil {
+				result.Styles["page.margin.bottom"] = layout.Abs(*pe.MarginBottom)
+			}
+			if pe.MarginLeft != nil {
+				result.Styles["page.margin.left"] = layout.Abs(*pe.MarginLeft)
+			}
+			if pe.MarginRight != nil {
+				result.Styles["page.margin.right"] = layout.Abs(*pe.MarginRight)
+			}
+			if pe.MarginInside != nil {
+				result.Styles["page.margin.inside"] = layout.Abs(*pe.MarginInside)
+			}
+			if pe.MarginOutside != nil {
+				result.Styles["page.margin.outside"] = layout.Abs(*pe.MarginOutside)
+			}
+			if pe.Header != nil {
+				result.Styles["page.header"] = &Content{Elements: pe.Header.Elements}
+			}
+			if pe.Footer != nil {
+				result.Styles["page.footer"] = &Content{Elements: pe.Footer.Elements}
+			}
+			if pe.HeaderAscent != nil {
+				result.Styles["page.header-ascent"] = layout.Abs(*pe.HeaderAscent)
+			}
+			if pe.FooterDescent != nil {
+				result.Styles["page.footer-descent"] = layout.Abs(*pe.FooterDescent)
+			}
+			if pe.Background != nil {
+				result.Styles["page.background"] = &Content{Elements: pe.Background.Elements}
+			}
+			if pe.Foreground != nil {
+				result.Styles["page.foreground"] = &Content{Elements: pe.Foreground.Elements}
+			}
+			if pe.Fill != nil {
+				result.Styles["page.fill"] = &Paint{Color: &Color{
+					R: pe.Fill.R,
+					G: pe.Fill.G,
+					B: pe.Fill.B,
+					A: pe.Fill.A,
+				}}
+			}
+			if pe.Numbering != nil {
+				result.Styles["page.numbering"] = &Numbering{Pattern: *pe.Numbering}
+			}
+			if pe.NumberAlign != nil {
+				result.Styles["page.number-align"] = *pe.NumberAlign
+			}
+			if pe.Binding != nil {
+				if *pe.Binding == "left" {
+					result.Styles["page.binding"] = BindingLeft
+				} else if *pe.Binding == "right" {
+					result.Styles["page.binding"] = BindingRight
+				}
+			}
+			if pe.Columns != nil {
+				result.Styles["page.columns"] = *pe.Columns
+			}
+			// If the page element has inside/outside margins, enable two-sided
+			if pe.MarginInside != nil || pe.MarginOutside != nil {
+				result.Styles["page.margin.two-sided"] = true
+			}
+		}
+	}
+
+	return result
 }
 
 func resolvePageWidth(styles StyleChain) layout.Abs {
@@ -176,13 +264,63 @@ func resolveFlipped(styles StyleChain) bool {
 }
 
 func resolveMargins(styles StyleChain, defaultMargin layout.Abs, size layout.Size) Sides[layout.Abs] {
-	// TODO: Resolve individual margins from styles
-	return Sides[layout.Abs]{
-		Left:   defaultMargin,
-		Top:    defaultMargin,
-		Right:  defaultMargin,
-		Bottom: defaultMargin,
+	// Start with default margin
+	margin := defaultMargin
+
+	// Check for uniform margin setting
+	if m := styles.Get("page.margin"); m != nil {
+		if abs, ok := m.(layout.Abs); ok {
+			margin = abs
+		}
 	}
+
+	// Initialize all sides to the base margin
+	result := Sides[layout.Abs]{
+		Left:   margin,
+		Top:    margin,
+		Right:  margin,
+		Bottom: margin,
+	}
+
+	// Override with individual margins if specified
+	if mt := styles.Get("page.margin.top"); mt != nil {
+		if abs, ok := mt.(layout.Abs); ok {
+			result.Top = abs
+		}
+	}
+	if mb := styles.Get("page.margin.bottom"); mb != nil {
+		if abs, ok := mb.(layout.Abs); ok {
+			result.Bottom = abs
+		}
+	}
+	if ml := styles.Get("page.margin.left"); ml != nil {
+		if abs, ok := ml.(layout.Abs); ok {
+			result.Left = abs
+		}
+	}
+	if mr := styles.Get("page.margin.right"); mr != nil {
+		if abs, ok := mr.(layout.Abs); ok {
+			result.Right = abs
+		}
+	}
+
+	// Handle inside/outside margins for two-sided documents
+	// Inside margin is on the binding side, outside is on the opposite side
+	if mi := styles.Get("page.margin.inside"); mi != nil {
+		if abs, ok := mi.(layout.Abs); ok {
+			// For left-bound documents, inside is left
+			// This will be swapped during finalization for even/odd pages
+			result.Left = abs
+		}
+	}
+	if mo := styles.Get("page.margin.outside"); mo != nil {
+		if abs, ok := mo.(layout.Abs); ok {
+			// For left-bound documents, outside is right
+			result.Right = abs
+		}
+	}
+
+	return result
 }
 
 func resolveTwoSided(styles StyleChain) bool {
