@@ -58,6 +58,18 @@ func ElementName(elem ContentElement) string {
 	case *SmartQuoteElement:
 		return "smartquote"
 
+	// Layout elements
+	case *StackElement:
+		return "stack"
+	case *AlignElement:
+		return "align"
+	case *BoxElement:
+		return "box"
+	case *BlockElement:
+		return "block"
+	case *PadElement:
+		return "pad"
+
 	// Math elements
 	case *EquationElement:
 		return "equation"

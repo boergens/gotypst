@@ -64,6 +64,19 @@ func GetSpaceState(elem ContentElement) SpaceState {
 	case *LinebreakElement:
 		// Linebreaks are destructive - spaces before/after line breaks are removed
 		return Destructive
+	case *BlockElement:
+		// Block elements are block-level containers that consume adjacent spaces
+		return Destructive
+	case *PadElement:
+		// Pad elements are block-level and consume adjacent spaces
+		return Destructive
+	case *StackElement:
+		// Stack elements are block-level containers
+		return Destructive
+	case *AlignElement:
+		// Align elements can be block or inline depending on context,
+		// treating as destructive for space collapsing
+		return Destructive
 
 	// Invisible elements - don't affect spacing
 	// These are metadata/introspection elements that don't produce visible output
