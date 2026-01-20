@@ -8,6 +8,8 @@ require (
 )
 
 require (
+	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	golang.org/x/image v0.23.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
