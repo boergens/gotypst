@@ -1213,6 +1213,9 @@ func evalLetBinding(vm *Vm, e *syntax.LetBindingExpr) (Value, error) {
 		if err != nil {
 			return nil, err
 		}
+		if vm.HasFlow() {
+			return None, nil
+		}
 
 		// For closure bindings, the pattern contains the function name
 		if closure, ok := init.(*syntax.ClosureExpr); ok {
@@ -1232,6 +1235,9 @@ func evalLetBinding(vm *Vm, e *syntax.LetBindingExpr) (Value, error) {
 	value, err := EvalExpr(vm, init)
 	if err != nil {
 		return nil, err
+	}
+	if vm.HasFlow() {
+		return None, nil
 	}
 
 	// Destructure the pattern using the complete binding.go implementation
