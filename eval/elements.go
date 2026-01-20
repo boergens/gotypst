@@ -738,6 +738,320 @@ func headingNative(vm *Vm, args *Args) (Value, error) {
 }
 
 // ----------------------------------------------------------------------------
+// Quote Element
+// ----------------------------------------------------------------------------
+
+// QuoteElement represents a block quote element.
+// It can be used for both inline and block-level quotes.
+type QuoteElement struct {
+	// Body is the quoted content.
+	Body Content
+	// Block indicates whether this is a block-level quote (default: true).
+	Block bool
+	// Quotes indicates whether to add quotation marks (nil means auto).
+	Quotes *bool
+	// Attribution is the optional quote attribution (author/source).
+	Attribution *Content
+}
+
+func (*QuoteElement) IsContentElement() {}
+
+// QuoteFunc creates the quote element function.
+func QuoteFunc() *Func {
+	name := "quote"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: quoteNative,
+			Info: &FuncInfo{
+				Name: "quote",
+				Params: []ParamInfo{
+					{Name: "body", Type: TypeContent, Named: false},
+					{Name: "block", Type: TypeBool, Default: True, Named: true},
+					{Name: "quotes", Type: TypeBool, Default: Auto, Named: true},
+					{Name: "attribution", Type: TypeContent, Default: None, Named: true},
+				},
+			},
+		},
+	}
+}
+
+// quoteNative implements the quote() function.
+// Creates a QuoteElement from the given content with optional styling.
+//
+// Arguments:
+//   - body (positional, content): The quoted content
+//   - block (named, bool, default: true): Whether this is a block-level quote
+//   - quotes (named, bool or auto, default: auto): Whether to add quotation marks
+//   - attribution (named, content or none, default: none): The quote attribution
+func quoteNative(vm *Vm, args *Args) (Value, error) {
+	// Get required body argument (can be positional or named)
+	bodyArg := args.Find("body")
+	if bodyArg == nil {
+		bodyArgSpanned, err := args.Expect("body")
+		if err != nil {
+			return nil, err
+		}
+		bodyArg = &bodyArgSpanned
+	}
+
+	var body Content
+	if cv, ok := bodyArg.V.(ContentValue); ok {
+		body = cv.Content
+	} else {
+		return nil, &TypeMismatchError{
+			Expected: "content",
+			Got:      bodyArg.V.Type().String(),
+			Span:     bodyArg.Span,
+		}
+	}
+
+	// Get optional block argument (default: true)
+	block := true
+	if blockArg := args.Find("block"); blockArg != nil {
+		if !IsAuto(blockArg.V) && !IsNone(blockArg.V) {
+			blockVal, ok := AsBool(blockArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "bool",
+					Got:      blockArg.V.Type().String(),
+					Span:     blockArg.Span,
+				}
+			}
+			block = blockVal
+		}
+	}
+
+	// Get optional quotes argument (default: auto/nil)
+	var quotes *bool
+	if quotesArg := args.Find("quotes"); quotesArg != nil {
+		if !IsAuto(quotesArg.V) && !IsNone(quotesArg.V) {
+			qv, ok := AsBool(quotesArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "bool or auto",
+					Got:      quotesArg.V.Type().String(),
+					Span:     quotesArg.Span,
+				}
+			}
+			quotes = &qv
+		}
+	}
+
+	// Get optional attribution argument (default: none)
+	var attribution *Content
+	if attrArg := args.Find("attribution"); attrArg != nil {
+		if !IsNone(attrArg.V) && !IsAuto(attrArg.V) {
+			if cv, ok := attrArg.V.(ContentValue); ok {
+				attribution = &cv.Content
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or none",
+					Got:      attrArg.V.Type().String(),
+					Span:     attrArg.Span,
+				}
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the QuoteElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{&QuoteElement{
+			Body:        body,
+			Block:       block,
+			Quotes:      quotes,
+			Attribution: attribution,
+		}},
+	}}, nil
+}
+
+// ----------------------------------------------------------------------------
+// Terms Element
+// ----------------------------------------------------------------------------
+
+// TermsFunc creates the terms element function.
+func TermsFunc() *Func {
+	name := "terms"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: termsNative,
+			Info: &FuncInfo{
+				Name: "terms",
+				Params: []ParamInfo{
+					{Name: "tight", Type: TypeBool, Default: True, Named: true},
+					{Name: "separator", Type: TypeContent, Default: Auto, Named: true},
+					{Name: "indent", Type: TypeLength, Default: None, Named: true},
+					{Name: "hanging-indent", Type: TypeLength, Default: None, Named: true},
+					{Name: "spacing", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "children", Type: TypeContent, Named: false, Variadic: true},
+				},
+			},
+		},
+	}
+}
+
+// termsNative implements the terms() function.
+// Creates a TermsElement containing term items.
+//
+// Arguments:
+//   - tight (named, bool, default: true): Whether items are tightly spaced
+//   - separator (named, content or auto, default: auto): Separator between term and description
+//   - indent (named, length, default: 0pt): Indentation for items
+//   - hanging-indent (named, length, default: 2em): Hanging indent for descriptions
+//   - spacing (named, length or auto, default: auto): Spacing between items
+//   - children (positional, variadic, content): The term items
+func termsNative(vm *Vm, args *Args) (Value, error) {
+	// Get optional tight argument (default: true)
+	tight := true
+	if tightArg := args.Find("tight"); tightArg != nil {
+		if !IsAuto(tightArg.V) && !IsNone(tightArg.V) {
+			tightVal, ok := AsBool(tightArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "bool",
+					Got:      tightArg.V.Type().String(),
+					Span:     tightArg.Span,
+				}
+			}
+			tight = tightVal
+		}
+	}
+
+	// Get optional separator argument
+	var separator *Content
+	if sepArg := args.Find("separator"); sepArg != nil {
+		if !IsAuto(sepArg.V) && !IsNone(sepArg.V) {
+			if cv, ok := sepArg.V.(ContentValue); ok {
+				separator = &cv.Content
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or auto",
+					Got:      sepArg.V.Type().String(),
+					Span:     sepArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional indent argument
+	var indent *float64
+	if indentArg := args.Find("indent"); indentArg != nil {
+		if !IsNone(indentArg.V) && !IsAuto(indentArg.V) {
+			if lv, ok := indentArg.V.(LengthValue); ok {
+				ind := lv.Length.Points
+				indent = &ind
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      indentArg.V.Type().String(),
+					Span:     indentArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional hanging-indent argument
+	var hangingIndent *float64
+	if hiArg := args.Find("hanging-indent"); hiArg != nil {
+		if !IsNone(hiArg.V) && !IsAuto(hiArg.V) {
+			if lv, ok := hiArg.V.(LengthValue); ok {
+				hi := lv.Length.Points
+				hangingIndent = &hi
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      hiArg.V.Type().String(),
+					Span:     hiArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional spacing argument
+	var spacing *float64
+	if spacingArg := args.Find("spacing"); spacingArg != nil {
+		if !IsAuto(spacingArg.V) && !IsNone(spacingArg.V) {
+			if lv, ok := spacingArg.V.(LengthValue); ok {
+				sp := lv.Length.Points
+				spacing = &sp
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      spacingArg.V.Type().String(),
+					Span:     spacingArg.Span,
+				}
+			}
+		}
+	}
+
+	// Collect term items from remaining positional arguments
+	var items []*TermItemElement
+	for {
+		childArg := args.Eat()
+		if childArg == nil {
+			break
+		}
+
+		if cv, ok := childArg.V.(ContentValue); ok {
+			// Extract TermItemElements from the content
+			for _, elem := range cv.Content.Elements {
+				if termItem, ok := elem.(*TermItemElement); ok {
+					items = append(items, termItem)
+				} else {
+					// If it's not a term item, we could wrap it or return an error
+					// For now, we'll be lenient and skip non-term items
+					// This matches Typst behavior where non-term content is sometimes allowed
+				}
+			}
+		} else if arr, ok := childArg.V.(ArrayValue); ok {
+			// Handle array of term items
+			for _, item := range arr {
+				if cv, ok := item.(ContentValue); ok {
+					for _, elem := range cv.Content.Elements {
+						if termItem, ok := elem.(*TermItemElement); ok {
+							items = append(items, termItem)
+						}
+					}
+				}
+			}
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "content or array",
+				Got:      childArg.V.Type().String(),
+				Span:     childArg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the TermsElement wrapped in ContentValue
+	termsElem := &TermsElement{
+		Items:         items,
+		Tight:         tight,
+		Separator:     separator,
+		Indent:        indent,
+		HangingIndent: hangingIndent,
+		Spacing:       spacing,
+	}
+
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{termsElem},
+	}}, nil
+}
+
+// ----------------------------------------------------------------------------
 // Library Registration
 // ----------------------------------------------------------------------------
 
@@ -756,6 +1070,10 @@ func RegisterElementFunctions(scope *Scope) {
 	scope.DefineFunc("align", AlignFunc())
 	// Register heading element function
 	scope.DefineFunc("heading", HeadingFunc())
+	// Register quote element function
+	scope.DefineFunc("quote", QuoteFunc())
+	// Register terms element function
+	scope.DefineFunc("terms", TermsFunc())
 }
 
 // ElementFunctions returns a map of all element function names to their functions.
@@ -768,5 +1086,7 @@ func ElementFunctions() map[string]*Func {
 		"stack":    StackFunc(),
 		"align":    AlignFunc(),
 		"heading":  HeadingFunc(),
+		"quote":    QuoteFunc(),
+		"terms":    TermsFunc(),
 	}
 }

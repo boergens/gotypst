@@ -24,6 +24,16 @@ func (*EnumElement) IsContentElement() {}
 // This is created by grouping consecutive TermItemElements.
 type TermsElement struct {
 	Items []*TermItemElement
+	// Tight indicates whether items should be tightly spaced.
+	Tight bool
+	// Separator is the optional custom separator between term and description.
+	Separator *Content
+	// Indent is the indentation for items (in points).
+	Indent *float64
+	// HangingIndent is the hanging indent for descriptions (in points).
+	HangingIndent *float64
+	// Spacing is the spacing between items (in points).
+	Spacing *float64
 }
 
 func (*TermsElement) IsContentElement() {}

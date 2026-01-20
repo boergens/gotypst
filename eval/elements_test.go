@@ -1313,3 +1313,447 @@ func TestElementFunctionsIncludesStackAndAlign(t *testing.T) {
 		t.Error("expected 'align' in ElementFunctions()")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// Quote Element Tests
+// ----------------------------------------------------------------------------
+
+func TestQuoteFunc(t *testing.T) {
+	// Get the quote function
+	quoteFunc := QuoteFunc()
+
+	if quoteFunc == nil {
+		t.Fatal("QuoteFunc() returned nil")
+	}
+
+	if quoteFunc.Name == nil || *quoteFunc.Name != "quote" {
+		t.Errorf("expected function name 'quote', got %v", quoteFunc.Name)
+	}
+
+	// Verify it's a native function
+	_, ok := quoteFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Error("expected NativeFunc representation")
+	}
+}
+
+func TestQuoteNativeBasic(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "To be or not to be"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+
+	result, err := quoteNative(vm, args)
+	if err != nil {
+		t.Fatalf("quoteNative() error: %v", err)
+	}
+
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	if len(content.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(content.Content.Elements))
+	}
+
+	quote, ok := content.Content.Elements[0].(*QuoteElement)
+	if !ok {
+		t.Fatalf("expected *QuoteElement, got %T", content.Content.Elements[0])
+	}
+
+	// Verify default values
+	if quote.Block != true {
+		t.Errorf("Block = %v, want true", quote.Block)
+	}
+	if quote.Quotes != nil {
+		t.Errorf("Quotes = %v, want nil (auto)", quote.Quotes)
+	}
+	if quote.Attribution != nil {
+		t.Errorf("Attribution = %v, want nil", quote.Attribution)
+	}
+}
+
+func TestQuoteNativeWithAttribution(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "To be or not to be"}},
+	}}
+	attribution := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Shakespeare"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("attribution", attribution, syntax.Detached())
+
+	result, err := quoteNative(vm, args)
+	if err != nil {
+		t.Fatalf("quoteNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	quote := content.Content.Elements[0].(*QuoteElement)
+
+	if quote.Attribution == nil {
+		t.Error("Attribution should not be nil")
+	}
+}
+
+func TestQuoteNativeWithInlineBlock(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Inline quote"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("block", False, syntax.Detached())
+
+	result, err := quoteNative(vm, args)
+	if err != nil {
+		t.Fatalf("quoteNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	quote := content.Content.Elements[0].(*QuoteElement)
+
+	if quote.Block != false {
+		t.Errorf("Block = %v, want false", quote.Block)
+	}
+}
+
+func TestQuoteNativeWithQuotes(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Quoted text"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("quotes", True, syntax.Detached())
+
+	result, err := quoteNative(vm, args)
+	if err != nil {
+		t.Fatalf("quoteNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	quote := content.Content.Elements[0].(*QuoteElement)
+
+	if quote.Quotes == nil {
+		t.Fatal("Quotes should not be nil")
+	}
+	if *quote.Quotes != true {
+		t.Errorf("Quotes = %v, want true", *quote.Quotes)
+	}
+}
+
+func TestQuoteNativeMissingBody(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+
+	_, err := quoteNative(vm, args)
+	if err == nil {
+		t.Error("expected error for missing body")
+	}
+}
+
+func TestQuoteNativeWrongBodyType(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.Push(Str("not content"), syntax.Detached())
+
+	_, err := quoteNative(vm, args)
+	if err == nil {
+		t.Error("expected error for wrong body type")
+	}
+	if _, ok := err.(*TypeMismatchError); !ok {
+		t.Errorf("expected TypeMismatchError, got %T", err)
+	}
+}
+
+func TestQuoteElement(t *testing.T) {
+	// Test QuoteElement struct and ContentElement interface
+	quotes := true
+	attribution := Content{
+		Elements: []ContentElement{&TextElement{Text: "Author"}},
+	}
+	elem := &QuoteElement{
+		Body: Content{
+			Elements: []ContentElement{&TextElement{Text: "Quote"}},
+		},
+		Block:       true,
+		Quotes:      &quotes,
+		Attribution: &attribution,
+	}
+
+	if !elem.Block {
+		t.Errorf("Block = %v, want true", elem.Block)
+	}
+	if elem.Quotes == nil || *elem.Quotes != true {
+		t.Errorf("Quotes = %v, want true", elem.Quotes)
+	}
+	if elem.Attribution == nil {
+		t.Error("Attribution should not be nil")
+	}
+
+	// Verify it satisfies ContentElement interface
+	var _ ContentElement = elem
+}
+
+// ----------------------------------------------------------------------------
+// Terms Element Tests
+// ----------------------------------------------------------------------------
+
+func TestTermsFunc(t *testing.T) {
+	// Get the terms function
+	termsFunc := TermsFunc()
+
+	if termsFunc == nil {
+		t.Fatal("TermsFunc() returned nil")
+	}
+
+	if termsFunc.Name == nil || *termsFunc.Name != "terms" {
+		t.Errorf("expected function name 'terms', got %v", termsFunc.Name)
+	}
+
+	// Verify it's a native function
+	_, ok := termsFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Error("expected NativeFunc representation")
+	}
+}
+
+func TestTermsNativeBasic(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create term items
+	term1 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TermItemElement{
+			Term:        Content{Elements: []ContentElement{&TextElement{Text: "Term1"}}},
+			Description: Content{Elements: []ContentElement{&TextElement{Text: "Description1"}}},
+		}},
+	}}
+	term2 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TermItemElement{
+			Term:        Content{Elements: []ContentElement{&TextElement{Text: "Term2"}}},
+			Description: Content{Elements: []ContentElement{&TextElement{Text: "Description2"}}},
+		}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(term1, syntax.Detached())
+	args.Push(term2, syntax.Detached())
+
+	result, err := termsNative(vm, args)
+	if err != nil {
+		t.Fatalf("termsNative() error: %v", err)
+	}
+
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	if len(content.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(content.Content.Elements))
+	}
+
+	terms, ok := content.Content.Elements[0].(*TermsElement)
+	if !ok {
+		t.Fatalf("expected *TermsElement, got %T", content.Content.Elements[0])
+	}
+
+	if len(terms.Items) != 2 {
+		t.Errorf("expected 2 items, got %d", len(terms.Items))
+	}
+
+	// Verify default values
+	if !terms.Tight {
+		t.Errorf("Tight = %v, want true", terms.Tight)
+	}
+}
+
+func TestTermsNativeWithOptions(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	term1 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TermItemElement{
+			Term:        Content{Elements: []ContentElement{&TextElement{Text: "Term"}}},
+			Description: Content{Elements: []ContentElement{&TextElement{Text: "Description"}}},
+		}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("tight", False, syntax.Detached())
+	args.Push(term1, syntax.Detached())
+
+	result, err := termsNative(vm, args)
+	if err != nil {
+		t.Fatalf("termsNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	terms := content.Content.Elements[0].(*TermsElement)
+
+	if terms.Tight {
+		t.Errorf("Tight = %v, want false", terms.Tight)
+	}
+}
+
+func TestTermsNativeEmpty(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+
+	result, err := termsNative(vm, args)
+	if err != nil {
+		t.Fatalf("termsNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	terms := content.Content.Elements[0].(*TermsElement)
+
+	if len(terms.Items) != 0 {
+		t.Errorf("expected 0 items, got %d", len(terms.Items))
+	}
+}
+
+func TestTermsNativeWithSeparator(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	separator := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: ": "}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("separator", separator, syntax.Detached())
+
+	result, err := termsNative(vm, args)
+	if err != nil {
+		t.Fatalf("termsNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	terms := content.Content.Elements[0].(*TermsElement)
+
+	if terms.Separator == nil {
+		t.Error("Separator should not be nil")
+	}
+}
+
+func TestTermsNativeWithIndent(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("indent", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
+	args.PushNamed("hanging-indent", LengthValue{Length: Length{Points: 20}}, syntax.Detached())
+
+	result, err := termsNative(vm, args)
+	if err != nil {
+		t.Fatalf("termsNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	terms := content.Content.Elements[0].(*TermsElement)
+
+	if terms.Indent == nil {
+		t.Fatal("Indent should not be nil")
+	}
+	if *terms.Indent != 10 {
+		t.Errorf("Indent = %v, want 10", *terms.Indent)
+	}
+
+	if terms.HangingIndent == nil {
+		t.Fatal("HangingIndent should not be nil")
+	}
+	if *terms.HangingIndent != 20 {
+		t.Errorf("HangingIndent = %v, want 20", *terms.HangingIndent)
+	}
+}
+
+func TestTermsNativeWrongTightType(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("tight", Str("not bool"), syntax.Detached())
+
+	_, err := termsNative(vm, args)
+	if err == nil {
+		t.Error("expected error for wrong tight type")
+	}
+	if _, ok := err.(*TypeMismatchError); !ok {
+		t.Errorf("expected TypeMismatchError, got %T", err)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Registration Tests for Quote and Terms
+// ----------------------------------------------------------------------------
+
+func TestRegisterElementFunctionsIncludesQuoteAndTerms(t *testing.T) {
+	scope := NewScope()
+	RegisterElementFunctions(scope)
+
+	// Verify quote function is registered
+	quoteBinding := scope.Get("quote")
+	if quoteBinding == nil {
+		t.Fatal("expected 'quote' to be registered")
+	}
+
+	quoteFunc, ok := quoteBinding.Value.(FuncValue)
+	if !ok {
+		t.Fatalf("expected FuncValue for quote, got %T", quoteBinding.Value)
+	}
+	if quoteFunc.Func.Name == nil || *quoteFunc.Func.Name != "quote" {
+		t.Errorf("expected function name 'quote', got %v", quoteFunc.Func.Name)
+	}
+
+	// Verify terms function is registered
+	termsBinding := scope.Get("terms")
+	if termsBinding == nil {
+		t.Fatal("expected 'terms' to be registered")
+	}
+
+	termsFunc, ok := termsBinding.Value.(FuncValue)
+	if !ok {
+		t.Fatalf("expected FuncValue for terms, got %T", termsBinding.Value)
+	}
+	if termsFunc.Func.Name == nil || *termsFunc.Func.Name != "terms" {
+		t.Errorf("expected function name 'terms', got %v", termsFunc.Func.Name)
+	}
+}
+
+func TestElementFunctionsIncludesQuoteAndTerms(t *testing.T) {
+	funcs := ElementFunctions()
+
+	if _, ok := funcs["quote"]; !ok {
+		t.Error("expected 'quote' in ElementFunctions()")
+	}
+
+	if _, ok := funcs["terms"]; !ok {
+		t.Error("expected 'terms' in ElementFunctions()")
+	}
+}
