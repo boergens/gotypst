@@ -379,3 +379,200 @@ func TestLocatorSplit(t *testing.T) {
 		t.Errorf("Relayout = %d, want 102", relayout.Current)
 	}
 }
+
+// TestMigrateUnterminatedTags tests the tag migration algorithm
+func TestMigrateUnterminatedTags(t *testing.T) {
+	styles := StyleChain{}
+
+	// Test case 1: Mixed terminated and unterminated tags
+	t.Run("MixedTerminatedAndUnterminated", func(t *testing.T) {
+		// Tag1 (location 1) is unterminated - should migrate
+		// Tag2 (location 2) is terminated (has both start and end) - should stay
+		children := []Pair{
+			{Element: &TagElem{Tag: Tag{Kind: TagStart, Location: 1}}, Styles: styles}, // 0: unterminated start
+			{Element: &TagElem{Tag: Tag{Kind: TagStart, Location: 2}}, Styles: styles}, // 1: terminated start
+			{Element: &TagElem{Tag: Tag{Kind: TagEnd, Location: 2}}, Styles: styles},   // 2: terminated end
+			{Element: &PagebreakElem{Weak: false}, Styles: styles},                      // 3: pagebreak
+		}
+
+		// The algorithm should reorder to: [term-start, term-end, pagebreak, unterm-start]
+		newEnd := migrateUnterminatedTags(children, 0, 3)
+
+		// Should return position after the tags that stay (before pagebreak)
+		if newEnd != 2 {
+			t.Errorf("Expected newEnd=2, got %d", newEnd)
+		}
+
+		// Verify reordering: first two should be the terminated pair
+		if te, ok := children[0].Element.(*TagElem); !ok || te.Tag.Location != 2 || te.Tag.Kind != TagStart {
+			t.Errorf("Expected terminated start tag at position 0, got %v", children[0].Element)
+		}
+		if te, ok := children[1].Element.(*TagElem); !ok || te.Tag.Location != 2 || te.Tag.Kind != TagEnd {
+			t.Errorf("Expected terminated end tag at position 1, got %v", children[1].Element)
+		}
+
+		// Position 2 should be the pagebreak
+		if _, ok := children[2].Element.(*PagebreakElem); !ok {
+			t.Errorf("Expected pagebreak at position 2, got %v", children[2].Element)
+		}
+
+		// Position 3 should be the unterminated start tag
+		if te, ok := children[3].Element.(*TagElem); !ok || te.Tag.Location != 1 || te.Tag.Kind != TagStart {
+			t.Errorf("Expected unterminated start tag at position 3, got %v", children[3].Element)
+		}
+	})
+
+	// Test case 2: All tags terminated - nothing should migrate
+	t.Run("AllTerminated", func(t *testing.T) {
+		children := []Pair{
+			{Element: &TagElem{Tag: Tag{Kind: TagStart, Location: 1}}, Styles: styles},
+			{Element: &TagElem{Tag: Tag{Kind: TagEnd, Location: 1}}, Styles: styles},
+			{Element: &PagebreakElem{Weak: false}, Styles: styles},
+		}
+
+		newEnd := migrateUnterminatedTags(children, 0, 2)
+
+		// All tags stay, so newEnd should be at the original position
+		if newEnd != 2 {
+			t.Errorf("Expected newEnd=2, got %d", newEnd)
+		}
+	})
+
+	// Test case 3: All tags unterminated - all should migrate
+	t.Run("AllUnterminated", func(t *testing.T) {
+		children := []Pair{
+			{Element: &TagElem{Tag: Tag{Kind: TagStart, Location: 1}}, Styles: styles},
+			{Element: &TagElem{Tag: Tag{Kind: TagStart, Location: 2}}, Styles: styles},
+			{Element: &PagebreakElem{Weak: false}, Styles: styles},
+		}
+
+		newEnd := migrateUnterminatedTags(children, 0, 2)
+
+		// No tags stay, so newEnd should be 0 (tagStart)
+		if newEnd != 0 {
+			t.Errorf("Expected newEnd=0, got %d", newEnd)
+		}
+
+		// Pagebreak should now be at position 0
+		if _, ok := children[0].Element.(*PagebreakElem); !ok {
+			t.Errorf("Expected pagebreak at position 0, got %v", children[0].Element)
+		}
+	})
+
+	// Test case 4: No trailing tags - nothing to do
+	t.Run("NoTrailingTags", func(t *testing.T) {
+		children := []Pair{
+			{Element: &PagebreakElem{Weak: false}, Styles: styles},
+		}
+
+		newEnd := migrateUnterminatedTags(children, 0, 0)
+
+		// Nothing changes
+		if newEnd != 0 {
+			t.Errorf("Expected newEnd=0, got %d", newEnd)
+		}
+	})
+
+	// Test case 5: Content followed by tags
+	t.Run("ContentFollowedByTags", func(t *testing.T) {
+		// Simulate: content, then tags, then pagebreak
+		// Using a different ContentElement for "content" - we need a non-tag, non-pagebreak
+		textElem := &textContentElem{}
+		children := []Pair{
+			{Element: textElem, Styles: styles},                                         // 0: content
+			{Element: &TagElem{Tag: Tag{Kind: TagStart, Location: 1}}, Styles: styles}, // 1: unterminated
+			{Element: &PagebreakElem{Weak: false}, Styles: styles},                      // 2: pagebreak
+		}
+
+		newEnd := migrateUnterminatedTags(children, 0, 2)
+
+		// Tag at position 1 should migrate, content stays at 0
+		// newEnd should be 1 (after content, before pagebreak which moves)
+		if newEnd != 1 {
+			t.Errorf("Expected newEnd=1, got %d", newEnd)
+		}
+
+		// Content stays at 0
+		if _, ok := children[0].Element.(*textContentElem); !ok {
+			t.Errorf("Expected text content at position 0")
+		}
+
+		// Pagebreak moves to position 1
+		if _, ok := children[1].Element.(*PagebreakElem); !ok {
+			t.Errorf("Expected pagebreak at position 1, got %v", children[1].Element)
+		}
+
+		// Unterminated tag moves to position 2
+		if te, ok := children[2].Element.(*TagElem); !ok || te.Tag.Location != 1 {
+			t.Errorf("Expected unterminated tag at position 2, got %v", children[2].Element)
+		}
+	})
+
+	// Test case 6: Multiple pagebreaks
+	t.Run("MultiplePagebreaks", func(t *testing.T) {
+		children := []Pair{
+			{Element: &TagElem{Tag: Tag{Kind: TagStart, Location: 1}}, Styles: styles}, // unterminated
+			{Element: &PagebreakElem{Weak: false}, Styles: styles},
+			{Element: &PagebreakElem{Weak: true}, Styles: styles},
+		}
+
+		newEnd := migrateUnterminatedTags(children, 0, 1)
+
+		// Tag should migrate after both pagebreaks
+		if newEnd != 0 {
+			t.Errorf("Expected newEnd=0, got %d", newEnd)
+		}
+
+		// First two positions should be pagebreaks
+		if _, ok := children[0].Element.(*PagebreakElem); !ok {
+			t.Errorf("Expected pagebreak at position 0")
+		}
+		if _, ok := children[1].Element.(*PagebreakElem); !ok {
+			t.Errorf("Expected pagebreak at position 1")
+		}
+
+		// Tag should be at position 2
+		if _, ok := children[2].Element.(*TagElem); !ok {
+			t.Errorf("Expected tag at position 2")
+		}
+	})
+}
+
+// textContentElem is a simple content element for testing
+type textContentElem struct{}
+
+func (*textContentElem) isContentElement() {}
+
+// TestCollectWithMixedTags tests collection with complex tag scenarios
+func TestCollectWithMixedTags(t *testing.T) {
+	locator := &Locator{Current: 0}
+	splitLocator := locator.Split()
+	styles := StyleChain{}
+
+	// Test: unterminated tag followed by pagebreak should produce
+	// a Run for the tag (after migration) in the next run
+	children := []Pair{
+		{Element: &TagElem{Tag: Tag{Kind: TagStart, Location: 1}}, Styles: styles},
+		{Element: &PagebreakElem{Weak: false}, Styles: styles},
+		{Element: &TagElem{Tag: Tag{Kind: TagEnd, Location: 1}}, Styles: styles},
+	}
+
+	items := Collect(children, splitLocator, styles)
+
+	// Should have items (exact count depends on implementation details)
+	if len(items) == 0 {
+		t.Error("Expected at least one item")
+	}
+
+	// Verify we have at least one RunItem
+	hasRun := false
+	for _, item := range items {
+		if _, ok := item.(RunItem); ok {
+			hasRun = true
+			break
+		}
+	}
+	if !hasRun {
+		t.Error("Expected at least one RunItem")
+	}
+}
