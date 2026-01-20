@@ -230,6 +230,208 @@ func TestManualPageCounter(t *testing.T) {
 	}
 }
 
+func TestCounterUpdateSet(t *testing.T) {
+	update := CounterUpdateSet{Value: 42}
+	result := update.Apply(1)
+	if result != 42 {
+		t.Errorf("CounterUpdateSet.Apply(1) = %d, want 42", result)
+	}
+
+	// Verify it ignores current value
+	result = update.Apply(100)
+	if result != 42 {
+		t.Errorf("CounterUpdateSet.Apply(100) = %d, want 42", result)
+	}
+}
+
+func TestCounterUpdateStep(t *testing.T) {
+	update := CounterUpdateStep{}
+	result := update.Apply(1)
+	if result != 2 {
+		t.Errorf("CounterUpdateStep.Apply(1) = %d, want 2", result)
+	}
+
+	result = update.Apply(99)
+	if result != 100 {
+		t.Errorf("CounterUpdateStep.Apply(99) = %d, want 100", result)
+	}
+}
+
+func TestManualPageCounterVisitWithPageCounterUpdate(t *testing.T) {
+	counter := NewManualPageCounter()
+
+	// Create a frame with a page counter update tag
+	frame := Hard(layout.Size{Width: 100, Height: 100})
+	frame.Push(layout.Point{X: 0, Y: 0}, TagItem{
+		Tag: Tag{
+			Kind:     TagStart,
+			Location: 1,
+			Elem: &CounterUpdateElem{
+				Key:    CounterKeyPage,
+				Update: CounterUpdateSet{Value: 10},
+			},
+		},
+	})
+
+	// Initial logical should be 1
+	if counter.Logical() != 1 {
+		t.Errorf("Initial logical = %d, want 1", counter.Logical())
+	}
+
+	// Visit the frame to process counter updates
+	err := counter.Visit(&frame)
+	if err != nil {
+		t.Fatalf("Visit failed: %v", err)
+	}
+
+	// Logical should now be 10
+	if counter.Logical() != 10 {
+		t.Errorf("After visit logical = %d, want 10", counter.Logical())
+	}
+
+	// Physical should be unchanged
+	if counter.Physical() != 0 {
+		t.Errorf("Physical should be unchanged, got %d, want 0", counter.Physical())
+	}
+}
+
+func TestManualPageCounterVisitWithNestedFrame(t *testing.T) {
+	counter := NewManualPageCounter()
+
+	// Create a nested frame structure
+	innerFrame := Hard(layout.Size{Width: 50, Height: 50})
+	innerFrame.Push(layout.Point{X: 0, Y: 0}, TagItem{
+		Tag: Tag{
+			Kind:     TagStart,
+			Location: 1,
+			Elem: &CounterUpdateElem{
+				Key:    CounterKeyPage,
+				Update: CounterUpdateSet{Value: 5},
+			},
+		},
+	})
+
+	outerFrame := Hard(layout.Size{Width: 100, Height: 100})
+	outerFrame.PushFrame(layout.Point{X: 25, Y: 25}, innerFrame)
+
+	err := counter.Visit(&outerFrame)
+	if err != nil {
+		t.Fatalf("Visit failed: %v", err)
+	}
+
+	// Logical should be updated from nested frame
+	if counter.Logical() != 5 {
+		t.Errorf("After visit logical = %d, want 5", counter.Logical())
+	}
+}
+
+func TestManualPageCounterVisitIgnoresNonPageCounters(t *testing.T) {
+	counter := NewManualPageCounter()
+
+	// Create a frame with a non-page counter update
+	frame := Hard(layout.Size{Width: 100, Height: 100})
+	frame.Push(layout.Point{X: 0, Y: 0}, TagItem{
+		Tag: Tag{
+			Kind:     TagStart,
+			Location: 1,
+			Elem: &CounterUpdateElem{
+				Key:    CounterKeyFigure, // Not a page counter
+				Update: CounterUpdateSet{Value: 99},
+			},
+		},
+	})
+
+	err := counter.Visit(&frame)
+	if err != nil {
+		t.Fatalf("Visit failed: %v", err)
+	}
+
+	// Logical should remain unchanged (figure counter was ignored)
+	if counter.Logical() != 1 {
+		t.Errorf("Logical should be unchanged, got %d, want 1", counter.Logical())
+	}
+}
+
+func TestManualPageCounterVisitIgnoresEndTags(t *testing.T) {
+	counter := NewManualPageCounter()
+
+	// Create a frame with an end tag containing a counter update
+	frame := Hard(layout.Size{Width: 100, Height: 100})
+	frame.Push(layout.Point{X: 0, Y: 0}, TagItem{
+		Tag: Tag{
+			Kind:     TagEnd, // End tag should be ignored
+			Location: 1,
+			Elem: &CounterUpdateElem{
+				Key:    CounterKeyPage,
+				Update: CounterUpdateSet{Value: 99},
+			},
+		},
+	})
+
+	err := counter.Visit(&frame)
+	if err != nil {
+		t.Fatalf("Visit failed: %v", err)
+	}
+
+	// Logical should remain unchanged (end tags are ignored)
+	if counter.Logical() != 1 {
+		t.Errorf("Logical should be unchanged, got %d, want 1", counter.Logical())
+	}
+}
+
+func TestManualPageCounterMultipleUpdates(t *testing.T) {
+	counter := NewManualPageCounter()
+
+	// Create a frame with multiple counter updates
+	frame := Hard(layout.Size{Width: 100, Height: 100})
+
+	// First update: set to 5
+	frame.Push(layout.Point{X: 0, Y: 0}, TagItem{
+		Tag: Tag{
+			Kind:     TagStart,
+			Location: 1,
+			Elem: &CounterUpdateElem{
+				Key:    CounterKeyPage,
+				Update: CounterUpdateSet{Value: 5},
+			},
+		},
+	})
+
+	// Second update: step (should become 6)
+	frame.Push(layout.Point{X: 0, Y: 10}, TagItem{
+		Tag: Tag{
+			Kind:     TagStart,
+			Location: 2,
+			Elem: &CounterUpdateElem{
+				Key:    CounterKeyPage,
+				Update: CounterUpdateStep{},
+			},
+		},
+	})
+
+	// Third update: set to 100
+	frame.Push(layout.Point{X: 0, Y: 20}, TagItem{
+		Tag: Tag{
+			Kind:     TagStart,
+			Location: 3,
+			Elem: &CounterUpdateElem{
+				Key:    CounterKeyPage,
+				Update: CounterUpdateSet{Value: 100},
+			},
+		},
+	})
+
+	err := counter.Visit(&frame)
+	if err != nil {
+		t.Fatalf("Visit failed: %v", err)
+	}
+
+	// Final logical should be 100
+	if counter.Logical() != 100 {
+		t.Errorf("After multiple updates logical = %d, want 100", counter.Logical())
+	}
+}
+
 func TestFrameOperations(t *testing.T) {
 	frame := Hard(layout.Size{Width: 100, Height: 200})
 

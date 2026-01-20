@@ -186,6 +186,14 @@ func (cs ColorSpace) String() string {
 type Tag struct {
 	Kind     TagKind
 	Location Location
+	// Elem optionally holds element data for start tags.
+	// This may contain a CounterUpdateElem for page counter updates.
+	Elem TagElement
+}
+
+// TagElement is a marker interface for elements that can be embedded in tags.
+type TagElement interface {
+	isTagElement()
 }
 
 // TagKind indicates whether a tag is a start or end tag.
@@ -195,6 +203,61 @@ const (
 	TagStart TagKind = iota
 	TagEnd
 )
+
+// CounterKey identifies which counter is being updated.
+type CounterKey int
+
+const (
+	// CounterKeyPage is the page counter.
+	CounterKeyPage CounterKey = iota
+	// CounterKeyFigure is the figure counter.
+	CounterKeyFigure
+	// CounterKeyTable is the table counter.
+	CounterKeyTable
+	// CounterKeyEquation is the equation counter.
+	CounterKeyEquation
+	// CounterKeyHeading is the heading counter.
+	CounterKeyHeading
+)
+
+// CounterUpdate represents an update operation on a counter.
+type CounterUpdate interface {
+	isCounterUpdate()
+	// Apply applies the update to a counter state and returns the new value.
+	Apply(current int) int
+}
+
+// CounterUpdateSet sets the counter to a specific value.
+type CounterUpdateSet struct {
+	Value int
+}
+
+func (CounterUpdateSet) isCounterUpdate() {}
+
+// Apply sets the counter to the specified value.
+func (u CounterUpdateSet) Apply(_ int) int {
+	return u.Value
+}
+
+// CounterUpdateStep increments the counter by one.
+type CounterUpdateStep struct{}
+
+func (CounterUpdateStep) isCounterUpdate() {}
+
+// Apply increments the counter by one.
+func (CounterUpdateStep) Apply(current int) int {
+	return current + 1
+}
+
+// CounterUpdateElem represents a counter update element embedded in a tag.
+type CounterUpdateElem struct {
+	// Key identifies which counter to update.
+	Key CounterKey
+	// Update is the update operation to apply.
+	Update CounterUpdate
+}
+
+func (CounterUpdateElem) isTagElement() {}
 
 // Location identifies an element location for introspection.
 type Location uint64
@@ -380,7 +443,33 @@ func (c *ManualPageCounter) Step() {
 }
 
 // Visit processes counter updates from the frame.
+// It recursively walks through all frame items looking for tags that
+// contain page counter updates, and applies those updates to the
+// logical page counter.
 func (c *ManualPageCounter) Visit(frame *Frame) error {
-	// TODO: Process counter updates within the frame
+	for _, positioned := range frame.Items {
+		switch item := positioned.Item.(type) {
+		case GroupItem:
+			// Recursively visit nested frames
+			if err := c.Visit(&item.Frame); err != nil {
+				return err
+			}
+		case TagItem:
+			// Check for counter updates in start tags
+			if item.Tag.Kind != TagStart {
+				continue
+			}
+			elem, ok := item.Tag.Elem.(*CounterUpdateElem)
+			if !ok || elem == nil {
+				continue
+			}
+			// Only process page counter updates
+			if elem.Key != CounterKeyPage {
+				continue
+			}
+			// Apply the update to the logical counter
+			c.logical = elem.Update.Apply(c.logical)
+		}
+	}
 	return nil
 }
