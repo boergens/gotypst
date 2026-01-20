@@ -142,6 +142,7 @@ func TestMathFragmentInterface(t *testing.T) {
 	var _ MathFragment = (*SpaceFragment)(nil)
 	var _ MathFragment = (*LinebreakFragment)(nil)
 	var _ MathFragment = (*AlignFragment)(nil)
+	var _ MathFragment = (*AccentFragment)(nil)
 }
 
 func TestEmptyGlyphFragment(t *testing.T) {
@@ -181,5 +182,221 @@ func TestFrameFragmentWithItems(t *testing.T) {
 
 	if frame.Items[0].Fragment.Width() != 5 {
 		t.Errorf("Items[0].Fragment.Width() = %v, want 5", frame.Items[0].Fragment.Width())
+	}
+}
+
+func TestAccentKindString(t *testing.T) {
+	tests := []struct {
+		kind AccentKind
+		want string
+	}{
+		{AccentHat, "hat"},
+		{AccentTilde, "tilde"},
+		{AccentBar, "bar"},
+		{AccentVec, "vec"},
+		{AccentDot, "dot"},
+		{AccentDDot, "ddot"},
+		{AccentBreve, "breve"},
+		{AccentAcute, "acute"},
+		{AccentGrave, "grave"},
+		{AccentKind(99), "unknown"},
+	}
+
+	for _, tt := range tests {
+		if got := tt.kind.String(); got != tt.want {
+			t.Errorf("AccentKind(%d).String() = %v, want %v", tt.kind, got, tt.want)
+		}
+	}
+}
+
+func TestAccentKindGlyphID(t *testing.T) {
+	tests := []struct {
+		kind AccentKind
+		want rune
+	}{
+		{AccentHat, '\u0302'},
+		{AccentTilde, '\u0303'},
+		{AccentBar, '\u0304'},
+		{AccentVec, '\u20D7'},
+		{AccentDot, '\u0307'},
+		{AccentDDot, '\u0308'},
+		{AccentBreve, '\u0306'},
+		{AccentAcute, '\u0301'},
+		{AccentGrave, '\u0300'},
+	}
+
+	for _, tt := range tests {
+		if got := tt.kind.AccentGlyphID(); got != tt.want {
+			t.Errorf("AccentKind(%d).AccentGlyphID() = %U, want %U", tt.kind, got, tt.want)
+		}
+	}
+}
+
+func TestAccentFragmentDimensions(t *testing.T) {
+	// Create base fragment (simulating a letter like 'x')
+	base := &GlyphFragment{
+		FontSize:  12,
+		MathClass: ClassOrd,
+		Italics:   0.5,
+		Glyphs: []MathGlyph{
+			{ID: 1, Advance: 8, Ascent: 8, Descent: 2},
+		},
+	}
+
+	// Create accent fragment (simulating a hat)
+	accent := &GlyphFragment{
+		FontSize:  12,
+		MathClass: ClassOrd,
+		Glyphs: []MathGlyph{
+			{ID: 2, Advance: 6, Ascent: 2, Descent: 0},
+		},
+	}
+
+	accentFrag := &AccentFragment{
+		Base:      base,
+		Accent:    accent,
+		Kind:      AccentHat,
+		AccentGap: 1,
+	}
+
+	// Width should be max of base and accent widths
+	if got := accentFrag.Width(); got != 8 {
+		t.Errorf("Width() = %v, want 8 (base width)", got)
+	}
+
+	// Ascent = base ascent (8) + gap (1) + accent height (2)
+	if got := accentFrag.Ascent(); got != 11 {
+		t.Errorf("Ascent() = %v, want 11", got)
+	}
+
+	// Descent from base
+	if got := accentFrag.Descent(); got != 2 {
+		t.Errorf("Descent() = %v, want 2", got)
+	}
+
+	// Total height = ascent + descent
+	if got := accentFrag.Height(); got != 13 {
+		t.Errorf("Height() = %v, want 13", got)
+	}
+
+	// Class inherits from base
+	if got := accentFrag.Class(); got != ClassOrd {
+		t.Errorf("Class() = %v, want ClassOrd", got)
+	}
+
+	// Italics correction from base
+	if got := accentFrag.ItalicsCorrection(); got != 0.5 {
+		t.Errorf("ItalicsCorrection() = %v, want 0.5", got)
+	}
+}
+
+func TestAccentFragmentCentering(t *testing.T) {
+	// Test case: base is wider than accent
+	wideBase := &GlyphFragment{
+		FontSize:  12,
+		MathClass: ClassOrd,
+		Glyphs: []MathGlyph{
+			{ID: 1, Advance: 20, Ascent: 8, Descent: 2},
+		},
+	}
+	narrowAccent := &GlyphFragment{
+		FontSize:  12,
+		MathClass: ClassOrd,
+		Glyphs: []MathGlyph{
+			{ID: 2, Advance: 10, Ascent: 2, Descent: 0},
+		},
+	}
+
+	accentFrag := &AccentFragment{
+		Base:      wideBase,
+		Accent:    narrowAccent,
+		Kind:      AccentHat,
+		AccentGap: 1,
+	}
+
+	// Base offset should be 0 (no centering needed)
+	if got := accentFrag.BaseOffset(); got != 0 {
+		t.Errorf("BaseOffset() = %v, want 0", got)
+	}
+
+	// Accent offset should center the accent over the base
+	// (20 - 10) / 2 = 5
+	if got := accentFrag.AccentOffset(); got != 5 {
+		t.Errorf("AccentOffset() = %v, want 5", got)
+	}
+
+	// Width should be the base width
+	if got := accentFrag.Width(); got != 20 {
+		t.Errorf("Width() = %v, want 20", got)
+	}
+}
+
+func TestAccentFragmentWideAccent(t *testing.T) {
+	// Test case: accent is wider than base (e.g., long overline)
+	narrowBase := &GlyphFragment{
+		FontSize:  12,
+		MathClass: ClassOrd,
+		Glyphs: []MathGlyph{
+			{ID: 1, Advance: 8, Ascent: 8, Descent: 2},
+		},
+	}
+	wideAccent := &GlyphFragment{
+		FontSize:  12,
+		MathClass: ClassOrd,
+		Glyphs: []MathGlyph{
+			{ID: 2, Advance: 16, Ascent: 2, Descent: 0},
+		},
+	}
+
+	accentFrag := &AccentFragment{
+		Base:      narrowBase,
+		Accent:    wideAccent,
+		Kind:      AccentBar,
+		AccentGap: 1,
+	}
+
+	// Base offset should center the base under the accent
+	// (16 - 8) / 2 = 4
+	if got := accentFrag.BaseOffset(); got != 4 {
+		t.Errorf("BaseOffset() = %v, want 4", got)
+	}
+
+	// Accent offset should be 0
+	if got := accentFrag.AccentOffset(); got != 0 {
+		t.Errorf("AccentOffset() = %v, want 0", got)
+	}
+
+	// Width should be the accent width
+	if got := accentFrag.Width(); got != 16 {
+		t.Errorf("Width() = %v, want 16", got)
+	}
+}
+
+func TestAccentFragmentY(t *testing.T) {
+	base := &GlyphFragment{
+		FontSize:  12,
+		MathClass: ClassOrd,
+		Glyphs: []MathGlyph{
+			{ID: 1, Advance: 8, Ascent: 10, Descent: 3},
+		},
+	}
+	accent := &GlyphFragment{
+		FontSize:  12,
+		MathClass: ClassOrd,
+		Glyphs: []MathGlyph{
+			{ID: 2, Advance: 6, Ascent: 2, Descent: 0},
+		},
+	}
+
+	accentFrag := &AccentFragment{
+		Base:      base,
+		Accent:    accent,
+		Kind:      AccentHat,
+		AccentGap: 2,
+	}
+
+	// AccentY = base ascent + gap = 10 + 2 = 12
+	if got := accentFrag.AccentY(); got != 12 {
+		t.Errorf("AccentY() = %v, want 12", got)
 	}
 }

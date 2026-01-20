@@ -420,3 +420,167 @@ func TestValueToContent(t *testing.T) {
 		})
 	}
 }
+
+// TestAccentKindString tests the AccentKind String method.
+func TestAccentKindString(t *testing.T) {
+	tests := []struct {
+		kind AccentKind
+		want string
+	}{
+		{AccentHat, "hat"},
+		{AccentTilde, "tilde"},
+		{AccentBar, "bar"},
+		{AccentVec, "vec"},
+		{AccentDot, "dot"},
+		{AccentDDot, "dot.double"},
+		{AccentBreve, "breve"},
+		{AccentAcute, "acute"},
+		{AccentGrave, "grave"},
+		{AccentKind(99), "unknown"},
+	}
+
+	for _, tt := range tests {
+		if got := tt.kind.String(); got != tt.want {
+			t.Errorf("AccentKind(%d).String() = %q, want %q", tt.kind, got, tt.want)
+		}
+	}
+}
+
+// TestAccentKindChar tests the AccentChar method.
+func TestAccentKindChar(t *testing.T) {
+	tests := []struct {
+		kind AccentKind
+		want rune
+	}{
+		{AccentHat, '\u0302'},
+		{AccentTilde, '\u0303'},
+		{AccentBar, '\u0304'},
+		{AccentVec, '\u20D7'},
+		{AccentDot, '\u0307'},
+		{AccentDDot, '\u0308'},
+		{AccentBreve, '\u0306'},
+		{AccentAcute, '\u0301'},
+		{AccentGrave, '\u0300'},
+	}
+
+	for _, tt := range tests {
+		if got := tt.kind.AccentChar(); got != tt.want {
+			t.Errorf("AccentKind(%d).AccentChar() = %U, want %U", tt.kind, got, tt.want)
+		}
+	}
+}
+
+// TestMathAccentElement tests the MathAccentElement structure.
+func TestMathAccentElement(t *testing.T) {
+	elem := &MathAccentElement{
+		Base: Content{
+			Elements: []ContentElement{&TextElement{Text: "x"}},
+		},
+		Accent: AccentHat,
+	}
+
+	// Verify it implements ContentElement
+	var _ ContentElement = elem
+
+	if elem.Accent != AccentHat {
+		t.Errorf("Accent = %v, want AccentHat", elem.Accent)
+	}
+
+	if len(elem.Base.Elements) != 1 {
+		t.Errorf("len(Base.Elements) = %d, want 1", len(elem.Base.Elements))
+	}
+}
+
+// TestMathAccentFunctions tests that accent functions are registered and callable.
+func TestMathAccentFunctions(t *testing.T) {
+	// Get the library scope
+	lib := Library()
+
+	accentFuncs := []string{
+		"hat", "tilde", "bar", "overline", "vec",
+		"dot", "ddot", "breve", "acute", "grave",
+	}
+
+	for _, name := range accentFuncs {
+		binding := lib.Get(name)
+		if binding == nil {
+			t.Errorf("accent function %q not found in library", name)
+			continue
+		}
+
+		// Verify it's a function
+		val, err := binding.Read()
+		if err != nil {
+			t.Errorf("failed to read %q binding: %v", name, err)
+			continue
+		}
+
+		funcVal, ok := val.(FuncValue)
+		if !ok {
+			t.Errorf("%q is not a function, got %T", name, val)
+			continue
+		}
+
+		if funcVal.Func == nil {
+			t.Errorf("%q function is nil", name)
+		}
+	}
+}
+
+// TestMathAccentFunctionCall tests calling an accent function.
+func TestMathAccentFunctionCall(t *testing.T) {
+	// Create a VM with the library scope
+	scopes := NewScopes(Library())
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Get the hat function
+	binding := vm.Get("hat")
+	if binding == nil {
+		t.Fatal("hat function not found")
+	}
+
+	funcVal, err := binding.Read()
+	if err != nil {
+		t.Fatalf("failed to read hat binding: %v", err)
+	}
+
+	fn, ok := funcVal.(FuncValue)
+	if !ok {
+		t.Fatalf("hat is not a function, got %T", funcVal)
+	}
+
+	// Call it with a string argument
+	args := &Args{
+		Span: syntax.Detached(),
+		Items: []Arg{
+			{
+				Span:  syntax.Detached(),
+				Value: syntax.Spanned[Value]{V: Str("x"), Span: syntax.Detached()},
+			},
+		},
+	}
+
+	result, err := CallFunc(vm, fn.Func, args)
+	if err != nil {
+		t.Fatalf("CallFunc failed: %v", err)
+	}
+
+	// Check result is content with a MathAccentElement
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("result is not ContentValue, got %T", result)
+	}
+
+	if len(content.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(content.Content.Elements))
+	}
+
+	accentElem, ok := content.Content.Elements[0].(*MathAccentElement)
+	if !ok {
+		t.Fatalf("element is not MathAccentElement, got %T", content.Content.Elements[0])
+	}
+
+	if accentElem.Accent != AccentHat {
+		t.Errorf("accent kind = %v, want AccentHat", accentElem.Accent)
+	}
+}
