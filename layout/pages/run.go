@@ -313,24 +313,83 @@ func layoutFlow(engine *Engine, children []Pair, locator *SplitLocator, styles S
 		return []Frame{{Size: area}}, nil
 	}
 
-	// Minimal implementation: extract text and create simple positioned items
+	// Minimal implementation: collect text into lines separated by paragraph breaks
 	frame := Frame{Size: area}
-	var y layout.Abs = 12 // Start with some top margin
+	var y layout.Abs = 0
 	fontSize := layout.Abs(12) // Default font size
+	lineHeight := fontSize * 1.4
 
-	for _, pair := range children {
-		// Check if this is a text element
-		if textElem, ok := pair.Element.(*eval.TextElement); ok {
+	var currentLine string
+	flushLine := func() {
+		if currentLine != "" {
 			frame.Push(
 				layout.Point{X: 0, Y: y},
-				TextItem{Text: textElem.Text, FontSize: fontSize},
+				TextItem{Text: currentLine, FontSize: fontSize},
 			)
-			y += fontSize * 1.2 // Simple line spacing
+			y += lineHeight
+			currentLine = ""
 		}
-		// Skip other element types for now (spaces, etc.)
 	}
 
+	for _, pair := range children {
+		elem, ok := pair.Element.(eval.ContentElement)
+		if !ok {
+			continue
+		}
+
+		// Paragraph breaks flush the current line and add spacing
+		if _, ok := elem.(*eval.ParbreakElement); ok {
+			flushLine()
+			y += lineHeight * 0.3 // Extra paragraph spacing
+			continue
+		}
+
+		// List items get their own line
+		if _, ok := elem.(*eval.ListItemElement); ok {
+			flushLine()
+		}
+
+		text := extractText(elem)
+		currentLine += text
+	}
+
+	// Flush any remaining text
+	flushLine()
+
 	return []Frame{frame}, nil
+}
+
+// extractText recursively extracts text content from an element.
+func extractText(elem eval.ContentElement) string {
+	switch e := elem.(type) {
+	case *eval.TextElement:
+		return e.Text
+	case *eval.SpaceElement:
+		return " "
+	case *eval.HeadingElement:
+		return extractTextFromContent(&e.Content)
+	case *eval.StrongElement:
+		return extractTextFromContent(&e.Content)
+	case *eval.EmphElement:
+		return extractTextFromContent(&e.Content)
+	case *eval.ParagraphElement:
+		return extractTextFromContent(&e.Body)
+	case *eval.ListItemElement:
+		return "• " + extractTextFromContent(&e.Content)
+	case *eval.RawElement:
+		return e.Text
+	default:
+		return ""
+	}
+}
+
+// extractTextFromContent extracts text from a Content struct.
+func extractTextFromContent(c *eval.Content) string {
+	var result string
+	for _, elem := range c.Elements {
+		result += extractText(elem)
+	}
+	return result
 }
 
 // layoutMarginal lays out a marginal (header, footer, etc.)
