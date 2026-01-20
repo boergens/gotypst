@@ -109,8 +109,9 @@ func (s *StyleChain) Get(funcName string, propName string) (eval.Value, bool) {
 		for _, rule := range s.Styles.Rules {
 			if rule.Func != nil && rule.Func.Name != nil && *rule.Func.Name == funcName {
 				if rule.Args != nil {
-					if arg := rule.Args.Find(propName); arg != nil {
-						return arg.V, true
+					// Peek at args without removing (Args.Find removes the arg)
+					if val := peekArg(rule.Args, propName); val != nil {
+						return val, true
 					}
 				}
 			}
@@ -119,6 +120,20 @@ func (s *StyleChain) Get(funcName string, propName string) (eval.Value, bool) {
 
 	// Check parent chain
 	return s.Parent.Get(funcName, propName)
+}
+
+// peekArg looks up a named argument without removing it from Args.
+// Unlike Args.Find which consumes the argument, this is read-only.
+func peekArg(args *eval.Args, name string) eval.Value {
+	if args == nil {
+		return nil
+	}
+	for _, arg := range args.Items {
+		if arg.Name != nil && *arg.Name == name {
+			return arg.Value.V
+		}
+	}
+	return nil
 }
 
 // GetRecipes returns all show rule recipes from the chain.
@@ -148,6 +163,137 @@ func (s *StyleChain) Chain(styles *eval.Styles) *StyleChain {
 		return s
 	}
 	return NewStyleChain(styles, s)
+}
+
+// GetWithDefault retrieves a style value with a default fallback.
+// If the property is not found in the chain, the default value is returned.
+func (s *StyleChain) GetWithDefault(funcName string, propName string, defaultVal eval.Value) eval.Value {
+	if val, ok := s.Get(funcName, propName); ok {
+		return val
+	}
+	return defaultVal
+}
+
+// GetProperty retrieves all style values for a function's property.
+// Unlike Get which returns the first match, this returns all values in the chain
+// from most recent (child) to oldest (parent), allowing for style merging.
+func (s *StyleChain) GetProperty(funcName string, propName string) []eval.Value {
+	if s == nil {
+		return nil
+	}
+
+	var values []eval.Value
+
+	// Check current styles first (higher precedence)
+	if s.Styles != nil {
+		for _, rule := range s.Styles.Rules {
+			if rule.Func != nil && rule.Func.Name != nil && *rule.Func.Name == funcName {
+				if rule.Args != nil {
+					// Peek at args without removing (Args.Find removes the arg)
+					if val := peekArg(rule.Args, propName); val != nil {
+						values = append(values, val)
+					}
+				}
+			}
+		}
+	}
+
+	// Add parent values (lower precedence)
+	if s.Parent != nil {
+		values = append(values, s.Parent.GetProperty(funcName, propName)...)
+	}
+
+	return values
+}
+
+// GetRecipesFor returns recipes that could apply to the given element.
+// This filters recipes by checking their selectors against the element type.
+func (s *StyleChain) GetRecipesFor(elem eval.ContentElement) []*eval.Recipe {
+	if s == nil || elem == nil {
+		return nil
+	}
+
+	allRecipes := s.GetRecipes()
+	if len(allRecipes) == 0 {
+		return nil
+	}
+
+	var matching []*eval.Recipe
+	for _, recipe := range allRecipes {
+		if recipe.Selector == nil {
+			// Recipes without selectors apply to everything
+			matching = append(matching, recipe)
+		} else if matchesSelector(elem, *recipe.Selector) {
+			matching = append(matching, recipe)
+		}
+	}
+
+	return matching
+}
+
+// IsEmpty returns true if this style chain has no styles or recipes.
+func (s *StyleChain) IsEmpty() bool {
+	if s == nil {
+		return true
+	}
+	if s.Styles != nil && (len(s.Styles.Rules) > 0 || len(s.Styles.Recipes) > 0) {
+		return false
+	}
+	if s.Parent != nil {
+		return s.Parent.IsEmpty()
+	}
+	return true
+}
+
+// Depth returns the number of levels in the style chain.
+func (s *StyleChain) Depth() int {
+	if s == nil {
+		return 0
+	}
+	return 1 + s.Parent.Depth()
+}
+
+// GetAllRules returns all style rules for a function from the entire chain.
+// Rules are returned from most recent (child) to oldest (parent).
+func (s *StyleChain) GetAllRules(funcName string) []eval.StyleRule {
+	if s == nil {
+		return nil
+	}
+
+	var rules []eval.StyleRule
+
+	// Current rules first (higher precedence)
+	if s.Styles != nil {
+		for _, rule := range s.Styles.Rules {
+			if rule.Func != nil && rule.Func.Name != nil && *rule.Func.Name == funcName {
+				rules = append(rules, rule)
+			}
+		}
+	}
+
+	// Parent rules (lower precedence)
+	if s.Parent != nil {
+		rules = append(rules, s.Parent.GetAllRules(funcName)...)
+	}
+
+	return rules
+}
+
+// Fold applies a function to each style value in the chain, accumulating a result.
+// This is useful for merging style values where later values should override earlier ones.
+// The function is called with (accumulated value, new value) and should return the merged result.
+func (s *StyleChain) Fold(funcName string, propName string, initial eval.Value, fold func(acc, val eval.Value) eval.Value) eval.Value {
+	values := s.GetProperty(funcName, propName)
+	if len(values) == 0 {
+		return initial
+	}
+
+	// Apply values from oldest to newest (reverse order)
+	result := initial
+	for i := len(values) - 1; i >= 0; i-- {
+		result = fold(result, values[i])
+	}
+	return result
 }
 
 // State maintains mutable context during realization.
