@@ -212,11 +212,36 @@ func (gl *GridLayouter) measureAutoColumns(autoCols []int) error {
 }
 
 // measureCellWidth measures the natural width of a cell.
+// It determines the minimum width needed to display the cell's content
+// without wrapping (its intrinsic width).
 func (gl *GridLayouter) measureCellWidth(cell *Cell) (layout.Abs, error) {
-	// For now, return a default width.
-	// TODO: Actually layout the cell to measure its natural width.
-	// This requires introspection of the cell's content.
-	return 72, nil // Default to 1 inch
+	if cell.Body == nil {
+		return 0, nil
+	}
+
+	// Check if the body implements the Measurable interface.
+	if m, ok := cell.Body.(Measurable); ok {
+		return m.MeasureWidth(), nil
+	}
+
+	// Check if the body is a flow.Frame (has a Size method).
+	if sizer, ok := cell.Body.(interface{ Width() layout.Abs }); ok {
+		return sizer.Width(), nil
+	}
+
+	// Check for string content - common case for simple table cells.
+	if s, ok := cell.Body.(string); ok {
+		// Estimate width based on string length.
+		// Assume ~6pt per character at 12pt font (0.5em average character width).
+		const defaultFontSize = 12.0
+		const charWidthFactor = 0.5
+		return layout.Abs(len(s)) * defaultFontSize * charWidthFactor, nil
+	}
+
+	// Default minimum width for unknown content types.
+	// This provides a reasonable fallback while ensuring cells have some width.
+	const defaultMinWidth = 20.0 // ~0.28 inches
+	return defaultMinWidth, nil
 }
 
 // shrinkAutoColumns applies fair-share shrinking to auto columns.
@@ -426,16 +451,54 @@ func (gl *GridLayouter) measureRowHeight(y int) (layout.Abs, error) {
 }
 
 // measureCellHeight measures the natural height of a cell.
+// The height depends on the available width, as content may wrap.
 func (gl *GridLayouter) measureCellHeight(cell *Cell, x int) (layout.Abs, error) {
+	if cell.Body == nil {
+		return 0, nil
+	}
+
 	// Calculate the available width for this cell.
 	width := layout.Abs(0)
 	for col := x; col < x+cell.Colspan && col < gl.Grid.ColCount; col++ {
 		width += gl.RCols[col]
 	}
 
-	// TODO: Actually layout the cell to measure its height.
-	// For now, return a default height.
-	return 20, nil
+	// Check if the body implements the Measurable interface.
+	if m, ok := cell.Body.(Measurable); ok {
+		return m.MeasureHeight(width), nil
+	}
+
+	// Check if the body is a flow.Frame (has a Height method).
+	if sizer, ok := cell.Body.(interface{ Height() layout.Abs }); ok {
+		return sizer.Height(), nil
+	}
+
+	// Check for string content.
+	if s, ok := cell.Body.(string); ok {
+		// Estimate height based on string length and available width.
+		const defaultFontSize layout.Abs = 12.0
+		const charWidthFactor = 0.5
+		const lineHeightFactor = 1.2
+
+		charWidth := defaultFontSize * charWidthFactor
+		if width <= 0 {
+			width = charWidth * layout.Abs(len(s)) // Assume single line
+		}
+
+		charsPerLine := int(float64(width) / float64(charWidth))
+		if charsPerLine <= 0 {
+			charsPerLine = 1
+		}
+		numLines := (len(s) + charsPerLine - 1) / charsPerLine
+		if numLines < 1 {
+			numLines = 1
+		}
+		return layout.Abs(numLines) * defaultFontSize * lineHeightFactor, nil
+	}
+
+	// Default height for unknown content types.
+	const defaultHeight = 14.4 // ~12pt * 1.2 line height
+	return defaultHeight, nil
 }
 
 // layoutRowCells lays out all cells in a row.

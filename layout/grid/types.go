@@ -295,3 +295,89 @@ const (
 type Axes[T any] struct {
 	X, Y T
 }
+
+// Measurable represents content that can measure its intrinsic dimensions.
+// Content implementing this interface can provide its natural width and height.
+type Measurable interface {
+	// MeasureWidth returns the natural (unconstrained) width of the content.
+	MeasureWidth() layout.Abs
+	// MeasureHeight returns the height of the content given a constrained width.
+	MeasureHeight(width layout.Abs) layout.Abs
+}
+
+// MeasuredCell wraps a pre-measured cell body with cached dimensions.
+type MeasuredCell struct {
+	// Body is the actual cell content.
+	Body interface{}
+	// Width is the measured natural width.
+	Width layout.Abs
+	// Height is the measured height at a given width.
+	Height layout.Abs
+}
+
+func (m *MeasuredCell) MeasureWidth() layout.Abs {
+	return m.Width
+}
+
+func (m *MeasuredCell) MeasureHeight(width layout.Abs) layout.Abs {
+	// For pre-measured cells, return cached height.
+	// In practice, this might need recalculation if width differs significantly.
+	return m.Height
+}
+
+// TextContent represents simple text content that can be measured.
+// This is used for cells containing plain text.
+type TextContent struct {
+	// Text is the text content.
+	Text string
+	// FontSize is the font size in points.
+	FontSize layout.Abs
+	// ApproxCharWidth is the approximate width per character (font-dependent).
+	// A typical value for a 12pt font is about 6pt per character.
+	ApproxCharWidth layout.Abs
+}
+
+func (t *TextContent) MeasureWidth() layout.Abs {
+	if t.ApproxCharWidth == 0 {
+		// Default to ~0.5em per character for monospace-like estimation.
+		t.ApproxCharWidth = t.FontSize * 0.5
+	}
+	return layout.Abs(len(t.Text)) * t.ApproxCharWidth
+}
+
+func (t *TextContent) MeasureHeight(width layout.Abs) layout.Abs {
+	if width <= 0 || t.FontSize <= 0 {
+		return t.FontSize * 1.2 // Default line height
+	}
+	// Estimate number of lines based on text length and available width.
+	charWidth := t.ApproxCharWidth
+	if charWidth == 0 {
+		charWidth = t.FontSize * 0.5
+	}
+	charsPerLine := int(width / charWidth)
+	if charsPerLine <= 0 {
+		charsPerLine = 1
+	}
+	numLines := (len(t.Text) + charsPerLine - 1) / charsPerLine
+	if numLines < 1 {
+		numLines = 1
+	}
+	return layout.Abs(numLines) * t.FontSize * 1.2 // 1.2 line height factor
+}
+
+// FrameContent wraps a flow.Frame for measurement.
+type FrameContent struct {
+	// Width is the frame's width.
+	Width layout.Abs
+	// Height is the frame's height.
+	Height layout.Abs
+}
+
+func (f *FrameContent) MeasureWidth() layout.Abs {
+	return f.Width
+}
+
+func (f *FrameContent) MeasureHeight(width layout.Abs) layout.Abs {
+	// For frames, the height is fixed regardless of width constraint.
+	return f.Height
+}
