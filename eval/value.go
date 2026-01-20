@@ -468,6 +468,10 @@ type Func struct {
 	Span syntax.Span
 	// Repr is the function representation.
 	Repr FuncRepr
+	// Scope is an optional scope for element functions that have associated
+	// sub-functions (e.g., table.cell, table.header). When accessing a field
+	// on this function, the scope is searched for bindings.
+	Scope *Scope
 }
 
 // FuncRepr represents different kinds of function implementations.

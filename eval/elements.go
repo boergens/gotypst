@@ -591,16 +591,48 @@ func RegisterElementFunctions(scope *Scope) {
 	scope.DefineFunc("stack", StackFunc())
 	// Register align element function
 	scope.DefineFunc("align", AlignFunc())
+	// Register table element function and module
+	registerTableModule(scope)
+}
+
+// registerTableModule registers the table function and its sub-functions.
+// The table function has an associated scope for sub-functions (table.cell, etc.)
+func registerTableModule(scope *Scope) {
+	// Create the scope for table's sub-functions
+	tableScope := NewScope()
+	tableScope.DefineFunc("cell", TableCellFunc())
+	tableScope.DefineFunc("header", TableHeaderFunc())
+	tableScope.DefineFunc("footer", TableFooterFunc())
+	tableScope.DefineFunc("hline", TableHlineFunc())
+	tableScope.DefineFunc("vline", TableVlineFunc())
+
+	// Create the table function with its sub-function scope
+	tableFunc := TableFunc()
+	tableFunc.Scope = tableScope
+
+	// Register the table function (which also supports field access for sub-functions)
+	scope.DefineFunc("table", tableFunc)
 }
 
 // ElementFunctions returns a map of all element function names to their functions.
 // This is useful for introspection and testing.
 func ElementFunctions() map[string]*Func {
+	// Create table function with its scope
+	tableFunc := TableFunc()
+	tableScope := NewScope()
+	tableScope.DefineFunc("cell", TableCellFunc())
+	tableScope.DefineFunc("header", TableHeaderFunc())
+	tableScope.DefineFunc("footer", TableFooterFunc())
+	tableScope.DefineFunc("hline", TableHlineFunc())
+	tableScope.DefineFunc("vline", TableVlineFunc())
+	tableFunc.Scope = tableScope
+
 	return map[string]*Func{
 		"raw":      RawFunc(),
 		"par":      ParFunc(),
 		"parbreak": ParbreakFunc(),
 		"stack":    StackFunc(),
 		"align":    AlignFunc(),
+		"table":    tableFunc,
 	}
 }
