@@ -12,6 +12,9 @@ type Renderer struct {
 	// FontMap maps font faces to PDF font resource names (e.g., "/F1").
 	FontMap FontMapper
 
+	// fontCollector collects fonts for embedding.
+	fontCollector *FontCollector
+
 	// pageHeight is used to convert coordinates (PDF has origin at bottom-left).
 	pageHeight layout.Abs
 }
@@ -21,6 +24,9 @@ type FontMapper interface {
 	// FontName returns the PDF resource name for a font (e.g., "/F1").
 	// Returns empty string if font is not registered.
 	FontName(face interface{}) string
+
+	// RecordGlyph records glyph usage for font embedding.
+	RecordGlyph(face interface{}, glyphID uint16, char rune)
 }
 
 // DefaultFontMapper is a simple font mapper that returns a default font.
@@ -31,11 +37,20 @@ func (DefaultFontMapper) FontName(face interface{}) string {
 	return "/F1"
 }
 
+// RecordGlyph is a no-op for the default mapper.
+func (DefaultFontMapper) RecordGlyph(face interface{}, glyphID uint16, char rune) {}
+
 // NewRenderer creates a new PDF renderer.
 func NewRenderer() *Renderer {
 	return &Renderer{
 		FontMap: DefaultFontMapper{},
 	}
+}
+
+// SetFontCollector sets the font collector for font embedding.
+func (r *Renderer) SetFontCollector(fc *FontCollector) {
+	r.fontCollector = fc
+	r.FontMap = fc
 }
 
 // RenderDocument renders a full document to content streams.
@@ -170,10 +185,12 @@ func (r *Renderer) renderShapedText(cs *ContentStream, text *inline.ShapedText, 
 
 	// Build TJ array with glyph positioning
 	var items []TextPositionItem
-	var currentX layout.Abs
 
 	for i := range glyphs {
 		g := &glyphs[i]
+
+		// Record glyph usage for font embedding
+		r.FontMap.RecordGlyph(g.Font, g.GlyphID, g.Char)
 
 		// Handle x-offset if present
 		if g.XOffset != 0 {
@@ -185,17 +202,6 @@ func (r *Renderer) renderShapedText(cs *ContentStream, text *inline.ShapedText, 
 		// Add the glyph character
 		// Note: In production, this would use glyph IDs and proper encoding
 		items = append(items, TextPositionString(string(g.Char)))
-
-		// Track position for next glyph
-		advance := g.XAdvance.At(g.Size)
-		currentX += advance
-
-		// If there's extra spacing between glyphs (beyond normal advance),
-		// add a positioning adjustment
-		if i+1 < len(glyphs) {
-			// This would handle justification adjustments
-			// For now, we rely on standard advance widths
-		}
 	}
 
 	cs.ShowTextWithPositioning(items)

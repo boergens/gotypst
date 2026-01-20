@@ -19,14 +19,24 @@ type Writer struct {
 	images map[*pages.Image]Ref
 	// pageRefs stores references to page objects.
 	pageRefs []Ref
+	// fontCollector tracks fonts for embedding.
+	fontCollector *FontCollector
+	// fontResources is the dict of font refs after emission.
+	fontResources Dict
 }
 
 // NewWriter creates a new PDF writer.
 func NewWriter() *Writer {
 	return &Writer{
-		nextID: 1,
-		images: make(map[*pages.Image]Ref),
+		nextID:        1,
+		images:        make(map[*pages.Image]Ref),
+		fontCollector: NewFontCollector(),
 	}
+}
+
+// FontCollector returns the font collector for registering fonts.
+func (w *Writer) FontCollector() *FontCollector {
+	return w.fontCollector
 }
 
 // allocRef allocates a new object reference.
@@ -53,6 +63,14 @@ func (w *Writer) Write(doc *pages.PagedDocument, out io.Writer) error {
 	// Reserve object IDs for catalog and page tree
 	catalogRef := w.allocRef()
 	pagesRef := w.allocRef()
+
+	// Emit font objects first
+	fontEmitter := NewFontEmitter(w)
+	fontResources, err := fontEmitter.EmitFonts(w.fontCollector)
+	if err != nil {
+		return fmt.Errorf("emit fonts: %w", err)
+	}
+	w.fontResources = fontResources
 
 	// Process all pages and collect image XObjects
 	var pageContentsRefs []Ref
@@ -83,15 +101,25 @@ func (w *Writer) Write(doc *pages.PagedDocument, out io.Writer) error {
 			},
 		}
 
-		// Add resources if there are images
+		// Build resources dictionary
+		resources := make(Dict)
+
+		// Add fonts
+		if len(w.fontResources) > 0 {
+			resources[Name("Font")] = w.fontResources
+		}
+
+		// Add images
 		if len(pageImageRefs[i]) > 0 {
 			xobjects := make(Dict)
 			for name, ref := range pageImageRefs[i] {
 				xobjects[Name(name)] = ref
 			}
-			pageDict[Name("Resources")] = Dict{
-				Name("XObject"): xobjects,
-			}
+			resources[Name("XObject")] = xobjects
+		}
+
+		if len(resources) > 0 {
+			pageDict[Name("Resources")] = resources
 		}
 
 		w.addObjectWithRef(pageRef, pageDict)
