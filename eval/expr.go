@@ -839,7 +839,7 @@ func evalFieldAccess(vm *Vm, e *syntax.FieldAccessExpr) (Value, error) {
 
 	default:
 		// Check for built-in methods
-		method := getBuiltinMethod(target, fieldName)
+		method := getBuiltinMethod(target, fieldName, e.ToUntyped().Span())
 		if method != nil {
 			return method, nil
 		}
@@ -848,8 +848,11 @@ func evalFieldAccess(vm *Vm, e *syntax.FieldAccessExpr) (Value, error) {
 }
 
 // getBuiltinMethod returns a built-in method for a value, or nil if not found.
-func getBuiltinMethod(target Value, name string) Value {
-	// Return nil for now - built-in methods will be implemented later
+func getBuiltinMethod(target Value, name string, span syntax.Span) Value {
+	switch t := target.(type) {
+	case StrValue:
+		return GetStrMethod(t, name, span)
+	}
 	return nil
 }
 
