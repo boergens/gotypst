@@ -1682,6 +1682,52 @@ type ParagraphElement struct {
 
 func (*ParagraphElement) isContentElement() {}
 
+// PadElement represents padded content with spacing on each side.
+// Padding values are stored as Relative (absolute + ratio components).
+type PadElement struct {
+	// Body is the content to pad.
+	Body Content
+	// Left is the left padding (in points + ratio).
+	Left Relative
+	// Top is the top padding (in points + ratio).
+	Top Relative
+	// Right is the right padding (in points + ratio).
+	Right Relative
+	// Bottom is the bottom padding (in points + ratio).
+	Bottom Relative
+}
+
+func (*PadElement) isContentElement() {}
+
+// PlaceElement represents content positioned relative to its parent container.
+// It can be overlaid (default) or floating.
+type PlaceElement struct {
+	// Body is the content to place.
+	Body Content
+	// AlignmentX is the horizontal alignment ("start", "center", "end", or empty for auto).
+	AlignmentX string
+	// AlignmentY is the vertical alignment ("top", "horizon", "bottom", or empty for auto).
+	AlignmentY string
+	// Scope is the placement scope ("column" or "parent").
+	Scope string
+	// Float enables floating layout.
+	Float bool
+	// Clearance is the spacing between placed element and others (in points).
+	// Only used when Float is true.
+	Clearance float64
+	// Dx is the horizontal offset (in points + ratio).
+	Dx Relative
+	// Dy is the vertical offset (in points + ratio).
+	Dy Relative
+}
+
+func (*PlaceElement) isContentElement() {}
+
+// PlaceFlushElement signals that floats should be flushed.
+type PlaceFlushElement struct{}
+
+func (*PlaceFlushElement) isContentElement() {}
+
 func evalStrong(vm *Vm, e *syntax.StrongExpr) (Value, error) {
 	body := e.Body()
 	if body == nil {
