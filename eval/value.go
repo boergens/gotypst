@@ -743,6 +743,23 @@ func (t Type) String() string {
 	}
 }
 
+// FullName returns the full human-readable name of the type.
+// This is used in error messages where readability matters.
+func (t Type) FullName() string {
+	switch t {
+	case TypeInt:
+		return "integer"
+	case TypeStr:
+		return "string"
+	case TypeBool:
+		return "boolean"
+	case TypeFunc:
+		return "function"
+	default:
+		return t.String()
+	}
+}
+
 // ----------------------------------------------------------------------------
 // Value Conversion Helpers
 // ----------------------------------------------------------------------------

@@ -595,7 +595,7 @@ type InvalidAssignmentTargetError struct {
 }
 
 func (e *InvalidAssignmentTargetError) Error() string {
-	return "invalid assignment target"
+	return "cannot mutate a temporary value"
 }
 
 // DestructuringError is returned when destructuring fails.

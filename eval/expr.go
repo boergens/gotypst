@@ -583,7 +583,7 @@ func applyPos(v Value, span syntax.Span) (Value, error) {
 	case FractionValue:
 		return val, nil
 	default:
-		return nil, &TypeError{Expected: TypeInt, Got: v.Type(), Span: span}
+		return nil, &UnaryOperatorError{Op: "+", Operand: v.Type(), Span: span}
 	}
 }
 
@@ -602,14 +602,14 @@ func applyNeg(v Value, span syntax.Span) (Value, error) {
 	case FractionValue:
 		return FractionValue{Fraction: Fraction{Value: -val.Fraction.Value}}, nil
 	default:
-		return nil, &TypeError{Expected: TypeInt, Got: v.Type(), Span: span}
+		return nil, &UnaryOperatorError{Op: "-", Operand: v.Type(), Span: span}
 	}
 }
 
 func applyNot(v Value, span syntax.Span) (Value, error) {
 	b, ok := AsBool(v)
 	if !ok {
-		return nil, &TypeError{Expected: TypeBool, Got: v.Type(), Span: span}
+		return nil, &UnaryOperatorError{Op: "not", Operand: v.Type(), Span: span}
 	}
 	return Bool(!b), nil
 }
@@ -730,9 +730,10 @@ func assignToExpr(vm *Vm, expr syntax.Expr, value Value) (Value, error) {
 		if binding == nil {
 			return nil, &UndefinedVariableError{Name: name, Span: e.ToUntyped().Span()}
 		}
-		if err := binding.Write(value); err != nil {
-			return nil, err
+		if !binding.Mutable {
+			return nil, &ImmutableBindingError{Name: name}
 		}
+		binding.Value = value
 		return None, nil
 
 	case *syntax.FieldAccessExpr:
@@ -1994,6 +1995,35 @@ type SmartQuoteElement struct {
 
 func (*SmartQuoteElement) IsContentElement() {}
 
+// FigureElement represents a figure with optional caption.
+// Figures can contain any content (images, tables, code blocks, etc.)
+// and can have captions displayed above or below.
+type FigureElement struct {
+	// Body is the figure's content (e.g., an image, table, or other content).
+	Body Content
+	// Caption is the figure's caption content (nil if no caption).
+	Caption *Content
+	// Kind specifies the figure type for numbering (e.g., "image", "table").
+	// nil means auto-detection based on body content.
+	Kind *string
+	// Supplement is the reference supplement text (e.g., "Figure" for images).
+	// nil means auto-determined based on kind.
+	Supplement *Content
+	// Numbering is the numbering pattern (e.g., "1", "1.1", "(a)").
+	// nil means use default ("1").
+	Numbering *string
+	// Gap is the space between the body and caption in points.
+	// nil means use default.
+	Gap *float64
+	// Placement controls where the figure floats (auto, top, bottom, or none).
+	// nil means none (inline).
+	Placement *string
+	// Outlined indicates whether the figure appears in the outline.
+	Outlined bool
+}
+
+func (*FigureElement) IsContentElement() {}
+
 // ----------------------------------------------------------------------------
 // Error Types
 // ----------------------------------------------------------------------------
@@ -2019,6 +2049,20 @@ type TypeError struct {
 
 func (e *TypeError) Error() string {
 	return fmt.Sprintf("expected %s, got %s", e.Expected, e.Got)
+}
+
+// UnaryOperatorError is returned when a unary operator cannot be applied to a type.
+type UnaryOperatorError struct {
+	Op      string
+	Operand Type
+	Span    syntax.Span
+}
+
+func (e *UnaryOperatorError) Error() string {
+	if e.Op == "+" {
+		return fmt.Sprintf("cannot apply unary '%s' to %s", e.Op, e.Operand.FullName())
+	}
+	return fmt.Sprintf("cannot apply '%s' to %s", e.Op, e.Operand.FullName())
 }
 
 // IterationError is returned when a loop iteration fails.

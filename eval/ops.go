@@ -1,6 +1,8 @@
 package eval
 
 import (
+	"math"
+
 	"github.com/boergens/gotypst/syntax"
 )
 
@@ -14,7 +16,11 @@ func Add(lhs, rhs Value, span syntax.Span) (Value, error) {
 	case IntValue:
 		switch r := rhs.(type) {
 		case IntValue:
-			return Int(int64(l) + int64(r)), nil
+			result, overflow := addInt64(int64(l), int64(r))
+			if overflow {
+				return nil, &OverflowError{Span: span}
+			}
+			return Int(result), nil
 		case FloatValue:
 			return Float(float64(l) + float64(r)), nil
 		}
@@ -652,7 +658,21 @@ type OperatorMismatchError struct {
 }
 
 func (e *OperatorMismatchError) Error() string {
-	return "cannot apply operator " + e.Op + " to " + e.Lhs.String() + " and " + e.Rhs.String()
+	// Use verb form for arithmetic operators
+	var verb string
+	switch e.Op {
+	case "+":
+		verb = "add"
+	case "-":
+		verb = "subtract"
+	case "*":
+		verb = "multiply"
+	case "/":
+		verb = "divide"
+	default:
+		return "cannot apply operator " + e.Op + " to " + e.Lhs.FullName() + " and " + e.Rhs.FullName()
+	}
+	return "cannot " + verb + " " + e.Lhs.FullName() + " and " + e.Rhs.FullName()
 }
 
 // DivisionByZeroError is returned when dividing by zero.
@@ -661,5 +681,30 @@ type DivisionByZeroError struct {
 }
 
 func (e *DivisionByZeroError) Error() string {
-	return "division by zero"
+	return "cannot divide by zero"
+}
+
+// OverflowError is returned when an arithmetic operation overflows.
+type OverflowError struct {
+	Span syntax.Span
+}
+
+func (e *OverflowError) Error() string {
+	return "value is too large"
+}
+
+// addInt64 adds two int64 values and returns the result and whether it overflowed.
+func addInt64(a, b int64) (int64, bool) {
+	result := a + b
+	// Check for overflow: if both inputs have the same sign and the result
+	// has a different sign, then we overflowed
+	if (a > 0 && b > 0 && result < 0) || (a < 0 && b < 0 && result > 0) {
+		return 0, true
+	}
+	// Also check if the result is outside the valid int64 range
+	// (this catches the edge case of MinInt64 + -1)
+	if a > 0 && b > 0 && result > math.MaxInt64 {
+		return 0, true
+	}
+	return result, false
 }

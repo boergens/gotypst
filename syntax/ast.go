@@ -1402,9 +1402,14 @@ func (e *UnaryExpr) Op() UnOp {
 // Expr returns the operand.
 func (e *UnaryExpr) Expr() Expr {
 	for _, child := range e.node.Children() {
-		if child.Kind() != Plus && child.Kind() != Minus && child.Kind() != Not {
-			return ExprFromNode(child)
+		// Skip operators and trivia (like Space)
+		if child.Kind() == Plus || child.Kind() == Minus || child.Kind() == Not {
+			continue
 		}
+		if child.Kind().IsTrivia() {
+			continue
+		}
+		return ExprFromNode(child)
 	}
 	return nil
 }
@@ -1429,9 +1434,19 @@ func (e *BinaryExpr) isExpr()               {}
 
 // Lhs returns the left-hand side.
 func (e *BinaryExpr) Lhs() Expr {
-	children := e.node.Children()
-	if len(children) > 0 {
-		return ExprFromNode(children[0])
+	// Find the first child that is a valid expression (skipping trivia like Space)
+	for _, child := range e.node.Children() {
+		if child.Kind().IsTrivia() {
+			continue
+		}
+		// Stop at operator tokens - LHS is before the operator
+		if isOperatorKind(child.Kind()) {
+			break
+		}
+		expr := ExprFromNode(child)
+		if expr != nil {
+			return expr
+		}
 	}
 	return nil
 }
@@ -1483,9 +1498,22 @@ func (e *BinaryExpr) Op() BinOp {
 
 // Rhs returns the right-hand side.
 func (e *BinaryExpr) Rhs() Expr {
-	children := e.node.Children()
-	if len(children) >= 3 {
-		return ExprFromNode(children[2])
+	// Find the operator, then return the first expression after it
+	foundOp := false
+	for _, child := range e.node.Children() {
+		if child.Kind().IsTrivia() {
+			continue
+		}
+		if isOperatorKind(child.Kind()) {
+			foundOp = true
+			continue
+		}
+		if foundOp {
+			expr := ExprFromNode(child)
+			if expr != nil {
+				return expr
+			}
+		}
 	}
 	return nil
 }
@@ -1496,6 +1524,19 @@ func BinaryExprFromNode(node *SyntaxNode) *BinaryExpr {
 		return nil
 	}
 	return &BinaryExpr{node: node}
+}
+
+// isOperatorKind returns true if the kind is a binary operator token.
+func isOperatorKind(k SyntaxKind) bool {
+	switch k {
+	case Plus, Minus, Star, Slash,
+		And, Or, Not,
+		EqEq, ExclEq, Lt, LtEq, Gt, GtEq,
+		Eq, PlusEq, HyphEq, StarEq, SlashEq,
+		In, Dots:
+		return true
+	}
+	return false
 }
 
 // FieldAccessExpr represents field access: x.y.
