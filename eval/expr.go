@@ -1652,6 +1652,30 @@ type ParbreakElement struct{}
 
 func (*ParbreakElement) isContentElement() {}
 
+// ParagraphElement represents a paragraph with styling properties.
+// This wraps content in paragraph-level formatting.
+type ParagraphElement struct {
+	// Body is the content of the paragraph.
+	Body Content
+	// Leading is the spacing between lines (in points).
+	// If nil, uses default leading (0.65em).
+	Leading *float64
+	// Justify indicates whether to justify the paragraph text.
+	// If nil, uses default (false).
+	Justify *bool
+	// Linebreaks specifies the line breaking algorithm.
+	// Values: "simple", "optimized", or nil for auto.
+	Linebreaks *string
+	// FirstLineIndent is the indent for the first line (in points).
+	// If nil, uses default (0pt).
+	FirstLineIndent *float64
+	// HangingIndent is the indent for subsequent lines (in points).
+	// If nil, uses default (0pt).
+	HangingIndent *float64
+}
+
+func (*ParagraphElement) isContentElement() {}
+
 func evalStrong(vm *Vm, e *syntax.StrongExpr) (Value, error) {
 	body := e.Body()
 	if body == nil {
