@@ -30,6 +30,7 @@ var (
 	_ Value = (*Dict)(nil)
 	_ Value = (*Datetime)(nil)
 	_ Value = Duration(0)
+	_ Value = (*Color)(nil)
 )
 
 // NoneValue represents the absence of a value.
