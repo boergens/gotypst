@@ -171,7 +171,7 @@ type FrameFragment struct {
 	// Italics is the italics correction value.
 	Italics layout.Abs
 	// Items contains the positioned items within the frame.
-	Items []FrameItem
+	Items []FragmentItem
 }
 
 func (*FrameFragment) isMathFragment() {}
@@ -206,8 +206,8 @@ func (f *FrameFragment) ItalicsCorrection() layout.Abs {
 	return f.Italics
 }
 
-// FrameItem represents a positioned item within a frame.
-type FrameItem struct {
+// FragmentItem represents a positioned item within a frame.
+type FragmentItem struct {
 	// Pos is the position of the item within the frame.
 	Pos layout.Point
 	// Fragment is the math fragment at this position.

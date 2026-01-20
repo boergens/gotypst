@@ -2,40 +2,6 @@ package math
 
 import "github.com/boergens/gotypst/layout"
 
-// MathStyle represents the style context for math layout.
-// This affects sizing and spacing of math elements.
-type MathStyle int
-
-const (
-	// StyleDisplay is display style (large, centered equations).
-	StyleDisplay MathStyle = iota
-	// StyleText is text style (inline equations).
-	StyleText
-	// StyleScript is script style (superscripts, subscripts).
-	StyleScript
-	// StyleScriptScript is script-script style (nested scripts).
-	StyleScriptScript
-)
-
-// IsCramped returns true if the style is cramped (reduced spacing).
-func (s MathStyle) IsCramped() bool {
-	return false // For now, all styles are non-cramped
-}
-
-// ScaledSize returns the font size multiplier for this style.
-func (s MathStyle) ScaledSize() float64 {
-	switch s {
-	case StyleDisplay, StyleText:
-		return 1.0
-	case StyleScript:
-		return 0.7 // Typical script size ratio
-	case StyleScriptScript:
-		return 0.5 // Typical script-script size ratio
-	default:
-		return 1.0
-	}
-}
-
 // SpaceType represents the type of spacing between math elements.
 type SpaceType int
 
@@ -96,7 +62,7 @@ func GetSpacing(left, right MathClass, style MathStyle) SpaceType {
 	space := spacingTable[left][right]
 
 	// In script and scriptscript styles, reduce spacing.
-	if style == StyleScript || style == StyleScriptScript {
+	if style == ScriptStyle || style == ScriptScriptStyle {
 		switch space {
 		case SpaceMedium:
 			space = SpaceThin

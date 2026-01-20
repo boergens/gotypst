@@ -31,28 +31,28 @@ func TestGetSpacing(t *testing.T) {
 		want        SpaceType
 	}{
 		// Display style tests (full spacing)
-		{ClassOrd, ClassOp, StyleDisplay, SpaceThin},
-		{ClassOrd, ClassBin, StyleDisplay, SpaceMedium},
-		{ClassOrd, ClassRel, StyleDisplay, SpaceThick},
-		{ClassOpen, ClassOrd, StyleDisplay, SpaceNone},
-		{ClassOrd, ClassClose, StyleDisplay, SpaceNone},
+		{ClassOrd, ClassOp, DisplayStyle, SpaceThin},
+		{ClassOrd, ClassBin, DisplayStyle, SpaceMedium},
+		{ClassOrd, ClassRel, DisplayStyle, SpaceThick},
+		{ClassOpen, ClassOrd, DisplayStyle, SpaceNone},
+		{ClassOrd, ClassClose, DisplayStyle, SpaceNone},
 
 		// Binary operator spacing
-		{ClassOrd, ClassBin, StyleDisplay, SpaceMedium},
-		{ClassBin, ClassOrd, StyleDisplay, SpaceMedium},
+		{ClassOrd, ClassBin, DisplayStyle, SpaceMedium},
+		{ClassBin, ClassOrd, DisplayStyle, SpaceMedium},
 
 		// Relation spacing
-		{ClassOrd, ClassRel, StyleDisplay, SpaceThick},
-		{ClassRel, ClassOrd, StyleDisplay, SpaceThick},
+		{ClassOrd, ClassRel, DisplayStyle, SpaceThick},
+		{ClassRel, ClassOrd, DisplayStyle, SpaceThick},
 
 		// Script style (reduced spacing)
-		{ClassOrd, ClassBin, StyleScript, SpaceThin},   // medium -> thin
-		{ClassOrd, ClassRel, StyleScript, SpaceNone},   // thick -> none
-		{ClassOrd, ClassOp, StyleScript, SpaceThin},    // thin stays thin
+		{ClassOrd, ClassBin, ScriptStyle, SpaceThin},   // medium -> thin
+		{ClassOrd, ClassRel, ScriptStyle, SpaceNone},   // thick -> none
+		{ClassOrd, ClassOp, ScriptStyle, SpaceThin},    // thin stays thin
 
 		// ScriptScript style (also reduced)
-		{ClassOrd, ClassBin, StyleScriptScript, SpaceThin},
-		{ClassOrd, ClassRel, StyleScriptScript, SpaceNone},
+		{ClassOrd, ClassBin, ScriptScriptStyle, SpaceThin},
+		{ClassOrd, ClassRel, ScriptScriptStyle, SpaceNone},
 	}
 
 	for _, tt := range tests {
@@ -68,7 +68,7 @@ func TestGetSpacingAbs(t *testing.T) {
 	fontSize := layout.Abs(12)
 
 	// Thick space at 12pt = 5/18 * 12 = 10/3 ≈ 3.33pt
-	got := GetSpacingAbs(ClassOrd, ClassRel, StyleDisplay, fontSize)
+	got := GetSpacingAbs(ClassOrd, ClassRel, DisplayStyle, fontSize)
 	want := SpaceThick.Amount().At(fontSize)
 
 	if got != want {
@@ -110,7 +110,7 @@ func TestInsertSpacing(t *testing.T) {
 		&GlyphFragment{MathClass: ClassOrd, Glyphs: []MathGlyph{{Advance: 8}}},
 	}
 
-	result := InsertSpacing(fragments, StyleDisplay, fontSize)
+	result := InsertSpacing(fragments, DisplayStyle, fontSize)
 
 	// Should have: Ord, space, Bin, space, Ord = 5 items
 	if len(result) != 5 {
@@ -127,12 +127,12 @@ func TestInsertSpacing(t *testing.T) {
 }
 
 func TestInsertSpacingEmpty(t *testing.T) {
-	result := InsertSpacing(nil, StyleDisplay, 12)
+	result := InsertSpacing(nil, DisplayStyle, 12)
 	if len(result) != 0 {
 		t.Errorf("InsertSpacing(nil) should return empty slice")
 	}
 
-	result = InsertSpacing([]MathFragment{}, StyleDisplay, 12)
+	result = InsertSpacing([]MathFragment{}, DisplayStyle, 12)
 	if len(result) != 0 {
 		t.Errorf("InsertSpacing([]) should return empty slice")
 	}
@@ -143,7 +143,7 @@ func TestInsertSpacingSingle(t *testing.T) {
 		&GlyphFragment{MathClass: ClassOrd, Glyphs: []MathGlyph{{Advance: 8}}},
 	}
 
-	result := InsertSpacing(fragments, StyleDisplay, 12)
+	result := InsertSpacing(fragments, DisplayStyle, 12)
 
 	if len(result) != 1 {
 		t.Errorf("InsertSpacing with single fragment should return 1 item, got %d", len(result))
@@ -157,7 +157,7 @@ func TestInsertSpacingNoSpace(t *testing.T) {
 		&GlyphFragment{MathClass: ClassOrd, Glyphs: []MathGlyph{{Advance: 8}}},
 	}
 
-	result := InsertSpacing(fragments, StyleDisplay, 18)
+	result := InsertSpacing(fragments, DisplayStyle, 18)
 
 	// Should have: Open, Ord = 2 items (no space between)
 	if len(result) != 2 {
@@ -170,10 +170,10 @@ func TestMathStyleScaledSize(t *testing.T) {
 		style MathStyle
 		want  float64
 	}{
-		{StyleDisplay, 1.0},
-		{StyleText, 1.0},
-		{StyleScript, 0.7},
-		{StyleScriptScript, 0.5},
+		{DisplayStyle, 1.0},
+		{TextStyle, 1.0},
+		{ScriptStyle, 0.7},
+		{ScriptScriptStyle, 0.5},
 	}
 
 	for _, tt := range tests {
@@ -185,12 +185,12 @@ func TestMathStyleScaledSize(t *testing.T) {
 
 func TestGetSpacingInvalidClass(t *testing.T) {
 	// Test with out-of-range class values
-	got := GetSpacing(MathClass(-1), ClassOrd, StyleDisplay)
+	got := GetSpacing(MathClass(-1), ClassOrd, DisplayStyle)
 	if got != SpaceNone {
 		t.Errorf("GetSpacing(-1, Ord) = %v, want SpaceNone", got)
 	}
 
-	got = GetSpacing(ClassOrd, MathClass(100), StyleDisplay)
+	got = GetSpacing(ClassOrd, MathClass(100), DisplayStyle)
 	if got != SpaceNone {
 		t.Errorf("GetSpacing(Ord, 100) = %v, want SpaceNone", got)
 	}

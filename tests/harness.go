@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/boergens/gotypst/eval"
 	"github.com/boergens/gotypst/syntax"
 )
 
@@ -241,9 +242,20 @@ func (r *TestRunner) RunTest(tc *TestCase) *TestResult {
 	collectTokens(root, &tokens, &offset)
 	result.Tokens = tokens
 
-	// Collect errors from the parse tree
+	// Collect parse errors from the parse tree
 	for _, err := range root.Errors() {
 		result.Errors = append(result.Errors, err.Message)
+	}
+
+	// If there are no expected errors and no parse errors, try to evaluate
+	// If there are expected errors and we have parse errors, skip evaluation
+	// as the parse errors might be what we're looking for
+	shouldEvaluate := len(root.Errors()) == 0 || len(tc.Errors) > 0
+
+	if shouldEvaluate && len(root.Errors()) == 0 {
+		// Evaluate the code to catch runtime errors
+		evalErrors := evaluateTestCode(root, tc.Code)
+		result.Errors = append(result.Errors, evalErrors...)
 	}
 
 	// Validate expected errors
@@ -276,6 +288,127 @@ func (r *TestRunner) RunTest(tc *TestCase) *TestResult {
 	}
 
 	return result
+}
+
+// evaluateTestCode evaluates the parsed code and returns any runtime errors.
+func evaluateTestCode(root *syntax.SyntaxNode, code string) []string {
+	var errors []string
+
+	// Create a test world
+	world := NewTestWorld()
+
+	// Create the evaluation engine
+	engine := eval.NewEngine(world)
+
+	// Create VM for evaluation
+	scopes := eval.NewScopes(world.Library())
+	ctx := eval.NewContext()
+	vm := eval.NewVm(engine, ctx, scopes, root.Span())
+
+	// Get the markup node
+	markup := syntax.MarkupNodeFromNode(root)
+	if markup == nil {
+		return errors
+	}
+
+	// Evaluate all expressions in the markup
+	for _, expr := range markup.Exprs() {
+		_, err := eval.EvalExpr(vm, expr)
+		if err != nil {
+			errors = append(errors, err.Error())
+		}
+		if vm.HasFlow() {
+			break
+		}
+	}
+
+	return errors
+}
+
+// TestWorld is a minimal World implementation for test evaluation.
+type TestWorld struct {
+	library *eval.Scope
+}
+
+// NewTestWorld creates a new test world with the test library.
+func NewTestWorld() *TestWorld {
+	lib := eval.Library()
+	registerTestFunctions(lib)
+	return &TestWorld{library: lib}
+}
+
+func (w *TestWorld) Library() *eval.Scope {
+	return w.library
+}
+
+func (w *TestWorld) MainFile() eval.FileID {
+	return eval.FileID{Path: "test.typ"}
+}
+
+func (w *TestWorld) Source(id eval.FileID) (*syntax.Source, error) {
+	return nil, fmt.Errorf("no source available in test world")
+}
+
+func (w *TestWorld) File(id eval.FileID) ([]byte, error) {
+	return nil, fmt.Errorf("no files available in test world")
+}
+
+func (w *TestWorld) Today(offset *int) eval.Date {
+	return eval.Date{Year: 2024, Month: 1, Day: 1}
+}
+
+// registerTestFunctions adds the test function to the library scope.
+func registerTestFunctions(scope *eval.Scope) {
+	// Register the test function that compares two values for equality
+	testNative := eval.NativeFunc{
+		Func: func(vm *eval.Vm, args *eval.Args) (eval.Value, error) {
+			actualSpanned := args.Eat()
+			if actualSpanned == nil {
+				return nil, fmt.Errorf("test: missing first argument")
+			}
+			expectedSpanned := args.Eat()
+			if expectedSpanned == nil {
+				return nil, fmt.Errorf("test: missing second argument")
+			}
+
+			actual := actualSpanned.V
+			expected := expectedSpanned.V
+
+			if !eval.Equal(actual, expected) {
+				return nil, &TestAssertionError{
+					Actual:   actual,
+					Expected: expected,
+				}
+			}
+			return eval.None, nil
+		},
+		Info: &eval.FuncInfo{
+			Name: "test",
+			Params: []eval.ParamInfo{
+				{Name: "actual"},
+				{Name: "expected"},
+			},
+		},
+	}
+	testName := "test"
+	testFunc := eval.FuncValue{
+		Func: &eval.Func{
+			Name: &testName,
+			Span: syntax.Detached(),
+			Repr: testNative,
+		},
+	}
+	scope.Define("test", testFunc, syntax.Detached())
+}
+
+// TestAssertionError is returned when a test assertion fails.
+type TestAssertionError struct {
+	Actual   eval.Value
+	Expected eval.Value
+}
+
+func (e *TestAssertionError) Error() string {
+	return fmt.Sprintf("assertion failed: expected %v, got %v", e.Expected, e.Actual)
 }
 
 // collectTokens recursively collects leaf tokens from a syntax tree.

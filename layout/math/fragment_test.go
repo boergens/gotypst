@@ -171,7 +171,7 @@ func TestFrameFragmentWithItems(t *testing.T) {
 		Size:      layout.Size{Width: 30, Height: 20},
 		Baseline:  12,
 		MathClass: ClassInner,
-		Items: []FrameItem{
+		Items: []FragmentItem{
 			{Pos: layout.Point{X: 0, Y: 0}, Fragment: inner},
 		},
 	}

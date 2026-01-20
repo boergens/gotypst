@@ -141,6 +141,25 @@ func (style MathStyle) ScriptStyle() MathStyle {
 	}
 }
 
+// IsCramped returns true if the style is cramped (reduced spacing).
+func (style MathStyle) IsCramped() bool {
+	return false // For now, all styles are non-cramped
+}
+
+// ScaledSize returns the font size multiplier for this style.
+func (style MathStyle) ScaledSize() float64 {
+	switch style {
+	case DisplayStyle, TextStyle:
+		return 1.0
+	case ScriptStyle:
+		return 0.7 // Typical script size ratio
+	case ScriptScriptStyle:
+		return 0.5 // Typical script-script size ratio
+	default:
+		return 1.0
+	}
+}
+
 // MathConstants contains typographic constants for math layout.
 // These values are based on traditional math typography conventions.
 type MathConstants struct {

@@ -852,6 +852,8 @@ func getBuiltinMethod(target Value, name string, span syntax.Span) Value {
 	switch t := target.(type) {
 	case StrValue:
 		return GetStrMethod(t, name, span)
+	case ArrayValue:
+		return GetArrayMethod(t, name, span)
 	}
 	return nil
 }
