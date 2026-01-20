@@ -55,6 +55,10 @@ type Cell struct {
 	Stroke Sides[*Stroke]
 	// Breakable indicates if this cell can break across regions.
 	Breakable bool
+	// Align holds the horizontal and vertical alignment for cell content.
+	// X is horizontal (start=left, center, end=right).
+	// Y is vertical (start=top, center=middle, end=bottom).
+	Align flow.Axes[flow.FixedAlignment]
 }
 
 // Entry represents a single slot in the resolved grid.

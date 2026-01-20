@@ -474,14 +474,53 @@ func (gl *GridLayouter) layoutCell(cell *Cell, dx, dy, height layout.Abs) error 
 	}
 
 	// TODO: Actually layout the cell content into the region.
+	// When content is laid out, use alignContentInCell to position it.
 	// For now, we just track the position.
 
-	// Store the cell's locator for reference.
-	gl.CellLocators[Axes[int]{X: cell.X, Y: cell.Y}] = nil
-
-	_ = width // Will be used when actually laying out content
+	// Store the cell's locator for reference, including alignment info.
+	gl.CellLocators[Axes[int]{X: cell.X, Y: cell.Y}] = &CellLayout{
+		X:      dx,
+		Y:      dy,
+		Width:  width,
+		Height: height,
+		Align:  cell.Align,
+	}
 
 	return nil
+}
+
+// CellLayout stores the layout information for a cell.
+type CellLayout struct {
+	// X is the horizontal position of the cell.
+	X layout.Abs
+	// Y is the vertical position of the cell.
+	Y layout.Abs
+	// Width is the cell's width.
+	Width layout.Abs
+	// Height is the cell's height.
+	Height layout.Abs
+	// Align is the cell's content alignment.
+	Align flow.Axes[flow.FixedAlignment]
+}
+
+// AlignContentInCell calculates the position offset for content within a cell
+// based on the cell's alignment settings and the content's actual size.
+func AlignContentInCell(cellWidth, cellHeight, contentWidth, contentHeight layout.Abs, align flow.Axes[flow.FixedAlignment]) layout.Point {
+	// Calculate free space in each dimension.
+	freeX := cellWidth - contentWidth
+	if freeX < 0 {
+		freeX = 0
+	}
+	freeY := cellHeight - contentHeight
+	if freeY < 0 {
+		freeY = 0
+	}
+
+	// Use the alignment to determine the offset.
+	return layout.Point{
+		X: align.X.Position(freeX),
+		Y: align.Y.Position(freeY),
+	}
 }
 
 // registerRowspan registers a multi-row cell for tracking.

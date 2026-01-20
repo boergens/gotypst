@@ -316,3 +316,139 @@ func TestGrid_EntryAt(t *testing.T) {
 		t.Error("expected nil for out of bounds y")
 	}
 }
+
+func TestAlignContentInCell_Horizontal(t *testing.T) {
+	tests := []struct {
+		name      string
+		cellW     layout.Abs
+		contentW  layout.Abs
+		alignX    flow.FixedAlignment
+		expectedX layout.Abs
+	}{
+		{"start alignment", 100, 60, flow.FixedAlignStart, 0},
+		{"center alignment", 100, 60, flow.FixedAlignCenter, 20},
+		{"end alignment", 100, 60, flow.FixedAlignEnd, 40},
+		{"content equals cell", 100, 100, flow.FixedAlignCenter, 0},
+		{"content larger than cell", 100, 120, flow.FixedAlignEnd, 0}, // No negative offset
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			align := flow.Axes[flow.FixedAlignment]{X: tt.alignX, Y: flow.FixedAlignStart}
+			pos := AlignContentInCell(tt.cellW, 100, tt.contentW, 50, align)
+			if pos.X != tt.expectedX {
+				t.Errorf("expected X offset %v, got %v", tt.expectedX, pos.X)
+			}
+		})
+	}
+}
+
+func TestAlignContentInCell_Vertical(t *testing.T) {
+	tests := []struct {
+		name      string
+		cellH     layout.Abs
+		contentH  layout.Abs
+		alignY    flow.FixedAlignment
+		expectedY layout.Abs
+	}{
+		{"top alignment", 100, 40, flow.FixedAlignStart, 0},
+		{"middle alignment", 100, 40, flow.FixedAlignCenter, 30},
+		{"bottom alignment", 100, 40, flow.FixedAlignEnd, 60},
+		{"content equals cell", 100, 100, flow.FixedAlignCenter, 0},
+		{"content larger than cell", 100, 120, flow.FixedAlignEnd, 0}, // No negative offset
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			align := flow.Axes[flow.FixedAlignment]{X: flow.FixedAlignStart, Y: tt.alignY}
+			pos := AlignContentInCell(100, tt.cellH, 50, tt.contentH, align)
+			if pos.Y != tt.expectedY {
+				t.Errorf("expected Y offset %v, got %v", tt.expectedY, pos.Y)
+			}
+		})
+	}
+}
+
+func TestAlignContentInCell_Combined(t *testing.T) {
+	// Test bottom-right alignment
+	align := flow.Axes[flow.FixedAlignment]{
+		X: flow.FixedAlignEnd,
+		Y: flow.FixedAlignEnd,
+	}
+	pos := AlignContentInCell(100, 80, 40, 30, align)
+
+	if pos.X != 60 {
+		t.Errorf("expected X offset 60 for right alignment, got %v", pos.X)
+	}
+	if pos.Y != 50 {
+		t.Errorf("expected Y offset 50 for bottom alignment, got %v", pos.Y)
+	}
+
+	// Test center-center alignment
+	align = flow.Axes[flow.FixedAlignment]{
+		X: flow.FixedAlignCenter,
+		Y: flow.FixedAlignCenter,
+	}
+	pos = AlignContentInCell(100, 80, 40, 30, align)
+
+	if pos.X != 30 {
+		t.Errorf("expected X offset 30 for center alignment, got %v", pos.X)
+	}
+	if pos.Y != 25 {
+		t.Errorf("expected Y offset 25 for middle alignment, got %v", pos.Y)
+	}
+}
+
+func TestCellAlignment_StoredInLayout(t *testing.T) {
+	// Create a cell with specific alignment
+	cell := &Cell{
+		X:       0,
+		Y:       0,
+		Colspan: 1,
+		Rowspan: 1,
+		Align: flow.Axes[flow.FixedAlignment]{
+			X: flow.FixedAlignCenter,
+			Y: flow.FixedAlignEnd,
+		},
+	}
+
+	grid := &Grid{
+		Cols:     []Sizing{SizingRel{Abs: 100}},
+		Rows:     []Sizing{SizingRel{Abs: 50}},
+		Entries:  []Entry{EntryCell{Cell: cell}},
+		ColCount: 1,
+		RowCount: 1,
+	}
+
+	regions := &flow.Regions{
+		Size:   layout.Size{Width: 200, Height: 300},
+		Full:   layout.Size{Width: 200, Height: 300},
+		Expand: flow.Axes[bool]{X: false, Y: false},
+	}
+
+	gl := NewGridLayouter(nil, grid, regions, nil, false)
+
+	// Layout the cell
+	err := gl.layoutCell(cell, 0, 0, 50)
+	if err != nil {
+		t.Fatalf("layoutCell failed: %v", err)
+	}
+
+	// Check that the alignment was stored
+	locator := gl.CellLocators[Axes[int]{X: 0, Y: 0}]
+	if locator == nil {
+		t.Fatal("expected cell locator to be stored")
+	}
+
+	cellLayout, ok := locator.(*CellLayout)
+	if !ok {
+		t.Fatal("expected CellLayout type")
+	}
+
+	if cellLayout.Align.X != flow.FixedAlignCenter {
+		t.Errorf("expected X alignment to be Center, got %v", cellLayout.Align.X)
+	}
+	if cellLayout.Align.Y != flow.FixedAlignEnd {
+		t.Errorf("expected Y alignment to be End, got %v", cellLayout.Align.Y)
+	}
+}
