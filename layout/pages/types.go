@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"github.com/boergens/gotypst/eval"
 	"github.com/boergens/gotypst/layout"
 )
 
@@ -206,12 +207,7 @@ type Numbering struct {
 
 // Content represents document content.
 type Content struct {
-	Elements []ContentElement
-}
-
-// ContentElement is a marker interface for content elements.
-type ContentElement interface {
-	isContentElement()
+	Elements []eval.ContentElement
 }
 
 // Sides represents values for all four sides.
@@ -339,8 +335,9 @@ func (s *SplitLocator) Relayout() Locator {
 }
 
 // Pair represents a content element with its style chain.
+// Element can be any content element type (from eval or pages package).
 type Pair struct {
-	Element ContentElement
+	Element interface{}
 	Styles  StyleChain
 }
 
