@@ -115,6 +115,8 @@ func isInlineElement(elem eval.ContentElement) bool {
 	switch e := elem.(type) {
 	case *eval.TextElement:
 		return true
+	case *eval.SpaceElement:
+		return true
 	case *eval.StrongElement:
 		return true
 	case *eval.EmphElement:
