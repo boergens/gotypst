@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/boergens/gotypst/font"
 	"github.com/boergens/gotypst/syntax"
 )
 
@@ -18,6 +19,7 @@ import (
 //   - Caching parsed sources and raw file bytes
 //   - Resolving file paths relative to a project root
 //   - Providing the current date for date functions
+//   - Loading and managing fonts
 type FileWorld struct {
 	// root is the project root directory (absolute path).
 	root string
@@ -27,6 +29,9 @@ type FileWorld struct {
 
 	// library is the standard library scope.
 	library *Scope
+
+	// fontBook manages loaded fonts.
+	fontBook *font.FontBook
 
 	// sourceCache caches parsed sources by file path.
 	sourceCache map[string]*syntax.Source
@@ -63,6 +68,25 @@ func WithLibrary(lib *Scope) FileWorldOption {
 func WithPackageResolver(resolver PackageResolver) FileWorldOption {
 	return func(w *FileWorld) {
 		w.packageResolver = resolver
+	}
+}
+
+// WithFontBook sets the font book for the world.
+// If not set, system fonts will be loaded automatically.
+func WithFontBook(book *font.FontBook) FileWorldOption {
+	return func(w *FileWorld) {
+		w.fontBook = book
+	}
+}
+
+// WithFontDirs loads fonts from the specified directories.
+func WithFontDirs(dirs ...string) FileWorldOption {
+	return func(w *FileWorld) {
+		fonts, _ := font.DiscoverFonts(dirs)
+		if w.fontBook == nil {
+			w.fontBook = font.NewFontBook()
+		}
+		w.fontBook.Add(fonts...)
 	}
 }
 
@@ -115,6 +139,15 @@ func NewFileWorld(root string, mainPath string, opts ...FileWorldOption) (*FileW
 
 	for _, opt := range opts {
 		opt(w)
+	}
+
+	// Load system fonts if no font book was provided
+	if w.fontBook == nil {
+		w.fontBook, _ = font.SystemFontBook()
+		if w.fontBook == nil {
+			// Fallback to empty font book
+			w.fontBook = font.NewFontBook()
+		}
 	}
 
 	return w, nil
@@ -197,6 +230,26 @@ func (w *FileWorld) File(id FileID) ([]byte, error) {
 	w.mu.Unlock()
 
 	return data, nil
+}
+
+// Font returns the font at the given index.
+// Returns an error if the index is out of bounds.
+func (w *FileWorld) Font(index int) (*font.Font, error) {
+	f := w.fontBook.Font(index)
+	if f == nil {
+		return nil, fmt.Errorf("font index out of bounds: %d", index)
+	}
+	return f, nil
+}
+
+// FontCount returns the number of available fonts.
+func (w *FileWorld) FontCount() int {
+	return w.fontBook.Len()
+}
+
+// FontBook returns the font book for direct font access.
+func (w *FileWorld) FontBook() *font.FontBook {
+	return w.fontBook
 }
 
 // Today returns the current date, optionally adjusted by an offset.
