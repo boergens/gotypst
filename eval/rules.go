@@ -403,6 +403,11 @@ func castToShowableSelector(val Value, expr syntax.Expr) (*ShowableSelector, err
 			Selector: TextSelector{Text: string(v)},
 		}, nil
 
+	case RegexValue:
+		return &ShowableSelector{
+			Selector: TextSelector{Text: v.Pattern, IsRegex: true},
+		}, nil
+
 	case TypeValue:
 		// Type as element selector
 		return &ShowableSelector{
@@ -411,7 +416,7 @@ func castToShowableSelector(val Value, expr syntax.Expr) (*ShowableSelector, err
 
 	default:
 		return nil, &TypeMismatchError{
-			Expected: "selector (function, label, string, or type)",
+			Expected: "selector (function, label, string, regex, or type)",
 			Got:      val.Type().String(),
 			Span:     span,
 		}
