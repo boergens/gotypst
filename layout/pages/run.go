@@ -89,23 +89,26 @@ func layoutPageRunImpl(engine *Engine, children []Pair, locator Locator, initial
 			Height: inner.Size.Height + margin.Top + margin.Bottom,
 		}
 
-		headerFrame := layoutMarginal(engine, header, headerSize, splitLocator)
-		footerFrame := layoutMarginal(engine, footer, footerSize, splitLocator)
-		backgroundFrame := layoutMarginal(engine, background, fullSize, splitLocator)
-		foregroundFrame := layoutMarginal(engine, foreground, fullSize, splitLocator)
+		// Layout static marginals (background/foreground) now
+		backgroundFrame := layoutMarginal(engine, background, fullSize, splitLocator, 0)
+		foregroundFrame := layoutMarginal(engine, foreground, fullSize, splitLocator, 0)
 
+		// Store header/footer content for deferred layout in Finalize
+		// (they need the page number for running content)
 		layouted = append(layouted, LayoutedPage{
-			Inner:      inner,
-			Fill:       fill,
-			Numbering:  numbering,
-			Supplement: supplement,
-			Header:     headerFrame,
-			Footer:     footerFrame,
-			Background: backgroundFrame,
-			Foreground: foregroundFrame,
-			Margin:     margin,
-			Binding:    binding,
-			TwoSided:   twoSided,
+			Inner:         inner,
+			Fill:          fill,
+			Numbering:     numbering,
+			Supplement:    supplement,
+			HeaderContent: header,
+			FooterContent: footer,
+			HeaderSize:    headerSize,
+			FooterSize:    footerSize,
+			Background:    backgroundFrame,
+			Foreground:    foregroundFrame,
+			Margin:        margin,
+			Binding:       binding,
+			TwoSided:      twoSided,
 		})
 	}
 
@@ -290,15 +293,25 @@ func resolveHeaderFooter(styles StyleChain, numbering *Numbering) (*Content, *Co
 	if numbering != nil {
 		numberAlign := styles.Get("page.number-align")
 		if numberAlign == "top" && headerContent == nil {
-			// Create numbering content for header
-			// TODO: Implement numbering content creation
+			// Create numbering content for header (centered by default)
+			headerContent = createNumberingContent(numbering.Pattern, layout.AlignCenter)
 		} else if footerContent == nil {
-			// Create numbering content for footer (default)
-			// TODO: Implement numbering content creation
+			// Create numbering content for footer (default, centered)
+			footerContent = createNumberingContent(numbering.Pattern, layout.AlignCenter)
 		}
 	}
 
 	return headerContent, footerContent
+}
+
+// createNumberingContent creates content with a page number element.
+func createNumberingContent(pattern string, align layout.Alignment) *Content {
+	numberElem := &NumberingElem{Pattern: pattern}
+	alignElem := &AlignElem{
+		Align: align,
+		Body:  Content{Elements: []ContentElement{numberElem}},
+	}
+	return &Content{Elements: []ContentElement{alignElem}}
 }
 
 func isFinite(v layout.Abs) bool {
@@ -321,9 +334,15 @@ func layoutFlow(engine *Engine, children []Pair, locator *SplitLocator, styles S
 	for _, pair := range children {
 		// Check if this is a text element
 		if textElem, ok := pair.Element.(*eval.TextElement); ok {
+			// Create a placeholder TextItem with estimated size
+			// TODO: Proper text shaping with glyphs when inline module is ready
+			textWidth := estimateTextWidth(textElem.Text)
 			frame.Push(
 				layout.Point{X: 0, Y: y},
-				TextItem{Text: textElem.Text, FontSize: fontSize},
+				TextItem{
+					Glyphs: nil, // Would be filled by text shaping
+					Size:   layout.Size{Width: textWidth, Height: fontSize},
+				},
 			)
 			y += fontSize * 1.2 // Simple line spacing
 		}
@@ -333,12 +352,184 @@ func layoutFlow(engine *Engine, children []Pair, locator *SplitLocator, styles S
 	return []Frame{frame}, nil
 }
 
-// layoutMarginal lays out a marginal (header, footer, etc.)
-func layoutMarginal(engine *Engine, content *Content, area layout.Size, locator *SplitLocator) *Frame {
+// layoutMarginal lays out a marginal (header, footer, background, foreground).
+// For headers/footers with running content, pass the page number for formatting.
+// For static content like background/foreground, pass 0 for pageNum.
+func layoutMarginal(engine *Engine, content *Content, area layout.Size, locator *SplitLocator, pageNum int) *Frame {
 	if content == nil {
 		return nil
 	}
-	// TODO: Layout the marginal content
+
 	frame := Frame{Size: area}
+
+	// Layout each content element
+	for _, elem := range content.Elements {
+		layoutContentElement(&frame, elem, area, pageNum)
+	}
+
 	return &frame
+}
+
+// layoutContentElement lays out a single content element into a frame.
+func layoutContentElement(frame *Frame, elem ContentElement, area layout.Size, pageNum int) {
+	switch e := elem.(type) {
+	case *TextElem:
+		// Create a simple text item
+		// For proper text rendering, we'd use the inline shaping module
+		// For now, create a placeholder with estimated size
+		textItem := TextItem{
+			Glyphs: nil, // Would be filled by text shaping
+			Size:   layout.Size{Width: estimateTextWidth(e.Text), Height: 12}, // Placeholder
+		}
+		// Center the text vertically in the area
+		y := (area.Height - textItem.Size.Height) / 2
+		frame.Push(layout.Point{X: 0, Y: y}, textItem)
+
+	case *NumberingElem:
+		// Format the page number according to the pattern
+		text := formatPageNumber(pageNum, e.Pattern)
+		textItem := TextItem{
+			Glyphs: nil,
+			Size:   layout.Size{Width: estimateTextWidth(text), Height: 12},
+		}
+		y := (area.Height - textItem.Size.Height) / 2
+		frame.Push(layout.Point{X: 0, Y: y}, textItem)
+
+	case *AlignElem:
+		// Create a sub-frame for aligned content
+		subFrame := Frame{Size: area}
+		for _, subElem := range e.Body.Elements {
+			layoutContentElement(&subFrame, subElem, area, pageNum)
+		}
+		// Calculate content width and position based on alignment
+		contentWidth := calculateContentWidth(&subFrame)
+		var x layout.Abs
+		switch e.Align {
+		case layout.AlignCenter:
+			x = (area.Width - contentWidth) / 2
+		case layout.AlignEnd:
+			x = area.Width - contentWidth
+		default: // AlignStart
+			x = 0
+		}
+		// Reposition items with alignment offset
+		for i := range subFrame.Items {
+			subFrame.Items[i].Pos.X += x
+		}
+		frame.PushMultiple(subFrame.Items)
+
+	case *SpaceElem:
+		// Space doesn't add visual items, just affects positioning
+		// This is handled by the alignment logic
+	}
+}
+
+// estimateTextWidth provides a rough estimate of text width.
+// In a real implementation, this would use font metrics.
+func estimateTextWidth(text string) layout.Abs {
+	// Rough estimate: ~7 points per character at 12pt font
+	return layout.Abs(len(text) * 7)
+}
+
+// formatPageNumber formats a page number according to a pattern.
+func formatPageNumber(num int, pattern string) string {
+	switch pattern {
+	case "1", "": // Arabic numerals (default)
+		return formatArabic(num)
+	case "i": // Lowercase roman numerals
+		return formatRomanLower(num)
+	case "I": // Uppercase roman numerals
+		return formatRomanUpper(num)
+	case "a": // Lowercase letters
+		return formatLetterLower(num)
+	case "A": // Uppercase letters
+		return formatLetterUpper(num)
+	default:
+		return formatArabic(num)
+	}
+}
+
+// formatArabic formats a number as Arabic numerals.
+func formatArabic(num int) string {
+	if num <= 0 {
+		return "0"
+	}
+	result := ""
+	for num > 0 {
+		result = string(rune('0'+num%10)) + result
+		num /= 10
+	}
+	return result
+}
+
+// formatRomanLower formats a number as lowercase Roman numerals.
+func formatRomanLower(num int) string {
+	return formatRoman(num, false)
+}
+
+// formatRomanUpper formats a number as uppercase Roman numerals.
+func formatRomanUpper(num int) string {
+	return formatRoman(num, true)
+}
+
+// formatRoman formats a number as Roman numerals.
+func formatRoman(num int, upper bool) string {
+	if num <= 0 || num > 3999 {
+		return formatArabic(num)
+	}
+	values := []int{1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1}
+	symbols := []string{"m", "cm", "d", "cd", "c", "xc", "l", "xl", "x", "ix", "v", "iv", "i"}
+	if upper {
+		symbols = []string{"M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"}
+	}
+	result := ""
+	for i, v := range values {
+		for num >= v {
+			result += symbols[i]
+			num -= v
+		}
+	}
+	return result
+}
+
+// formatLetterLower formats a number as lowercase letters (a, b, ..., z, aa, ab, ...).
+func formatLetterLower(num int) string {
+	return formatLetter(num, 'a')
+}
+
+// formatLetterUpper formats a number as uppercase letters (A, B, ..., Z, AA, AB, ...).
+func formatLetterUpper(num int) string {
+	return formatLetter(num, 'A')
+}
+
+// formatLetter formats a number as letters.
+func formatLetter(num int, base rune) string {
+	if num <= 0 {
+		return string(base)
+	}
+	result := ""
+	for num > 0 {
+		num-- // Convert to 0-indexed
+		result = string(base+rune(num%26)) + result
+		num /= 26
+	}
+	return result
+}
+
+// calculateContentWidth calculates the total width of content in a frame.
+func calculateContentWidth(frame *Frame) layout.Abs {
+	var maxWidth layout.Abs
+	for _, item := range frame.Items {
+		var itemWidth layout.Abs
+		switch it := item.Item.(type) {
+		case TextItem:
+			itemWidth = item.Pos.X + it.Size.Width
+		case GroupItem:
+			itemWidth = item.Pos.X + it.Frame.Size.Width
+		}
+		if itemWidth > maxWidth {
+			maxWidth = itemWidth
+		}
+	}
+	return maxWidth
 }

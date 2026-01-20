@@ -5,6 +5,9 @@ import (
 	"github.com/boergens/gotypst/layout"
 )
 
+// ContentElement is a type alias for eval.ContentElement.
+type ContentElement = eval.ContentElement
+
 // PagedDocument represents a fully laid out document.
 type PagedDocument struct {
 	// Pages contains the laid out pages.
@@ -105,17 +108,6 @@ type TagItem struct {
 
 func (TagItem) isFrameItem() {}
 
-// TextItem represents text content for rendering.
-// This is a simplified item for direct text rendering.
-type TextItem struct {
-	// Text is the text content to render.
-	Text string
-	// FontSize is the font size in points.
-	FontSize layout.Abs
-}
-
-func (TextItem) isFrameItem() {}
-
 // ImageItem represents an embedded image.
 type ImageItem struct {
 	// Image contains the image data and metadata.
@@ -125,6 +117,30 @@ type ImageItem struct {
 }
 
 func (ImageItem) isFrameItem() {}
+
+// TextItem represents shaped text in a frame.
+type TextItem struct {
+	// Glyphs contains the shaped glyph data.
+	Glyphs []Glyph
+	// Size is the bounding box size.
+	Size layout.Size
+}
+
+func (TextItem) isFrameItem() {}
+
+// Glyph represents a positioned glyph in a text run.
+type Glyph struct {
+	// ID is the glyph index in the font.
+	ID uint16
+	// XAdvance is the horizontal advance.
+	XAdvance layout.Abs
+	// XOffset is the horizontal offset.
+	XOffset layout.Abs
+	// YOffset is the vertical offset.
+	YOffset layout.Abs
+	// Range is the byte range in the source text.
+	Range [2]int
+}
 
 // Image represents image data for embedding.
 type Image struct {
@@ -259,6 +275,29 @@ type CounterUpdateElem struct {
 
 func (CounterUpdateElem) isTagElement() {}
 
+// CounterUpdateItem represents a counter update in a frame.
+// This is used for running content like page numbering updates.
+type CounterUpdateItem struct {
+	// Counter identifies which counter to update ("page", "heading", etc.).
+	Counter string
+	// UpdateKind specifies the type of update (step, update to value, etc.).
+	UpdateKind CounterUpdateKind
+	// Value is the new value for absolute updates (used with CounterUpdateKindSet).
+	Value int
+}
+
+func (CounterUpdateItem) isFrameItem() {}
+
+// CounterUpdateKind specifies the type of counter update.
+type CounterUpdateKind int
+
+const (
+	// CounterUpdateKindStep advances the counter by 1.
+	CounterUpdateKindStep CounterUpdateKind = iota
+	// CounterUpdateKindSet sets the counter to an absolute value.
+	CounterUpdateKindSet
+)
+
 // Location identifies an element location for introspection.
 type Location uint64
 
@@ -283,6 +322,41 @@ type Numbering struct {
 type Content struct {
 	Elements []eval.ContentElement
 }
+
+// TextElem represents text content.
+type TextElem struct {
+	// Text is the text string.
+	Text string
+}
+
+func (*TextElem) IsContentElement() {}
+
+// SpaceElem represents horizontal spacing.
+type SpaceElem struct {
+	// Width is the spacing amount.
+	Width layout.Abs
+}
+
+func (*SpaceElem) IsContentElement() {}
+
+// AlignElem represents alignment for content.
+type AlignElem struct {
+	// Align specifies the horizontal alignment (start, center, end).
+	Align layout.Alignment
+	// Body is the content to align.
+	Body Content
+}
+
+func (*AlignElem) IsContentElement() {}
+
+// NumberingElem represents a page number that will be formatted at layout time.
+// This is used for running content in headers/footers.
+type NumberingElem struct {
+	// Pattern is the numbering pattern (e.g., "1", "i", "I", "a", "A").
+	Pattern string
+}
+
+func (*NumberingElem) IsContentElement() {}
 
 // Sides represents values for all four sides.
 type Sides[T any] struct {
@@ -350,10 +424,14 @@ type LayoutedPage struct {
 	Binding Binding
 	// TwoSided indicates if the document is two-sided.
 	TwoSided bool
-	// Header is the optional header frame.
-	Header *Frame
-	// Footer is the optional footer frame.
-	Footer *Frame
+	// HeaderContent is the optional header content (laid out at finalization).
+	HeaderContent *Content
+	// FooterContent is the optional footer content (laid out at finalization).
+	FooterContent *Content
+	// HeaderSize is the available size for the header.
+	HeaderSize layout.Size
+	// FooterSize is the available size for the footer.
+	FooterSize layout.Size
 	// Background is the optional background frame.
 	Background *Frame
 	// Foreground is the optional foreground frame.
@@ -444,9 +522,13 @@ func (c *ManualPageCounter) Step() {
 
 // Visit processes counter updates from the frame.
 // It recursively walks through all frame items looking for tags that
-// contain page counter updates, and applies those updates to the
-// logical page counter.
+// contain page counter updates or CounterUpdateItem elements, and applies
+// those updates to the logical page counter.
 func (c *ManualPageCounter) Visit(frame *Frame) error {
+	if frame == nil {
+		return nil
+	}
+
 	for _, positioned := range frame.Items {
 		switch item := positioned.Item.(type) {
 		case GroupItem:
@@ -469,6 +551,16 @@ func (c *ManualPageCounter) Visit(frame *Frame) error {
 			}
 			// Apply the update to the logical counter
 			c.logical = elem.Update.Apply(c.logical)
+		case CounterUpdateItem:
+			// Handle direct counter update items (for running content)
+			if item.Counter == "page" {
+				switch item.UpdateKind {
+				case CounterUpdateKindStep:
+					c.logical++
+				case CounterUpdateKindSet:
+					c.logical = item.Value
+				}
+			}
 		}
 	}
 	return nil

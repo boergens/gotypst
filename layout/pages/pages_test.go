@@ -743,7 +743,7 @@ func TestMigrateUnterminatedTags(t *testing.T) {
 // textContentElem is a simple content element for testing
 type textContentElem struct{}
 
-func (*textContentElem) isContentElement() {}
+func (*textContentElem) IsContentElement() {}
 
 // TestCollectWithMixedTags tests collection with complex tag scenarios
 func TestCollectWithMixedTags(t *testing.T) {
@@ -776,5 +776,259 @@ func TestCollectWithMixedTags(t *testing.T) {
 	}
 	if !hasRun {
 		t.Error("Expected at least one RunItem")
+	}
+}
+
+func TestFinalizeWithHeader(t *testing.T) {
+	engine := &Engine{}
+	counter := NewManualPageCounter()
+	tags := []Tag{}
+
+	// Create header with text
+	headerContent := &Content{
+		Elements: []ContentElement{
+			&TextElem{Text: "Chapter 1"},
+		},
+	}
+
+	layouted := LayoutedPage{
+		Inner:         Hard(layout.Size{Width: 500, Height: 700}),
+		Margin:        Sides[layout.Abs]{Left: 50, Top: 50, Right: 50, Bottom: 50},
+		Binding:       BindingLeft,
+		TwoSided:      false,
+		HeaderContent: headerContent,
+		HeaderSize:    layout.Size{Width: 500, Height: 35},
+	}
+
+	page, err := Finalize(engine, counter, &tags, layouted)
+	if err != nil {
+		t.Fatalf("Finalize failed: %v", err)
+	}
+
+	if page == nil {
+		t.Fatal("Expected non-nil page")
+	}
+
+	// Should have items: inner content + header
+	if len(page.Frame.Items) < 2 {
+		t.Errorf("Expected at least 2 items (inner + header), got %d", len(page.Frame.Items))
+	}
+}
+
+func TestFinalizeWithFooter(t *testing.T) {
+	engine := &Engine{}
+	counter := NewManualPageCounter()
+	tags := []Tag{}
+
+	// Create footer with page number
+	footerContent := &Content{
+		Elements: []ContentElement{
+			&AlignElem{
+				Align: layout.AlignCenter,
+				Body: Content{
+					Elements: []ContentElement{
+						&NumberingElem{Pattern: "1"},
+					},
+				},
+			},
+		},
+	}
+
+	layouted := LayoutedPage{
+		Inner:         Hard(layout.Size{Width: 500, Height: 700}),
+		Margin:        Sides[layout.Abs]{Left: 50, Top: 50, Right: 50, Bottom: 50},
+		Binding:       BindingLeft,
+		TwoSided:      false,
+		FooterContent: footerContent,
+		FooterSize:    layout.Size{Width: 500, Height: 35},
+	}
+
+	page, err := Finalize(engine, counter, &tags, layouted)
+	if err != nil {
+		t.Fatalf("Finalize failed: %v", err)
+	}
+
+	if page == nil {
+		t.Fatal("Expected non-nil page")
+	}
+
+	// Page number should be 1
+	if page.Number != 1 {
+		t.Errorf("Page number = %d, want 1", page.Number)
+	}
+}
+
+func TestFormatPageNumber(t *testing.T) {
+	tests := []struct {
+		num     int
+		pattern string
+		want    string
+	}{
+		{1, "1", "1"},
+		{10, "1", "10"},
+		{1, "i", "i"},
+		{4, "i", "iv"},
+		{9, "i", "ix"},
+		{1, "I", "I"},
+		{4, "I", "IV"},
+		{1, "a", "a"},
+		{26, "a", "z"},
+		{27, "a", "aa"},
+		{1, "A", "A"},
+		{26, "A", "Z"},
+	}
+
+	for _, tt := range tests {
+		got := formatPageNumber(tt.num, tt.pattern)
+		if got != tt.want {
+			t.Errorf("formatPageNumber(%d, %q) = %q, want %q", tt.num, tt.pattern, got, tt.want)
+		}
+	}
+}
+
+func TestResolveHeaderFooter(t *testing.T) {
+	// Test with numbering pattern
+	styles := StyleChain{}
+	numbering := &Numbering{Pattern: "1"}
+
+	header, footer := resolveHeaderFooter(styles, numbering)
+
+	// With numbering but no explicit header/footer, footer should be created
+	if footer == nil {
+		t.Error("Expected footer to be created for numbering")
+	}
+
+	// Header should remain nil unless number-align is "top"
+	if header != nil {
+		t.Error("Expected header to be nil for default number alignment")
+	}
+}
+
+func TestResolveHeaderFooterWithTopAlign(t *testing.T) {
+	// Test with numbering pattern and top alignment
+	styles := StyleChain{
+		Styles: map[string]interface{}{
+			"page.number-align": "top",
+		},
+	}
+	numbering := &Numbering{Pattern: "i"}
+
+	header, footer := resolveHeaderFooter(styles, numbering)
+
+	// With top alignment, header should be created
+	if header == nil {
+		t.Error("Expected header to be created for top number alignment")
+	}
+
+	// Footer should not be created when header has numbering
+	if footer != nil {
+		t.Error("Expected footer to be nil when header has numbering")
+	}
+}
+
+func TestCreateNumberingContent(t *testing.T) {
+	content := createNumberingContent("1", layout.AlignCenter)
+
+	if content == nil {
+		t.Fatal("Expected non-nil content")
+	}
+
+	if len(content.Elements) != 1 {
+		t.Fatalf("Expected 1 element, got %d", len(content.Elements))
+	}
+
+	alignElem, ok := content.Elements[0].(*AlignElem)
+	if !ok {
+		t.Fatal("Expected AlignElem")
+	}
+
+	if alignElem.Align != layout.AlignCenter {
+		t.Errorf("Expected center alignment, got %v", alignElem.Align)
+	}
+
+	if len(alignElem.Body.Elements) != 1 {
+		t.Fatalf("Expected 1 body element, got %d", len(alignElem.Body.Elements))
+	}
+
+	numElem, ok := alignElem.Body.Elements[0].(*NumberingElem)
+	if !ok {
+		t.Fatal("Expected NumberingElem in body")
+	}
+
+	if numElem.Pattern != "1" {
+		t.Errorf("Expected pattern '1', got %q", numElem.Pattern)
+	}
+}
+
+func TestManualPageCounterVisitWithCounterUpdateItem(t *testing.T) {
+	counter := NewManualPageCounter()
+
+	// Create a frame with a counter update item
+	frame := Hard(layout.Size{Width: 100, Height: 100})
+	frame.Push(layout.Point{X: 0, Y: 0}, CounterUpdateItem{
+		Counter:    "page",
+		UpdateKind: CounterUpdateKindStep,
+	})
+
+	// Initial logical page is 1
+	if counter.Logical() != 1 {
+		t.Errorf("Initial logical = %d, want 1", counter.Logical())
+	}
+
+	// Visit should process the counter update
+	err := counter.Visit(&frame)
+	if err != nil {
+		t.Fatalf("Visit failed: %v", err)
+	}
+
+	// After visiting, logical page should be 2 (stepped)
+	if counter.Logical() != 2 {
+		t.Errorf("After visit logical = %d, want 2", counter.Logical())
+	}
+}
+
+func TestManualPageCounterVisitSetWithCounterUpdateItem(t *testing.T) {
+	counter := NewManualPageCounter()
+
+	// Create a frame with a counter set
+	frame := Hard(layout.Size{Width: 100, Height: 100})
+	frame.Push(layout.Point{X: 0, Y: 0}, CounterUpdateItem{
+		Counter:    "page",
+		UpdateKind: CounterUpdateKindSet,
+		Value:      10,
+	})
+
+	err := counter.Visit(&frame)
+	if err != nil {
+		t.Fatalf("Visit failed: %v", err)
+	}
+
+	// After visiting, logical page should be set to 10
+	if counter.Logical() != 10 {
+		t.Errorf("After visit logical = %d, want 10", counter.Logical())
+	}
+}
+
+func TestManualPageCounterVisitNestedWithCounterUpdateItem(t *testing.T) {
+	counter := NewManualPageCounter()
+
+	// Create nested frames with counter updates
+	inner := Hard(layout.Size{Width: 50, Height: 50})
+	inner.Push(layout.Point{X: 0, Y: 0}, CounterUpdateItem{
+		Counter:    "page",
+		UpdateKind: CounterUpdateKindStep,
+	})
+
+	outer := Hard(layout.Size{Width: 100, Height: 100})
+	outer.PushFrame(layout.Point{X: 0, Y: 0}, inner)
+
+	err := counter.Visit(&outer)
+	if err != nil {
+		t.Fatalf("Visit failed: %v", err)
+	}
+
+	// Should process nested counter update
+	if counter.Logical() != 2 {
+		t.Errorf("After nested visit logical = %d, want 2", counter.Logical())
 	}
 }

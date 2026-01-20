@@ -216,18 +216,13 @@ func (w *Writer) processFrame(frame *pages.Frame, content *bytes.Buffer, imageRe
 			// Tags don't produce PDF content
 
 		case pages.TextItem:
-			// Render simple text
-			// PDF origin is bottom-left, so we need to flip Y coordinate
-			fontSize := float64(v.FontSize)
-			xPos := float64(x)
-			// Y position needs to account for page height and baseline
-			yPos := float64(frame.Size.Height - y - v.FontSize)
-
-			fmt.Fprintf(content, "BT\n")              // Begin text
-			fmt.Fprintf(content, "/F1 %g Tf\n", fontSize) // Set font and size
-			fmt.Fprintf(content, "%g %g Td\n", xPos, yPos) // Position
-			fmt.Fprintf(content, "(%s) Tj\n", escapeString(v.Text)) // Show text
-			fmt.Fprintf(content, "ET\n")              // End text
+			// Render shaped text (glyphs)
+			// Skip if glyphs are empty (placeholder)
+			// TODO: Implement proper glyph rendering with font metrics
+			if len(v.Glyphs) == 0 {
+				continue
+			}
+			// Glyph rendering will be implemented with font embedding (go-pppz0.4)
 		}
 	}
 	return nil

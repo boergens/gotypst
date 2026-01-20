@@ -95,8 +95,12 @@ func (r *Renderer) renderPagesFrameItem(cs *ContentStream, item pages.FrameItem,
 	case pages.TagItem:
 		// Tags are metadata, not rendered
 	case pages.TextItem:
-		// Render text directly
-		r.renderSimpleText(cs, it.Text, it.FontSize, pos)
+		// Render shaped text
+		// For now, skip rendering if Glyphs is nil (placeholder)
+		// TODO: Implement proper glyph rendering with embedded fonts
+		if it.Glyphs != nil {
+			r.renderGlyphs(cs, it, pos)
+		}
 	}
 }
 
@@ -221,6 +225,18 @@ func (r *Renderer) renderSimpleText(cs *ContentStream, text string, fontSize lay
 	cs.SetTextMatrixPos(pdfX, pdfY)
 	cs.ShowText(text)
 	cs.EndText()
+}
+
+// renderGlyphs renders shaped text (glyphs) at a position.
+// TODO: Implement proper glyph rendering with embedded font support.
+func (r *Renderer) renderGlyphs(cs *ContentStream, item pages.TextItem, pos layout.Point) {
+	if len(item.Glyphs) == 0 {
+		return
+	}
+
+	// For now, glyph rendering requires font metrics work.
+	// This will be implemented as part of go-pppz0.4.
+	// Placeholder: skip rendering until font embedding is complete.
 }
 
 // RenderDecoFrame renders a decoration frame to the content stream.
