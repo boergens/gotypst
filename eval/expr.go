@@ -1896,6 +1896,84 @@ type TermItemElement struct {
 
 func (*TermItemElement) isContentElement() {}
 
+// ListElement represents a bullet list container.
+// This wraps ListItemElements with styling properties.
+type ListElement struct {
+	// Children contains the list items.
+	Children []Content
+	// Marker is the bullet marker content.
+	// If nil, uses default bullet (•).
+	Marker *Content
+	// Indent is the indent of each item's marker (in points).
+	// If nil, uses default (0pt).
+	Indent *float64
+	// BodyIndent is the indent of the item body from the marker (in points).
+	// If nil, uses default (0.5em equivalent).
+	BodyIndent *float64
+	// Spacing is the spacing between list items (in points).
+	// If nil, uses auto spacing.
+	Spacing *float64
+	// Tight indicates whether spacing is reduced for tight lists.
+	// If nil, uses default (true).
+	Tight *bool
+}
+
+func (*ListElement) isContentElement() {}
+
+// EnumElement represents a numbered list container.
+// This wraps EnumItemElements with numbering and styling properties.
+type EnumElement struct {
+	// Children contains the list items.
+	Children []Content
+	// Numbering is the numbering pattern (e.g., "1.", "a)", "(i)").
+	// If nil, uses default ("1.").
+	Numbering *string
+	// Start is the starting number for the list.
+	// If nil, uses default (1).
+	Start *int
+	// Full indicates whether to display full numbering (e.g., "1.1.1").
+	// If nil, uses default (false).
+	Full *bool
+	// Indent is the indent of each item's number (in points).
+	// If nil, uses default (0pt).
+	Indent *float64
+	// BodyIndent is the indent of the item body from the number (in points).
+	// If nil, uses default (0.5em equivalent).
+	BodyIndent *float64
+	// Spacing is the spacing between list items (in points).
+	// If nil, uses auto spacing.
+	Spacing *float64
+	// Tight indicates whether spacing is reduced for tight lists.
+	// If nil, uses default (true).
+	Tight *bool
+}
+
+func (*EnumElement) isContentElement() {}
+
+// TermsElement represents a description/definition list container.
+// This wraps TermItemElements with styling properties.
+type TermsElement struct {
+	// Children contains the term items.
+	Children []Content
+	// Separator is the content between term and description.
+	// If nil, uses default (": ").
+	Separator *Content
+	// Indent is the indent of each item's term (in points).
+	// If nil, uses default (0pt).
+	Indent *float64
+	// HangingIndent is the indent for wrapped description lines (in points).
+	// If nil, uses default (2em equivalent).
+	HangingIndent *float64
+	// Spacing is the spacing between term items (in points).
+	// If nil, uses auto spacing.
+	Spacing *float64
+	// Tight indicates whether spacing is reduced for tight lists.
+	// If nil, uses default (true).
+	Tight *bool
+}
+
+func (*TermsElement) isContentElement() {}
+
 func evalEscape(_ *Vm, e *syntax.EscapeExpr) (Value, error) {
 	// Get the full escape text to handle Unicode escapes
 	text := e.ToUntyped().Text()
