@@ -5,17 +5,37 @@ package eval
 // ----------------------------------------------------------------------------
 
 // ListElement represents a bullet list containing list items.
-// This is created by grouping consecutive ListItemElements.
+// This is created by grouping consecutive ListItemElements or by the list() function.
 type ListElement struct {
+	// Items contains the list items.
 	Items []*ListItemElement
+	// Tight indicates whether items should have tight spacing (no paragraph breaks).
+	// If nil, defaults to true.
+	Tight *bool
+	// Marker is the content to use as the list marker.
+	// If nil, defaults to "•".
+	Marker *Content
 }
 
 func (*ListElement) IsContentElement() {}
 
 // EnumElement represents an enumerated (numbered) list containing enum items.
-// This is created by grouping consecutive EnumItemElements.
+// This is created by grouping consecutive EnumItemElements or by the enum() function.
 type EnumElement struct {
+	// Items contains the enumerated items.
 	Items []*EnumItemElement
+	// Tight indicates whether items should have tight spacing (no paragraph breaks).
+	// If nil, defaults to true.
+	Tight *bool
+	// Numbering is the numbering pattern (e.g., "1.", "a)", "I.").
+	// If nil, defaults to "1.".
+	Numbering *string
+	// Start is the starting number for the enumeration.
+	// If nil, defaults to 1.
+	Start *int
+	// Full indicates whether to display full numbering (e.g., "1.1.1" vs "1").
+	// If nil, defaults to false.
+	Full *bool
 }
 
 func (*EnumElement) IsContentElement() {}

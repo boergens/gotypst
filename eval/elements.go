@@ -738,6 +738,282 @@ func headingNative(vm *Vm, args *Args) (Value, error) {
 }
 
 // ----------------------------------------------------------------------------
+// List Element
+// ----------------------------------------------------------------------------
+
+// ListFunc creates the list element function.
+func ListFunc() *Func {
+	name := "list"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: listNative,
+			Info: &FuncInfo{
+				Name: "list",
+				Params: []ParamInfo{
+					{Name: "tight", Type: TypeBool, Default: True, Named: true},
+					{Name: "marker", Type: TypeContent, Default: None, Named: true},
+					{Name: "children", Type: TypeContent, Named: false, Variadic: true},
+				},
+			},
+		},
+	}
+}
+
+// listNative implements the list() function.
+// Creates a ListElement containing the given items.
+//
+// Arguments:
+//   - tight (named, bool, default: true): Whether items have tight spacing
+//   - marker (named, content, default: none): Custom marker content
+//   - children (positional, variadic, content): The list items
+func listNative(vm *Vm, args *Args) (Value, error) {
+	// Get optional tight argument (default: true)
+	var tight *bool
+	if tightArg := args.Find("tight"); tightArg != nil {
+		if !IsAuto(tightArg.V) && !IsNone(tightArg.V) {
+			tightVal, ok := AsBool(tightArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "bool",
+					Got:      tightArg.V.Type().String(),
+					Span:     tightArg.Span,
+				}
+			}
+			tight = &tightVal
+		}
+	}
+
+	// Get optional marker argument
+	var marker *Content
+	if markerArg := args.Find("marker"); markerArg != nil {
+		if !IsNone(markerArg.V) && !IsAuto(markerArg.V) {
+			if cv, ok := markerArg.V.(ContentValue); ok {
+				marker = &cv.Content
+			} else if s, ok := AsStr(markerArg.V); ok {
+				// Allow string markers for convenience
+				marker = &Content{
+					Elements: []ContentElement{&TextElement{Text: s}},
+				}
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or string",
+					Got:      markerArg.V.Type().String(),
+					Span:     markerArg.Span,
+				}
+			}
+		}
+	}
+
+	// Collect remaining positional arguments as list items
+	var items []*ListItemElement
+	for {
+		childArg := args.Eat()
+		if childArg == nil {
+			break
+		}
+
+		if cv, ok := childArg.V.(ContentValue); ok {
+			// Check if the content contains ListItemElements, otherwise wrap as item
+			hasListItems := false
+			for _, elem := range cv.Content.Elements {
+				if item, ok := elem.(*ListItemElement); ok {
+					items = append(items, item)
+					hasListItems = true
+				}
+			}
+			// If no list items found, treat the entire content as a single item
+			if !hasListItems && len(cv.Content.Elements) > 0 {
+				items = append(items, &ListItemElement{Content: cv.Content})
+			}
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "content",
+				Got:      childArg.V.Type().String(),
+				Span:     childArg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the ListElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{&ListElement{
+			Items:  items,
+			Tight:  tight,
+			Marker: marker,
+		}},
+	}}, nil
+}
+
+// ----------------------------------------------------------------------------
+// Enum Element
+// ----------------------------------------------------------------------------
+
+// EnumFunc creates the enum element function.
+func EnumFunc() *Func {
+	name := "enum"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: enumNative,
+			Info: &FuncInfo{
+				Name: "enum",
+				Params: []ParamInfo{
+					{Name: "tight", Type: TypeBool, Default: True, Named: true},
+					{Name: "numbering", Type: TypeStr, Default: None, Named: true},
+					{Name: "start", Type: TypeInt, Default: Int(1), Named: true},
+					{Name: "full", Type: TypeBool, Default: False, Named: true},
+					{Name: "children", Type: TypeContent, Named: false, Variadic: true},
+				},
+			},
+		},
+	}
+}
+
+// enumNative implements the enum() function.
+// Creates an EnumElement containing the given items.
+//
+// Arguments:
+//   - tight (named, bool, default: true): Whether items have tight spacing
+//   - numbering (named, str, default: none): Numbering pattern (e.g., "1.", "a)", "I.")
+//   - start (named, int, default: 1): Starting number
+//   - full (named, bool, default: false): Whether to display full numbering
+//   - children (positional, variadic, content): The enum items
+func enumNative(vm *Vm, args *Args) (Value, error) {
+	// Get optional tight argument (default: true)
+	var tight *bool
+	if tightArg := args.Find("tight"); tightArg != nil {
+		if !IsAuto(tightArg.V) && !IsNone(tightArg.V) {
+			tightVal, ok := AsBool(tightArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "bool",
+					Got:      tightArg.V.Type().String(),
+					Span:     tightArg.Span,
+				}
+			}
+			tight = &tightVal
+		}
+	}
+
+	// Get optional numbering argument
+	var numbering *string
+	if numberingArg := args.Find("numbering"); numberingArg != nil {
+		if !IsNone(numberingArg.V) && !IsAuto(numberingArg.V) {
+			numStr, ok := AsStr(numberingArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "string",
+					Got:      numberingArg.V.Type().String(),
+					Span:     numberingArg.Span,
+				}
+			}
+			numbering = &numStr
+		}
+	}
+
+	// Get optional start argument (default: 1)
+	var start *int
+	if startArg := args.Find("start"); startArg != nil {
+		if !IsAuto(startArg.V) && !IsNone(startArg.V) {
+			startVal, ok := AsInt(startArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "integer",
+					Got:      startArg.V.Type().String(),
+					Span:     startArg.Span,
+				}
+			}
+			s := int(startVal)
+			start = &s
+		}
+	}
+
+	// Get optional full argument (default: false)
+	var full *bool
+	if fullArg := args.Find("full"); fullArg != nil {
+		if !IsAuto(fullArg.V) && !IsNone(fullArg.V) {
+			fullVal, ok := AsBool(fullArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "bool",
+					Got:      fullArg.V.Type().String(),
+					Span:     fullArg.Span,
+				}
+			}
+			full = &fullVal
+		}
+	}
+
+	// Collect remaining positional arguments as enum items
+	var items []*EnumItemElement
+	itemNum := 1
+	if start != nil {
+		itemNum = *start
+	}
+
+	for {
+		childArg := args.Eat()
+		if childArg == nil {
+			break
+		}
+
+		if cv, ok := childArg.V.(ContentValue); ok {
+			// Check if the content contains EnumItemElements, otherwise wrap as item
+			hasEnumItems := false
+			for _, elem := range cv.Content.Elements {
+				if item, ok := elem.(*EnumItemElement); ok {
+					// Preserve existing item numbers if set, otherwise auto-number
+					if item.Number == 0 {
+						item.Number = itemNum
+						itemNum++
+					}
+					items = append(items, item)
+					hasEnumItems = true
+				}
+			}
+			// If no enum items found, treat the entire content as a single item
+			if !hasEnumItems && len(cv.Content.Elements) > 0 {
+				items = append(items, &EnumItemElement{
+					Number:  itemNum,
+					Content: cv.Content,
+				})
+				itemNum++
+			}
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "content",
+				Got:      childArg.V.Type().String(),
+				Span:     childArg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the EnumElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{&EnumElement{
+			Items:     items,
+			Tight:     tight,
+			Numbering: numbering,
+			Start:     start,
+			Full:      full,
+		}},
+	}}, nil
+}
+
+// ----------------------------------------------------------------------------
 // Library Registration
 // ----------------------------------------------------------------------------
 
@@ -756,6 +1032,10 @@ func RegisterElementFunctions(scope *Scope) {
 	scope.DefineFunc("align", AlignFunc())
 	// Register heading element function
 	scope.DefineFunc("heading", HeadingFunc())
+	// Register list element function
+	scope.DefineFunc("list", ListFunc())
+	// Register enum element function
+	scope.DefineFunc("enum", EnumFunc())
 }
 
 // ElementFunctions returns a map of all element function names to their functions.
@@ -768,5 +1048,7 @@ func ElementFunctions() map[string]*Func {
 		"stack":    StackFunc(),
 		"align":    AlignFunc(),
 		"heading":  HeadingFunc(),
+		"list":     ListFunc(),
+		"enum":     EnumFunc(),
 	}
 }
