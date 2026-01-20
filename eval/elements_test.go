@@ -1313,3 +1313,846 @@ func TestElementFunctionsIncludesStackAndAlign(t *testing.T) {
 		t.Error("expected 'align' in ElementFunctions()")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// List Tests
+// ----------------------------------------------------------------------------
+
+func TestListFunc(t *testing.T) {
+	// Get the list function
+	listFunc := ListFunc()
+
+	if listFunc == nil {
+		t.Fatal("ListFunc() returned nil")
+	}
+
+	if listFunc.Name == nil || *listFunc.Name != "list" {
+		t.Errorf("expected function name 'list', got %v", listFunc.Name)
+	}
+
+	// Verify it's a native function
+	_, ok := listFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Error("expected NativeFunc representation")
+	}
+}
+
+func TestListNativeBasic(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create content children
+	child1 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "First item"}},
+	}}
+	child2 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Second item"}},
+	}}
+
+	// Create args with children
+	args := NewArgs(syntax.Detached())
+	args.Push(child1, syntax.Detached())
+	args.Push(child2, syntax.Detached())
+
+	result, err := listNative(vm, args)
+	if err != nil {
+		t.Fatalf("listNative() error: %v", err)
+	}
+
+	// Verify result is ContentValue
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	// Verify it contains one ListElement
+	if len(content.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(content.Content.Elements))
+	}
+
+	list, ok := content.Content.Elements[0].(*ListElement)
+	if !ok {
+		t.Fatalf("expected *ListElement, got %T", content.Content.Elements[0])
+	}
+
+	// Verify element properties (defaults)
+	if list.Tight != true {
+		t.Errorf("Tight = %v, want true", list.Tight)
+	}
+	if list.Marker != nil {
+		t.Errorf("Marker = %v, want nil", list.Marker)
+	}
+	if list.Indent != nil {
+		t.Errorf("Indent = %v, want nil", list.Indent)
+	}
+	if list.BodyIndent != nil {
+		t.Errorf("BodyIndent = %v, want nil", list.BodyIndent)
+	}
+	if list.Spacing != nil {
+		t.Errorf("Spacing = %v, want nil", list.Spacing)
+	}
+	if len(list.Items) != 2 {
+		t.Errorf("Items length = %d, want 2", len(list.Items))
+	}
+}
+
+func TestListNativeWithTight(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	child := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Item"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("tight", False, syntax.Detached())
+	args.Push(child, syntax.Detached())
+
+	result, err := listNative(vm, args)
+	if err != nil {
+		t.Fatalf("listNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	list := content.Content.Elements[0].(*ListElement)
+
+	if list.Tight != false {
+		t.Errorf("Tight = %v, want false", list.Tight)
+	}
+}
+
+func TestListNativeWithMarker(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	marker := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "→"}},
+	}}
+	child := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Item"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("marker", marker, syntax.Detached())
+	args.Push(child, syntax.Detached())
+
+	result, err := listNative(vm, args)
+	if err != nil {
+		t.Fatalf("listNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	list := content.Content.Elements[0].(*ListElement)
+
+	if list.Marker == nil {
+		t.Error("Marker = nil, want non-nil")
+	} else if len(list.Marker.Elements) != 1 {
+		t.Errorf("Marker elements = %d, want 1", len(list.Marker.Elements))
+	}
+}
+
+func TestListNativeWithIndent(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	child := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Item"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("indent", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
+	args.Push(child, syntax.Detached())
+
+	result, err := listNative(vm, args)
+	if err != nil {
+		t.Fatalf("listNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	list := content.Content.Elements[0].(*ListElement)
+
+	if list.Indent == nil || *list.Indent != 10 {
+		t.Errorf("Indent = %v, want 10", list.Indent)
+	}
+}
+
+func TestListNativeWithBodyIndent(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	child := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Item"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("body-indent", LengthValue{Length: Length{Points: 8}}, syntax.Detached())
+	args.Push(child, syntax.Detached())
+
+	result, err := listNative(vm, args)
+	if err != nil {
+		t.Fatalf("listNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	list := content.Content.Elements[0].(*ListElement)
+
+	if list.BodyIndent == nil || *list.BodyIndent != 8 {
+		t.Errorf("BodyIndent = %v, want 8", list.BodyIndent)
+	}
+}
+
+func TestListNativeWithSpacing(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	child := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Item"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("spacing", LengthValue{Length: Length{Points: 12}}, syntax.Detached())
+	args.Push(child, syntax.Detached())
+
+	result, err := listNative(vm, args)
+	if err != nil {
+		t.Fatalf("listNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	list := content.Content.Elements[0].(*ListElement)
+
+	if list.Spacing == nil || *list.Spacing != 12 {
+		t.Errorf("Spacing = %v, want 12", list.Spacing)
+	}
+}
+
+func TestListNativeWithAllParams(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	marker := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "•"}},
+	}}
+	child1 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "First"}},
+	}}
+	child2 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Second"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("tight", False, syntax.Detached())
+	args.PushNamed("marker", marker, syntax.Detached())
+	args.PushNamed("indent", LengthValue{Length: Length{Points: 5}}, syntax.Detached())
+	args.PushNamed("body-indent", LengthValue{Length: Length{Points: 7}}, syntax.Detached())
+	args.PushNamed("spacing", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
+	args.Push(child1, syntax.Detached())
+	args.Push(child2, syntax.Detached())
+
+	result, err := listNative(vm, args)
+	if err != nil {
+		t.Fatalf("listNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	list := content.Content.Elements[0].(*ListElement)
+
+	if list.Tight != false {
+		t.Errorf("Tight = %v, want false", list.Tight)
+	}
+	if list.Marker == nil {
+		t.Error("Marker = nil, want non-nil")
+	}
+	if list.Indent == nil || *list.Indent != 5 {
+		t.Errorf("Indent = %v, want 5", list.Indent)
+	}
+	if list.BodyIndent == nil || *list.BodyIndent != 7 {
+		t.Errorf("BodyIndent = %v, want 7", list.BodyIndent)
+	}
+	if list.Spacing == nil || *list.Spacing != 10 {
+		t.Errorf("Spacing = %v, want 10", list.Spacing)
+	}
+	if len(list.Items) != 2 {
+		t.Errorf("Items length = %d, want 2", len(list.Items))
+	}
+}
+
+func TestListNativeWrongChildType(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.Push(Str("not content"), syntax.Detached())
+
+	_, err := listNative(vm, args)
+	if err == nil {
+		t.Error("expected error for wrong child type")
+	}
+	if _, ok := err.(*TypeMismatchError); !ok {
+		t.Errorf("expected TypeMismatchError, got %T", err)
+	}
+}
+
+func TestListNativeUnexpectedArg(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("unknown", Str("value"), syntax.Detached())
+
+	_, err := listNative(vm, args)
+	if err == nil {
+		t.Error("expected error for unexpected argument")
+	}
+	if _, ok := err.(*UnexpectedArgumentError); !ok {
+		t.Errorf("expected UnexpectedArgumentError, got %T", err)
+	}
+}
+
+func TestListElement(t *testing.T) {
+	// Test ListElement struct and ContentElement interface
+	indent := 10.0
+	bodyIndent := 8.0
+	spacing := 12.0
+	marker := Content{Elements: []ContentElement{&TextElement{Text: "•"}}}
+
+	elem := &ListElement{
+		Items: []*ListItemElement{
+			{Content: Content{Elements: []ContentElement{&TextElement{Text: "A"}}}},
+			{Content: Content{Elements: []ContentElement{&TextElement{Text: "B"}}}},
+		},
+		Tight:      true,
+		Marker:     &marker,
+		Indent:     &indent,
+		BodyIndent: &bodyIndent,
+		Spacing:    &spacing,
+	}
+
+	if len(elem.Items) != 2 {
+		t.Errorf("Items length = %d, want 2", len(elem.Items))
+	}
+	if elem.Tight != true {
+		t.Errorf("Tight = %v, want true", elem.Tight)
+	}
+	if *elem.Indent != 10.0 {
+		t.Errorf("Indent = %v, want 10.0", *elem.Indent)
+	}
+	if *elem.BodyIndent != 8.0 {
+		t.Errorf("BodyIndent = %v, want 8.0", *elem.BodyIndent)
+	}
+	if *elem.Spacing != 12.0 {
+		t.Errorf("Spacing = %v, want 12.0", *elem.Spacing)
+	}
+
+	// Verify it satisfies ContentElement interface
+	var _ ContentElement = elem
+}
+
+// ----------------------------------------------------------------------------
+// Enum Tests
+// ----------------------------------------------------------------------------
+
+func TestEnumFunc(t *testing.T) {
+	// Get the enum function
+	enumFunc := EnumFunc()
+
+	if enumFunc == nil {
+		t.Fatal("EnumFunc() returned nil")
+	}
+
+	if enumFunc.Name == nil || *enumFunc.Name != "enum" {
+		t.Errorf("expected function name 'enum', got %v", enumFunc.Name)
+	}
+
+	// Verify it's a native function
+	_, ok := enumFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Error("expected NativeFunc representation")
+	}
+}
+
+func TestEnumNativeBasic(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create content children
+	child1 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "First item"}},
+	}}
+	child2 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Second item"}},
+	}}
+
+	// Create args with children
+	args := NewArgs(syntax.Detached())
+	args.Push(child1, syntax.Detached())
+	args.Push(child2, syntax.Detached())
+
+	result, err := enumNative(vm, args)
+	if err != nil {
+		t.Fatalf("enumNative() error: %v", err)
+	}
+
+	// Verify result is ContentValue
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	// Verify it contains one EnumElement
+	if len(content.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(content.Content.Elements))
+	}
+
+	enum, ok := content.Content.Elements[0].(*EnumElement)
+	if !ok {
+		t.Fatalf("expected *EnumElement, got %T", content.Content.Elements[0])
+	}
+
+	// Verify element properties (defaults)
+	if enum.Tight != true {
+		t.Errorf("Tight = %v, want true", enum.Tight)
+	}
+	if enum.Numbering != "1." {
+		t.Errorf("Numbering = %q, want %q", enum.Numbering, "1.")
+	}
+	if enum.Start != nil {
+		t.Errorf("Start = %v, want nil", enum.Start)
+	}
+	if enum.Full != false {
+		t.Errorf("Full = %v, want false", enum.Full)
+	}
+	if enum.Reversed != false {
+		t.Errorf("Reversed = %v, want false", enum.Reversed)
+	}
+	if len(enum.Items) != 2 {
+		t.Errorf("Items length = %d, want 2", len(enum.Items))
+	}
+
+	// Verify item numbers
+	if enum.Items[0].Number != 1 {
+		t.Errorf("Items[0].Number = %d, want 1", enum.Items[0].Number)
+	}
+	if enum.Items[1].Number != 2 {
+		t.Errorf("Items[1].Number = %d, want 2", enum.Items[1].Number)
+	}
+}
+
+func TestEnumNativeWithNumbering(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	child := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Item"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("numbering", Str("a)"), syntax.Detached())
+	args.Push(child, syntax.Detached())
+
+	result, err := enumNative(vm, args)
+	if err != nil {
+		t.Fatalf("enumNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	enum := content.Content.Elements[0].(*EnumElement)
+
+	if enum.Numbering != "a)" {
+		t.Errorf("Numbering = %q, want %q", enum.Numbering, "a)")
+	}
+}
+
+func TestEnumNativeWithStart(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	child1 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "First"}},
+	}}
+	child2 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Second"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("start", Int(5), syntax.Detached())
+	args.Push(child1, syntax.Detached())
+	args.Push(child2, syntax.Detached())
+
+	result, err := enumNative(vm, args)
+	if err != nil {
+		t.Fatalf("enumNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	enum := content.Content.Elements[0].(*EnumElement)
+
+	if enum.Start == nil || *enum.Start != 5 {
+		t.Errorf("Start = %v, want 5", enum.Start)
+	}
+	// Verify item numbers start from 5
+	if enum.Items[0].Number != 5 {
+		t.Errorf("Items[0].Number = %d, want 5", enum.Items[0].Number)
+	}
+	if enum.Items[1].Number != 6 {
+		t.Errorf("Items[1].Number = %d, want 6", enum.Items[1].Number)
+	}
+}
+
+func TestEnumNativeWithFull(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	child := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Item"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("full", True, syntax.Detached())
+	args.Push(child, syntax.Detached())
+
+	result, err := enumNative(vm, args)
+	if err != nil {
+		t.Fatalf("enumNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	enum := content.Content.Elements[0].(*EnumElement)
+
+	if enum.Full != true {
+		t.Errorf("Full = %v, want true", enum.Full)
+	}
+}
+
+func TestEnumNativeWithReversed(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	child := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Item"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("reversed", True, syntax.Detached())
+	args.Push(child, syntax.Detached())
+
+	result, err := enumNative(vm, args)
+	if err != nil {
+		t.Fatalf("enumNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	enum := content.Content.Elements[0].(*EnumElement)
+
+	if enum.Reversed != true {
+		t.Errorf("Reversed = %v, want true", enum.Reversed)
+	}
+}
+
+func TestEnumNativeWithIndent(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	child := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Item"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("indent", LengthValue{Length: Length{Points: 15}}, syntax.Detached())
+	args.Push(child, syntax.Detached())
+
+	result, err := enumNative(vm, args)
+	if err != nil {
+		t.Fatalf("enumNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	enum := content.Content.Elements[0].(*EnumElement)
+
+	if enum.Indent == nil || *enum.Indent != 15 {
+		t.Errorf("Indent = %v, want 15", enum.Indent)
+	}
+}
+
+func TestEnumNativeWithAllParams(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	child1 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "First"}},
+	}}
+	child2 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Second"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("tight", False, syntax.Detached())
+	args.PushNamed("numbering", Str("I."), syntax.Detached())
+	args.PushNamed("start", Int(3), syntax.Detached())
+	args.PushNamed("full", True, syntax.Detached())
+	args.PushNamed("reversed", True, syntax.Detached())
+	args.PushNamed("indent", LengthValue{Length: Length{Points: 5}}, syntax.Detached())
+	args.PushNamed("body-indent", LengthValue{Length: Length{Points: 7}}, syntax.Detached())
+	args.PushNamed("spacing", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
+	args.Push(child1, syntax.Detached())
+	args.Push(child2, syntax.Detached())
+
+	result, err := enumNative(vm, args)
+	if err != nil {
+		t.Fatalf("enumNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	enum := content.Content.Elements[0].(*EnumElement)
+
+	if enum.Tight != false {
+		t.Errorf("Tight = %v, want false", enum.Tight)
+	}
+	if enum.Numbering != "I." {
+		t.Errorf("Numbering = %q, want %q", enum.Numbering, "I.")
+	}
+	if enum.Start == nil || *enum.Start != 3 {
+		t.Errorf("Start = %v, want 3", enum.Start)
+	}
+	if enum.Full != true {
+		t.Errorf("Full = %v, want true", enum.Full)
+	}
+	if enum.Reversed != true {
+		t.Errorf("Reversed = %v, want true", enum.Reversed)
+	}
+	if enum.Indent == nil || *enum.Indent != 5 {
+		t.Errorf("Indent = %v, want 5", enum.Indent)
+	}
+	if enum.BodyIndent == nil || *enum.BodyIndent != 7 {
+		t.Errorf("BodyIndent = %v, want 7", enum.BodyIndent)
+	}
+	if enum.Spacing == nil || *enum.Spacing != 10 {
+		t.Errorf("Spacing = %v, want 10", enum.Spacing)
+	}
+	if len(enum.Items) != 2 {
+		t.Errorf("Items length = %d, want 2", len(enum.Items))
+	}
+}
+
+func TestEnumNativeWrongChildType(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.Push(Str("not content"), syntax.Detached())
+
+	_, err := enumNative(vm, args)
+	if err == nil {
+		t.Error("expected error for wrong child type")
+	}
+	if _, ok := err.(*TypeMismatchError); !ok {
+		t.Errorf("expected TypeMismatchError, got %T", err)
+	}
+}
+
+func TestEnumNativeUnexpectedArg(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("unknown", Str("value"), syntax.Detached())
+
+	_, err := enumNative(vm, args)
+	if err == nil {
+		t.Error("expected error for unexpected argument")
+	}
+	if _, ok := err.(*UnexpectedArgumentError); !ok {
+		t.Errorf("expected UnexpectedArgumentError, got %T", err)
+	}
+}
+
+func TestEnumElement(t *testing.T) {
+	// Test EnumElement struct and ContentElement interface
+	start := 1
+	indent := 10.0
+	bodyIndent := 8.0
+	spacing := 12.0
+
+	elem := &EnumElement{
+		Items: []*EnumItemElement{
+			{Number: 1, Content: Content{Elements: []ContentElement{&TextElement{Text: "A"}}}},
+			{Number: 2, Content: Content{Elements: []ContentElement{&TextElement{Text: "B"}}}},
+		},
+		Tight:       true,
+		Numbering:   "1.",
+		Start:       &start,
+		Full:        false,
+		Reversed:    false,
+		Indent:      &indent,
+		BodyIndent:  &bodyIndent,
+		Spacing:     &spacing,
+		NumberAlign: "end",
+	}
+
+	if len(elem.Items) != 2 {
+		t.Errorf("Items length = %d, want 2", len(elem.Items))
+	}
+	if elem.Tight != true {
+		t.Errorf("Tight = %v, want true", elem.Tight)
+	}
+	if elem.Numbering != "1." {
+		t.Errorf("Numbering = %q, want %q", elem.Numbering, "1.")
+	}
+	if *elem.Start != 1 {
+		t.Errorf("Start = %v, want 1", *elem.Start)
+	}
+	if *elem.Indent != 10.0 {
+		t.Errorf("Indent = %v, want 10.0", *elem.Indent)
+	}
+	if *elem.BodyIndent != 8.0 {
+		t.Errorf("BodyIndent = %v, want 8.0", *elem.BodyIndent)
+	}
+	if *elem.Spacing != 12.0 {
+		t.Errorf("Spacing = %v, want 12.0", *elem.Spacing)
+	}
+	if elem.NumberAlign != "end" {
+		t.Errorf("NumberAlign = %q, want %q", elem.NumberAlign, "end")
+	}
+
+	// Verify it satisfies ContentElement interface
+	var _ ContentElement = elem
+}
+
+// ----------------------------------------------------------------------------
+// Registration Tests for List and Enum
+// ----------------------------------------------------------------------------
+
+func TestRegisterElementFunctionsIncludesListAndEnum(t *testing.T) {
+	scope := NewScope()
+	RegisterElementFunctions(scope)
+
+	// Verify list function is registered
+	listBinding := scope.Get("list")
+	if listBinding == nil {
+		t.Fatal("expected 'list' to be registered")
+	}
+
+	listFunc, ok := listBinding.Value.(FuncValue)
+	if !ok {
+		t.Fatalf("expected FuncValue for list, got %T", listBinding.Value)
+	}
+	if listFunc.Func.Name == nil || *listFunc.Func.Name != "list" {
+		t.Errorf("expected function name 'list', got %v", listFunc.Func.Name)
+	}
+
+	// Verify enum function is registered
+	enumBinding := scope.Get("enum")
+	if enumBinding == nil {
+		t.Fatal("expected 'enum' to be registered")
+	}
+
+	enumFunc, ok := enumBinding.Value.(FuncValue)
+	if !ok {
+		t.Fatalf("expected FuncValue for enum, got %T", enumBinding.Value)
+	}
+	if enumFunc.Func.Name == nil || *enumFunc.Func.Name != "enum" {
+		t.Errorf("expected function name 'enum', got %v", enumFunc.Func.Name)
+	}
+}
+
+func TestElementFunctionsIncludesListAndEnum(t *testing.T) {
+	funcs := ElementFunctions()
+
+	if _, ok := funcs["list"]; !ok {
+		t.Error("expected 'list' in ElementFunctions()")
+	}
+
+	if _, ok := funcs["enum"]; !ok {
+		t.Error("expected 'enum' in ElementFunctions()")
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Nesting Tests for List and Enum
+// ----------------------------------------------------------------------------
+
+func TestListNativeWithNestedList(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create nested list content
+	nestedChild := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Nested item"}},
+	}}
+	nestedArgs := NewArgs(syntax.Detached())
+	nestedArgs.Push(nestedChild, syntax.Detached())
+	nestedResult, _ := listNative(vm, nestedArgs)
+	nestedContent := nestedResult.(ContentValue)
+
+	// Create parent list with nested list inside
+	parentChild := ContentValue{Content: Content{
+		Elements: append(
+			[]ContentElement{&TextElement{Text: "Parent item: "}},
+			nestedContent.Content.Elements...,
+		),
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(parentChild, syntax.Detached())
+
+	result, err := listNative(vm, args)
+	if err != nil {
+		t.Fatalf("listNative() with nested list error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	list := content.Content.Elements[0].(*ListElement)
+
+	if len(list.Items) != 1 {
+		t.Errorf("Items length = %d, want 1", len(list.Items))
+	}
+
+	// Verify the item content contains both text and nested list
+	item := list.Items[0]
+	if len(item.Content.Elements) < 2 {
+		t.Errorf("Item content elements = %d, want at least 2", len(item.Content.Elements))
+	}
+}
+
+func TestEnumNativeWithNestedEnum(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create nested enum content
+	nestedChild := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Nested item"}},
+	}}
+	nestedArgs := NewArgs(syntax.Detached())
+	nestedArgs.Push(nestedChild, syntax.Detached())
+	nestedResult, _ := enumNative(vm, nestedArgs)
+	nestedContent := nestedResult.(ContentValue)
+
+	// Create parent enum with nested enum inside
+	parentChild := ContentValue{Content: Content{
+		Elements: append(
+			[]ContentElement{&TextElement{Text: "Parent item: "}},
+			nestedContent.Content.Elements...,
+		),
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(parentChild, syntax.Detached())
+
+	result, err := enumNative(vm, args)
+	if err != nil {
+		t.Fatalf("enumNative() with nested enum error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	enum := content.Content.Elements[0].(*EnumElement)
+
+	if len(enum.Items) != 1 {
+		t.Errorf("Items length = %d, want 1", len(enum.Items))
+	}
+
+	// Verify the item content contains both text and nested enum
+	item := enum.Items[0]
+	if len(item.Content.Elements) < 2 {
+		t.Errorf("Item content elements = %d, want at least 2", len(item.Content.Elements))
+	}
+}

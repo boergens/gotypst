@@ -575,6 +575,411 @@ func parseAlignmentString(s string, span syntax.Span) (Alignment2D, error) {
 }
 
 // ----------------------------------------------------------------------------
+// List Element Functions
+// ----------------------------------------------------------------------------
+
+// ListFunc creates the list element function.
+func ListFunc() *Func {
+	name := "list"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: listNative,
+			Info: &FuncInfo{
+				Name: "list",
+				Params: []ParamInfo{
+					{Name: "tight", Type: TypeBool, Default: True, Named: true},
+					{Name: "marker", Type: TypeContent, Default: None, Named: true},
+					{Name: "indent", Type: TypeLength, Default: None, Named: true},
+					{Name: "body-indent", Type: TypeLength, Default: None, Named: true},
+					{Name: "spacing", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "children", Type: TypeContent, Named: false, Variadic: true},
+				},
+			},
+		},
+	}
+}
+
+// listNative implements the list() function.
+// Creates a ListElement with the given items and styling options.
+//
+// Arguments:
+//   - tight (named, bool, default: true): Control spacing between items
+//   - marker (named, content, default: none): Custom marker content
+//   - indent (named, length, default: none): Indentation of items
+//   - body-indent (named, length, default: none): Space between marker and body
+//   - spacing (named, length, default: auto): Spacing between items
+//   - children (positional, variadic, content): The list items
+func listNative(vm *Vm, args *Args) (Value, error) {
+	// Get optional tight argument (default: true)
+	tight := true
+	if tightArg := args.Find("tight"); tightArg != nil {
+		if !IsAuto(tightArg.V) && !IsNone(tightArg.V) {
+			if tv, ok := AsBool(tightArg.V); ok {
+				tight = tv
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "bool",
+					Got:      tightArg.V.Type().String(),
+					Span:     tightArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional marker argument
+	var marker *Content
+	if markerArg := args.Find("marker"); markerArg != nil {
+		if !IsNone(markerArg.V) && !IsAuto(markerArg.V) {
+			if cv, ok := markerArg.V.(ContentValue); ok {
+				marker = &cv.Content
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or none",
+					Got:      markerArg.V.Type().String(),
+					Span:     markerArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional indent argument
+	var indent *float64
+	if indentArg := args.Find("indent"); indentArg != nil {
+		if !IsNone(indentArg.V) && !IsAuto(indentArg.V) {
+			if lv, ok := indentArg.V.(LengthValue); ok {
+				i := lv.Length.Points
+				indent = &i
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      indentArg.V.Type().String(),
+					Span:     indentArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional body-indent argument
+	var bodyIndent *float64
+	if biArg := args.Find("body-indent"); biArg != nil {
+		if !IsNone(biArg.V) && !IsAuto(biArg.V) {
+			if lv, ok := biArg.V.(LengthValue); ok {
+				bi := lv.Length.Points
+				bodyIndent = &bi
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      biArg.V.Type().String(),
+					Span:     biArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional spacing argument
+	var spacing *float64
+	if spacingArg := args.Find("spacing"); spacingArg != nil {
+		if !IsNone(spacingArg.V) && !IsAuto(spacingArg.V) {
+			if lv, ok := spacingArg.V.(LengthValue); ok {
+				s := lv.Length.Points
+				spacing = &s
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      spacingArg.V.Type().String(),
+					Span:     spacingArg.Span,
+				}
+			}
+		}
+	}
+
+	// Collect remaining positional arguments as children
+	var items []*ListItemElement
+	for {
+		childArg := args.Eat()
+		if childArg == nil {
+			break
+		}
+
+		if cv, ok := childArg.V.(ContentValue); ok {
+			// Wrap the content in a ListItemElement
+			items = append(items, &ListItemElement{Content: cv.Content})
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "content",
+				Got:      childArg.V.Type().String(),
+				Span:     childArg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the ListElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{&ListElement{
+			Items:      items,
+			Tight:      tight,
+			Marker:     marker,
+			Indent:     indent,
+			BodyIndent: bodyIndent,
+			Spacing:    spacing,
+		}},
+	}}, nil
+}
+
+// EnumFunc creates the enum element function.
+func EnumFunc() *Func {
+	name := "enum"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: enumNative,
+			Info: &FuncInfo{
+				Name: "enum",
+				Params: []ParamInfo{
+					{Name: "tight", Type: TypeBool, Default: True, Named: true},
+					{Name: "numbering", Type: TypeStr, Default: Str("1."), Named: true},
+					{Name: "start", Type: TypeInt, Default: Auto, Named: true},
+					{Name: "full", Type: TypeBool, Default: False, Named: true},
+					{Name: "reversed", Type: TypeBool, Default: False, Named: true},
+					{Name: "indent", Type: TypeLength, Default: None, Named: true},
+					{Name: "body-indent", Type: TypeLength, Default: None, Named: true},
+					{Name: "spacing", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "number-align", Type: TypeStr, Default: None, Named: true},
+					{Name: "children", Type: TypeContent, Named: false, Variadic: true},
+				},
+			},
+		},
+	}
+}
+
+// enumNative implements the enum() function.
+// Creates an EnumElement with the given items and styling options.
+//
+// Arguments:
+//   - tight (named, bool, default: true): Control spacing between items
+//   - numbering (named, str, default: "1."): Numbering pattern
+//   - start (named, int, default: auto): Starting number
+//   - full (named, bool, default: false): Show full numbering for nested enums
+//   - reversed (named, bool, default: false): Reverse numbering direction
+//   - indent (named, length, default: none): Indentation of items
+//   - body-indent (named, length, default: none): Space between number and body
+//   - spacing (named, length, default: auto): Spacing between items
+//   - number-align (named, alignment, default: end+top): Number alignment
+//   - children (positional, variadic, content): The enum items
+func enumNative(vm *Vm, args *Args) (Value, error) {
+	// Get optional tight argument (default: true)
+	tight := true
+	if tightArg := args.Find("tight"); tightArg != nil {
+		if !IsAuto(tightArg.V) && !IsNone(tightArg.V) {
+			if tv, ok := AsBool(tightArg.V); ok {
+				tight = tv
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "bool",
+					Got:      tightArg.V.Type().String(),
+					Span:     tightArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional numbering argument (default: "1.")
+	numbering := "1."
+	if numbArg := args.Find("numbering"); numbArg != nil {
+		if !IsNone(numbArg.V) && !IsAuto(numbArg.V) {
+			if ns, ok := AsStr(numbArg.V); ok {
+				numbering = ns
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "str",
+					Got:      numbArg.V.Type().String(),
+					Span:     numbArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional start argument
+	var start *int
+	if startArg := args.Find("start"); startArg != nil {
+		if !IsNone(startArg.V) && !IsAuto(startArg.V) {
+			if iv, ok := AsInt(startArg.V); ok {
+				s := int(iv)
+				start = &s
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "int or auto",
+					Got:      startArg.V.Type().String(),
+					Span:     startArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional full argument (default: false)
+	full := false
+	if fullArg := args.Find("full"); fullArg != nil {
+		if !IsAuto(fullArg.V) && !IsNone(fullArg.V) {
+			if fv, ok := AsBool(fullArg.V); ok {
+				full = fv
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "bool",
+					Got:      fullArg.V.Type().String(),
+					Span:     fullArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional reversed argument (default: false)
+	reversed := false
+	if revArg := args.Find("reversed"); revArg != nil {
+		if !IsAuto(revArg.V) && !IsNone(revArg.V) {
+			if rv, ok := AsBool(revArg.V); ok {
+				reversed = rv
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "bool",
+					Got:      revArg.V.Type().String(),
+					Span:     revArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional indent argument
+	var indent *float64
+	if indentArg := args.Find("indent"); indentArg != nil {
+		if !IsNone(indentArg.V) && !IsAuto(indentArg.V) {
+			if lv, ok := indentArg.V.(LengthValue); ok {
+				i := lv.Length.Points
+				indent = &i
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      indentArg.V.Type().String(),
+					Span:     indentArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional body-indent argument
+	var bodyIndent *float64
+	if biArg := args.Find("body-indent"); biArg != nil {
+		if !IsNone(biArg.V) && !IsAuto(biArg.V) {
+			if lv, ok := biArg.V.(LengthValue); ok {
+				bi := lv.Length.Points
+				bodyIndent = &bi
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      biArg.V.Type().String(),
+					Span:     biArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional spacing argument
+	var spacing *float64
+	if spacingArg := args.Find("spacing"); spacingArg != nil {
+		if !IsNone(spacingArg.V) && !IsAuto(spacingArg.V) {
+			if lv, ok := spacingArg.V.(LengthValue); ok {
+				s := lv.Length.Points
+				spacing = &s
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      spacingArg.V.Type().String(),
+					Span:     spacingArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional number-align argument
+	numberAlign := ""
+	if naArg := args.Find("number-align"); naArg != nil {
+		if !IsNone(naArg.V) && !IsAuto(naArg.V) {
+			if na, ok := AsStr(naArg.V); ok {
+				numberAlign = na
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "alignment or none",
+					Got:      naArg.V.Type().String(),
+					Span:     naArg.Span,
+				}
+			}
+		}
+	}
+
+	// Collect remaining positional arguments as children
+	var items []*EnumItemElement
+	startNum := 1
+	if start != nil {
+		startNum = *start
+	}
+	for i := 0; ; i++ {
+		childArg := args.Eat()
+		if childArg == nil {
+			break
+		}
+
+		if cv, ok := childArg.V.(ContentValue); ok {
+			// Calculate item number
+			num := startNum + i
+			if reversed {
+				// For reversed, we'll handle this in layout
+				// but still assign incrementing numbers for now
+				num = startNum + i
+			}
+			// Wrap the content in an EnumItemElement
+			items = append(items, &EnumItemElement{
+				Number:  num,
+				Content: cv.Content,
+			})
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "content",
+				Got:      childArg.V.Type().String(),
+				Span:     childArg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the EnumElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{&EnumElement{
+			Items:       items,
+			Tight:       tight,
+			Numbering:   numbering,
+			Start:       start,
+			Full:        full,
+			Reversed:    reversed,
+			Indent:      indent,
+			BodyIndent:  bodyIndent,
+			Spacing:     spacing,
+			NumberAlign: numberAlign,
+		}},
+	}}, nil
+}
+
+// ----------------------------------------------------------------------------
 // Library Registration
 // ----------------------------------------------------------------------------
 
@@ -591,6 +996,10 @@ func RegisterElementFunctions(scope *Scope) {
 	scope.DefineFunc("stack", StackFunc())
 	// Register align element function
 	scope.DefineFunc("align", AlignFunc())
+	// Register list element function
+	scope.DefineFunc("list", ListFunc())
+	// Register enum element function
+	scope.DefineFunc("enum", EnumFunc())
 }
 
 // ElementFunctions returns a map of all element function names to their functions.
@@ -602,5 +1011,7 @@ func ElementFunctions() map[string]*Func {
 		"parbreak": ParbreakFunc(),
 		"stack":    StackFunc(),
 		"align":    AlignFunc(),
+		"list":     ListFunc(),
+		"enum":     EnumFunc(),
 	}
 }
