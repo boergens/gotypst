@@ -69,6 +69,10 @@ func (a *NamedArg) Expr() Expr {
 			continue
 		}
 		if foundColon {
+			// Skip whitespace tokens
+			if child.Kind() == Space || child.Kind() == Linebreak || child.Kind() == Parbreak {
+				continue
+			}
 			return ExprFromNode(child)
 		}
 	}

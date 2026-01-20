@@ -837,6 +837,14 @@ func evalFieldAccess(vm *Vm, e *syntax.FieldAccessExpr) (Value, error) {
 		}
 		return nil, &FieldNotFoundError{Field: fieldName, Type: target.Type(), Span: e.ToUntyped().Span()}
 
+	case TypeValue:
+		// Type values have static methods (e.g., str.from-unicode)
+		method := GetTypeMethod(t.Inner, fieldName, e.ToUntyped().Span())
+		if method != nil {
+			return method, nil
+		}
+		return nil, &FieldNotFoundError{Field: fieldName, Type: target.Type(), Span: e.ToUntyped().Span()}
+
 	default:
 		// Check for built-in methods
 		method := getBuiltinMethod(target, fieldName, e.ToUntyped().Span())
@@ -1805,15 +1813,23 @@ func evalHeading(vm *Vm, e *syntax.HeadingExpr) (Value, error) {
 	}
 	if c, ok := content.(ContentValue); ok {
 		return ContentValue{Content: Content{
-			Elements: []ContentElement{&HeadingElement{Level: e.Level(), Content: c.Content}},
+			Elements: []ContentElement{&HeadingElement{
+				Level:    e.Level(),
+				Content:  c.Content,
+				Outlined: true, // Default: show in outline
+			}},
 		}}, nil
 	}
 	return content, nil
 }
 
 type HeadingElement struct {
-	Level   int
-	Content Content
+	Level      int
+	Content    Content
+	Numbering  *string // Optional numbering pattern (e.g., "1.", "1.1", "I.")
+	Supplement *Content
+	Outlined   bool
+	Bookmarked *bool
 }
 
 func (*HeadingElement) IsContentElement() {}

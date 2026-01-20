@@ -575,6 +575,169 @@ func parseAlignmentString(s string, span syntax.Span) (Alignment2D, error) {
 }
 
 // ----------------------------------------------------------------------------
+// Heading Element
+// ----------------------------------------------------------------------------
+
+// HeadingFunc creates the heading element function.
+func HeadingFunc() *Func {
+	name := "heading"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: headingNative,
+			Info: &FuncInfo{
+				Name: "heading",
+				Params: []ParamInfo{
+					{Name: "body", Type: TypeContent, Named: false},
+					{Name: "level", Type: TypeInt, Default: Int(1), Named: true},
+					{Name: "depth", Type: TypeInt, Default: None, Named: true},
+					{Name: "offset", Type: TypeInt, Default: Int(0), Named: true},
+					{Name: "numbering", Type: TypeStr, Default: None, Named: true},
+					{Name: "supplement", Type: TypeContent, Default: Auto, Named: true},
+					{Name: "outlined", Type: TypeBool, Default: True, Named: true},
+					{Name: "bookmarked", Type: TypeBool, Default: Auto, Named: true},
+				},
+			},
+		},
+	}
+}
+
+// headingNative implements the heading() function.
+// Creates a HeadingElement from the given content with optional level and numbering.
+//
+// Arguments:
+//   - body (positional, content): The heading content
+//   - level (named, int, default: 1): The heading level (1-6)
+//   - depth (named, int, default: none): Depth for numbering inheritance
+//   - offset (named, int, default: 0): Numbering offset
+//   - numbering (named, str or none, default: none): Numbering pattern (e.g., "1.", "1.1", "I.")
+//   - supplement (named, content or auto, default: auto): Supplement content for references
+//   - outlined (named, bool, default: true): Whether to show in outline
+//   - bookmarked (named, bool or auto, default: auto): Whether to bookmark in PDF
+func headingNative(vm *Vm, args *Args) (Value, error) {
+	// Get required body argument (can be positional or named)
+	bodyArg := args.Find("body")
+	if bodyArg == nil {
+		bodyArgSpanned, err := args.Expect("body")
+		if err != nil {
+			return nil, err
+		}
+		bodyArg = &bodyArgSpanned
+	}
+
+	var body Content
+	if cv, ok := bodyArg.V.(ContentValue); ok {
+		body = cv.Content
+	} else {
+		return nil, &TypeMismatchError{
+			Expected: "content",
+			Got:      bodyArg.V.Type().String(),
+			Span:     bodyArg.Span,
+		}
+	}
+
+	// Get optional level argument (default: 1)
+	level := 1
+	if levelArg := args.Find("level"); levelArg != nil {
+		levelVal, ok := AsInt(levelArg.V)
+		if !ok {
+			return nil, &TypeMismatchError{
+				Expected: "integer",
+				Got:      levelArg.V.Type().String(),
+				Span:     levelArg.Span,
+			}
+		}
+		level = int(levelVal)
+		if level < 1 || level > 6 {
+			return nil, &ConstructorError{
+				Message: "heading level must be between 1 and 6",
+				Span:    levelArg.Span,
+			}
+		}
+	}
+
+	// Get optional numbering argument (default: none)
+	var numbering *string
+	if numberingArg := args.Find("numbering"); numberingArg != nil {
+		if !IsNone(numberingArg.V) {
+			if numStr, ok := AsStr(numberingArg.V); ok {
+				numbering = &numStr
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "string or none",
+					Got:      numberingArg.V.Type().String(),
+					Span:     numberingArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional supplement argument (default: auto)
+	var supplement *Content
+	if supplementArg := args.Find("supplement"); supplementArg != nil {
+		if !IsAuto(supplementArg.V) && !IsNone(supplementArg.V) {
+			if cv, ok := supplementArg.V.(ContentValue); ok {
+				supplement = &cv.Content
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or auto",
+					Got:      supplementArg.V.Type().String(),
+					Span:     supplementArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional outlined argument (default: true)
+	outlined := true
+	if outlinedArg := args.Find("outlined"); outlinedArg != nil {
+		outlinedVal, ok := AsBool(outlinedArg.V)
+		if !ok {
+			return nil, &TypeMismatchError{
+				Expected: "bool",
+				Got:      outlinedArg.V.Type().String(),
+				Span:     outlinedArg.Span,
+			}
+		}
+		outlined = outlinedVal
+	}
+
+	// Get optional bookmarked argument (default: auto)
+	var bookmarked *bool
+	if bookmarkedArg := args.Find("bookmarked"); bookmarkedArg != nil {
+		if !IsAuto(bookmarkedArg.V) {
+			bv, ok := AsBool(bookmarkedArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "bool or auto",
+					Got:      bookmarkedArg.V.Type().String(),
+					Span:     bookmarkedArg.Span,
+				}
+			}
+			bookmarked = &bv
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the HeadingElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{&HeadingElement{
+			Level:      level,
+			Content:    body,
+			Numbering:  numbering,
+			Supplement: supplement,
+			Outlined:   outlined,
+			Bookmarked: bookmarked,
+		}},
+	}}, nil
+}
+
+// ----------------------------------------------------------------------------
 // Library Registration
 // ----------------------------------------------------------------------------
 
@@ -591,6 +754,8 @@ func RegisterElementFunctions(scope *Scope) {
 	scope.DefineFunc("stack", StackFunc())
 	// Register align element function
 	scope.DefineFunc("align", AlignFunc())
+	// Register heading element function
+	scope.DefineFunc("heading", HeadingFunc())
 }
 
 // ElementFunctions returns a map of all element function names to their functions.
@@ -602,5 +767,6 @@ func ElementFunctions() map[string]*Func {
 		"parbreak": ParbreakFunc(),
 		"stack":    StackFunc(),
 		"align":    AlignFunc(),
+		"heading":  HeadingFunc(),
 	}
 }

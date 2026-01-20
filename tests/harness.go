@@ -290,8 +290,8 @@ func (r *TestRunner) RunTest(tc *TestCase) *TestResult {
 func (r *TestRunner) evaluateCode(root *syntax.SyntaxNode) []string {
 	var errors []string
 
-	// Create a minimal VM for evaluation
-	scopes := eval.NewScopes(nil)
+	// Create VM with standard library for evaluation
+	scopes := eval.NewScopes(eval.Library())
 	vm := eval.NewVm(nil, eval.NewContext(), scopes, syntax.Detached())
 
 	// Convert to MarkupNode and get expressions

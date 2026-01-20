@@ -818,5 +818,9 @@ func AsFunc(v Value) (*Func, bool) {
 	if f, ok := v.(FuncValue); ok {
 		return f.Func, true
 	}
+	// TypeValue is callable as a constructor
+	if t, ok := v.(TypeValue); ok {
+		return typeConstructorFunc(t.Inner), true
+	}
 	return nil, false
 }

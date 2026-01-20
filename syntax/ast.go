@@ -1028,11 +1028,41 @@ func (e *IntExpr) isExpr()               {}
 // Get returns the integer value.
 func (e *IntExpr) Get() int64 {
 	text := e.node.Text()
-	var result int64
-	for _, c := range text {
-		if c >= '0' && c <= '9' {
-			result = result*10 + int64(c-'0')
+
+	// Handle different bases
+	base := 10
+	digits := text
+	if len(text) >= 2 {
+		switch text[0:2] {
+		case "0x", "0X":
+			base = 16
+			digits = text[2:]
+		case "0b", "0B":
+			base = 2
+			digits = text[2:]
+		case "0o", "0O":
+			base = 8
+			digits = text[2:]
 		}
+	}
+
+	var result int64
+	for _, c := range digits {
+		var digit int64
+		switch {
+		case c >= '0' && c <= '9':
+			digit = int64(c - '0')
+		case c >= 'a' && c <= 'f':
+			digit = int64(c - 'a' + 10)
+		case c >= 'A' && c <= 'F':
+			digit = int64(c - 'A' + 10)
+		default:
+			continue // Skip non-digit characters
+		}
+		if digit >= int64(base) {
+			continue // Invalid digit for this base
+		}
+		result = result*int64(base) + digit
 	}
 	return result
 }
@@ -1489,9 +1519,13 @@ func (e *FieldAccessExpr) Target() Expr {
 
 // Field returns the field name.
 func (e *FieldAccessExpr) Field() *IdentExpr {
-	child := e.node.CastFirst(Ident)
-	if child != nil {
-		return &IdentExpr{node: child}
+	// The field is the last identifier child (after the dot)
+	// e.g., in "x.y.z", z is the field for the outer access
+	children := e.node.Children()
+	for i := len(children) - 1; i >= 0; i-- {
+		if children[i].Kind() == Ident {
+			return &IdentExpr{node: children[i]}
+		}
 	}
 	return nil
 }
