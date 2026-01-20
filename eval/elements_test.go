@@ -2163,3 +2163,592 @@ func TestElementFunctionsIncludesColumns(t *testing.T) {
 		t.Error("expected 'columns' in ElementFunctions()")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// Box Tests
+// ----------------------------------------------------------------------------
+
+func TestBoxFunc(t *testing.T) {
+	boxFunc := BoxFunc()
+
+	if boxFunc == nil {
+		t.Fatal("BoxFunc() returned nil")
+	}
+
+	if boxFunc.Name == nil || *boxFunc.Name != "box" {
+		t.Errorf("expected function name 'box', got %v", boxFunc.Name)
+	}
+
+	_, ok := boxFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Error("expected NativeFunc representation")
+	}
+}
+
+func TestBoxNativeBasic(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Box content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+
+	result, err := boxNative(vm, args)
+	if err != nil {
+		t.Fatalf("boxNative() error: %v", err)
+	}
+
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	if len(content.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(content.Content.Elements))
+	}
+
+	box, ok := content.Content.Elements[0].(*BoxElement)
+	if !ok {
+		t.Fatalf("expected *BoxElement, got %T", content.Content.Elements[0])
+	}
+
+	if box.Width != nil {
+		t.Errorf("Width = %v, want nil (default)", box.Width)
+	}
+	if box.Height != nil {
+		t.Errorf("Height = %v, want nil (default)", box.Height)
+	}
+	if box.Clip != false {
+		t.Errorf("Clip = %v, want false", box.Clip)
+	}
+}
+
+func TestBoxNativeWithWidth(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Box content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("width", LengthValue{Length: Length{Points: 100}}, syntax.Detached())
+
+	result, err := boxNative(vm, args)
+	if err != nil {
+		t.Fatalf("boxNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	box := content.Content.Elements[0].(*BoxElement)
+
+	if box.Width == nil || *box.Width != 100 {
+		t.Errorf("Width = %v, want 100", box.Width)
+	}
+}
+
+func TestBoxNativeWithClip(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Box content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("clip", True, syntax.Detached())
+
+	result, err := boxNative(vm, args)
+	if err != nil {
+		t.Fatalf("boxNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	box := content.Content.Elements[0].(*BoxElement)
+
+	if box.Clip != true {
+		t.Errorf("Clip = %v, want true", box.Clip)
+	}
+}
+
+func TestBoxNativeEmpty(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+
+	result, err := boxNative(vm, args)
+	if err != nil {
+		t.Fatalf("boxNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	box := content.Content.Elements[0].(*BoxElement)
+
+	if len(box.Body.Elements) != 0 {
+		t.Errorf("Body elements = %d, want 0", len(box.Body.Elements))
+	}
+}
+
+func TestBoxElement(t *testing.T) {
+	width := 50.0
+	height := 30.0
+	elem := &BoxElement{
+		Width:  &width,
+		Height: &height,
+		Clip:   true,
+		Body: Content{
+			Elements: []ContentElement{&TextElement{Text: "Content"}},
+		},
+	}
+
+	if *elem.Width != 50.0 {
+		t.Errorf("Width = %v, want 50.0", *elem.Width)
+	}
+	if *elem.Height != 30.0 {
+		t.Errorf("Height = %v, want 30.0", *elem.Height)
+	}
+	if elem.Clip != true {
+		t.Errorf("Clip = %v, want true", elem.Clip)
+	}
+
+	var _ ContentElement = elem
+}
+
+// ----------------------------------------------------------------------------
+// Block Tests
+// ----------------------------------------------------------------------------
+
+func TestBlockFunc(t *testing.T) {
+	blockFunc := BlockFunc()
+
+	if blockFunc == nil {
+		t.Fatal("BlockFunc() returned nil")
+	}
+
+	if blockFunc.Name == nil || *blockFunc.Name != "block" {
+		t.Errorf("expected function name 'block', got %v", blockFunc.Name)
+	}
+
+	_, ok := blockFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Error("expected NativeFunc representation")
+	}
+}
+
+func TestBlockNativeBasic(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Block content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+
+	result, err := blockNative(vm, args)
+	if err != nil {
+		t.Fatalf("blockNative() error: %v", err)
+	}
+
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	if len(content.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(content.Content.Elements))
+	}
+
+	block, ok := content.Content.Elements[0].(*BlockElement)
+	if !ok {
+		t.Fatalf("expected *BlockElement, got %T", content.Content.Elements[0])
+	}
+
+	if block.Width != nil {
+		t.Errorf("Width = %v, want nil (default)", block.Width)
+	}
+	if block.Breakable != nil {
+		t.Errorf("Breakable = %v, want nil (default)", block.Breakable)
+	}
+}
+
+func TestBlockNativeWithBreakable(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Block content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("breakable", False, syntax.Detached())
+
+	result, err := blockNative(vm, args)
+	if err != nil {
+		t.Fatalf("blockNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	block := content.Content.Elements[0].(*BlockElement)
+
+	if block.Breakable == nil || *block.Breakable != false {
+		t.Errorf("Breakable = %v, want false", block.Breakable)
+	}
+}
+
+func TestBlockNativeWithSpacing(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Block content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("above", LengthValue{Length: Length{Points: 20}}, syntax.Detached())
+	args.PushNamed("below", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
+
+	result, err := blockNative(vm, args)
+	if err != nil {
+		t.Fatalf("blockNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	block := content.Content.Elements[0].(*BlockElement)
+
+	if block.Above == nil || *block.Above != 20 {
+		t.Errorf("Above = %v, want 20", block.Above)
+	}
+	if block.Below == nil || *block.Below != 10 {
+		t.Errorf("Below = %v, want 10", block.Below)
+	}
+}
+
+func TestBlockElement(t *testing.T) {
+	width := 100.0
+	breakable := false
+	sticky := true
+	elem := &BlockElement{
+		Width:     &width,
+		Breakable: &breakable,
+		Sticky:    sticky,
+		Body: Content{
+			Elements: []ContentElement{&TextElement{Text: "Content"}},
+		},
+	}
+
+	if *elem.Width != 100.0 {
+		t.Errorf("Width = %v, want 100.0", *elem.Width)
+	}
+	if *elem.Breakable != false {
+		t.Errorf("Breakable = %v, want false", *elem.Breakable)
+	}
+	if elem.Sticky != true {
+		t.Errorf("Sticky = %v, want true", elem.Sticky)
+	}
+
+	var _ ContentElement = elem
+}
+
+// ----------------------------------------------------------------------------
+// Pad Tests
+// ----------------------------------------------------------------------------
+
+func TestPadFunc(t *testing.T) {
+	padFunc := PadFunc()
+
+	if padFunc == nil {
+		t.Fatal("PadFunc() returned nil")
+	}
+
+	if padFunc.Name == nil || *padFunc.Name != "pad" {
+		t.Errorf("expected function name 'pad', got %v", padFunc.Name)
+	}
+
+	_, ok := padFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Error("expected NativeFunc representation")
+	}
+}
+
+func TestPadNativeBasic(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Padded content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+
+	result, err := padNative(vm, args)
+	if err != nil {
+		t.Fatalf("padNative() error: %v", err)
+	}
+
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	if len(content.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(content.Content.Elements))
+	}
+
+	pad, ok := content.Content.Elements[0].(*PadElement)
+	if !ok {
+		t.Fatalf("expected *PadElement, got %T", content.Content.Elements[0])
+	}
+
+	if pad.Left != nil {
+		t.Errorf("Left = %v, want nil (default)", pad.Left)
+	}
+	if pad.Top != nil {
+		t.Errorf("Top = %v, want nil (default)", pad.Top)
+	}
+}
+
+func TestPadNativeWithX(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Padded content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("x", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
+
+	result, err := padNative(vm, args)
+	if err != nil {
+		t.Fatalf("padNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	pad := content.Content.Elements[0].(*PadElement)
+
+	if pad.Left == nil || *pad.Left != 10 {
+		t.Errorf("Left = %v, want 10", pad.Left)
+	}
+	if pad.Right == nil || *pad.Right != 10 {
+		t.Errorf("Right = %v, want 10", pad.Right)
+	}
+}
+
+func TestPadNativeWithY(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Padded content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("y", LengthValue{Length: Length{Points: 20}}, syntax.Detached())
+
+	result, err := padNative(vm, args)
+	if err != nil {
+		t.Fatalf("padNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	pad := content.Content.Elements[0].(*PadElement)
+
+	if pad.Top == nil || *pad.Top != 20 {
+		t.Errorf("Top = %v, want 20", pad.Top)
+	}
+	if pad.Bottom == nil || *pad.Bottom != 20 {
+		t.Errorf("Bottom = %v, want 20", pad.Bottom)
+	}
+}
+
+func TestPadNativeWithRest(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Padded content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("rest", LengthValue{Length: Length{Points: 5}}, syntax.Detached())
+
+	result, err := padNative(vm, args)
+	if err != nil {
+		t.Fatalf("padNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	pad := content.Content.Elements[0].(*PadElement)
+
+	if pad.Left == nil || *pad.Left != 5 {
+		t.Errorf("Left = %v, want 5", pad.Left)
+	}
+	if pad.Top == nil || *pad.Top != 5 {
+		t.Errorf("Top = %v, want 5", pad.Top)
+	}
+	if pad.Right == nil || *pad.Right != 5 {
+		t.Errorf("Right = %v, want 5", pad.Right)
+	}
+	if pad.Bottom == nil || *pad.Bottom != 5 {
+		t.Errorf("Bottom = %v, want 5", pad.Bottom)
+	}
+}
+
+func TestPadNativeWithIndividualSides(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Padded content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("left", LengthValue{Length: Length{Points: 1}}, syntax.Detached())
+	args.PushNamed("top", LengthValue{Length: Length{Points: 2}}, syntax.Detached())
+	args.PushNamed("right", LengthValue{Length: Length{Points: 3}}, syntax.Detached())
+	args.PushNamed("bottom", LengthValue{Length: Length{Points: 4}}, syntax.Detached())
+
+	result, err := padNative(vm, args)
+	if err != nil {
+		t.Fatalf("padNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	pad := content.Content.Elements[0].(*PadElement)
+
+	if pad.Left == nil || *pad.Left != 1 {
+		t.Errorf("Left = %v, want 1", pad.Left)
+	}
+	if pad.Top == nil || *pad.Top != 2 {
+		t.Errorf("Top = %v, want 2", pad.Top)
+	}
+	if pad.Right == nil || *pad.Right != 3 {
+		t.Errorf("Right = %v, want 3", pad.Right)
+	}
+	if pad.Bottom == nil || *pad.Bottom != 4 {
+		t.Errorf("Bottom = %v, want 4", pad.Bottom)
+	}
+}
+
+func TestPadNativeMissingBody(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("x", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
+
+	_, err := padNative(vm, args)
+	if err == nil {
+		t.Error("expected error for missing body argument")
+	}
+}
+
+func TestPadElement(t *testing.T) {
+	left := 10.0
+	top := 20.0
+	right := 30.0
+	bottom := 40.0
+	elem := &PadElement{
+		Left:   &left,
+		Top:    &top,
+		Right:  &right,
+		Bottom: &bottom,
+		Body: Content{
+			Elements: []ContentElement{&TextElement{Text: "Content"}},
+		},
+	}
+
+	if *elem.Left != 10.0 {
+		t.Errorf("Left = %v, want 10.0", *elem.Left)
+	}
+	if *elem.Top != 20.0 {
+		t.Errorf("Top = %v, want 20.0", *elem.Top)
+	}
+	if *elem.Right != 30.0 {
+		t.Errorf("Right = %v, want 30.0", *elem.Right)
+	}
+	if *elem.Bottom != 40.0 {
+		t.Errorf("Bottom = %v, want 40.0", *elem.Bottom)
+	}
+
+	var _ ContentElement = elem
+}
+
+// ----------------------------------------------------------------------------
+// Registration Tests for Box, Block, and Pad
+// ----------------------------------------------------------------------------
+
+func TestRegisterElementFunctionsIncludesBoxBlockPad(t *testing.T) {
+	scope := NewScope()
+	RegisterElementFunctions(scope)
+
+	// Verify box function is registered
+	boxBinding := scope.Get("box")
+	if boxBinding == nil {
+		t.Fatal("expected 'box' to be registered")
+	}
+	boxFunc, ok := boxBinding.Value.(FuncValue)
+	if !ok {
+		t.Fatalf("expected FuncValue for box, got %T", boxBinding.Value)
+	}
+	if boxFunc.Func.Name == nil || *boxFunc.Func.Name != "box" {
+		t.Errorf("expected function name 'box', got %v", boxFunc.Func.Name)
+	}
+
+	// Verify block function is registered
+	blockBinding := scope.Get("block")
+	if blockBinding == nil {
+		t.Fatal("expected 'block' to be registered")
+	}
+	blockFunc, ok := blockBinding.Value.(FuncValue)
+	if !ok {
+		t.Fatalf("expected FuncValue for block, got %T", blockBinding.Value)
+	}
+	if blockFunc.Func.Name == nil || *blockFunc.Func.Name != "block" {
+		t.Errorf("expected function name 'block', got %v", blockFunc.Func.Name)
+	}
+
+	// Verify pad function is registered
+	padBinding := scope.Get("pad")
+	if padBinding == nil {
+		t.Fatal("expected 'pad' to be registered")
+	}
+	padFunc, ok := padBinding.Value.(FuncValue)
+	if !ok {
+		t.Fatalf("expected FuncValue for pad, got %T", padBinding.Value)
+	}
+	if padFunc.Func.Name == nil || *padFunc.Func.Name != "pad" {
+		t.Errorf("expected function name 'pad', got %v", padFunc.Func.Name)
+	}
+}
+
+func TestElementFunctionsIncludesBoxBlockPad(t *testing.T) {
+	funcs := ElementFunctions()
+
+	if _, ok := funcs["box"]; !ok {
+		t.Error("expected 'box' in ElementFunctions()")
+	}
+
+	if _, ok := funcs["block"]; !ok {
+		t.Error("expected 'block' in ElementFunctions()")
+	}
+
+	if _, ok := funcs["pad"]; !ok {
+		t.Error("expected 'pad' in ElementFunctions()")
+	}
+}
