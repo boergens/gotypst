@@ -316,3 +316,227 @@ func TestGrid_EntryAt(t *testing.T) {
 		t.Error("expected nil for out of bounds y")
 	}
 }
+
+func TestMeasureColumns_Auto(t *testing.T) {
+	// Create cells with string content for auto-sizing
+	cell1 := &Cell{X: 0, Y: 0, Colspan: 1, Rowspan: 1, Body: "Hi"}      // Short text
+	cell2 := &Cell{X: 1, Y: 0, Colspan: 1, Rowspan: 1, Body: "Hello World"} // Longer text
+
+	grid := &Grid{
+		Cols: []Sizing{
+			SizingAuto{}, // Auto column 1
+			SizingAuto{}, // Auto column 2
+		},
+		Rows: []Sizing{SizingAuto{}},
+		Entries: []Entry{
+			EntryCell{Cell: cell1},
+			EntryCell{Cell: cell2},
+		},
+		ColCount: 2,
+		RowCount: 1,
+	}
+
+	regions := &flow.Regions{
+		Size:   layout.Size{Width: 500, Height: 300},
+		Full:   layout.Size{Width: 500, Height: 300},
+		Expand: flow.Axes[bool]{X: false, Y: false},
+	}
+
+	gl := NewGridLayouter(nil, grid, regions, nil, false)
+	err := gl.measureColumns()
+	if err != nil {
+		t.Fatalf("measureColumns failed: %v", err)
+	}
+
+	// Column 0 should be narrower than column 1 (shorter text)
+	if gl.RCols[0] >= gl.RCols[1] {
+		t.Errorf("expected column 0 (%v) to be narrower than column 1 (%v)", gl.RCols[0], gl.RCols[1])
+	}
+
+	// Both columns should have positive width
+	if gl.RCols[0] <= 0 {
+		t.Errorf("expected column 0 to have positive width, got %v", gl.RCols[0])
+	}
+	if gl.RCols[1] <= 0 {
+		t.Errorf("expected column 1 to have positive width, got %v", gl.RCols[1])
+	}
+}
+
+func TestMeasureColumns_AutoWithNilBody(t *testing.T) {
+	// Create cell with nil body
+	cell := &Cell{X: 0, Y: 0, Colspan: 1, Rowspan: 1, Body: nil}
+
+	grid := &Grid{
+		Cols:     []Sizing{SizingAuto{}},
+		Rows:     []Sizing{SizingAuto{}},
+		Entries:  []Entry{EntryCell{Cell: cell}},
+		ColCount: 1,
+		RowCount: 1,
+	}
+
+	regions := &flow.Regions{
+		Size:   layout.Size{Width: 200, Height: 300},
+		Full:   layout.Size{Width: 200, Height: 300},
+		Expand: flow.Axes[bool]{X: false, Y: false},
+	}
+
+	gl := NewGridLayouter(nil, grid, regions, nil, false)
+	err := gl.measureColumns()
+	if err != nil {
+		t.Fatalf("measureColumns failed: %v", err)
+	}
+
+	// Column with nil body should have 0 width
+	if gl.RCols[0] != 0 {
+		t.Errorf("expected column 0 width 0 for nil body, got %v", gl.RCols[0])
+	}
+}
+
+func TestMeasureColumns_AutoWithMeasurable(t *testing.T) {
+	// Create a cell with a measurable body
+	measurableContent := &TextContent{
+		Text:            "Test content",
+		FontSize:        12,
+		ApproxCharWidth: 6,
+	}
+	cell := &Cell{X: 0, Y: 0, Colspan: 1, Rowspan: 1, Body: measurableContent}
+
+	grid := &Grid{
+		Cols:     []Sizing{SizingAuto{}},
+		Rows:     []Sizing{SizingAuto{}},
+		Entries:  []Entry{EntryCell{Cell: cell}},
+		ColCount: 1,
+		RowCount: 1,
+	}
+
+	regions := &flow.Regions{
+		Size:   layout.Size{Width: 200, Height: 300},
+		Full:   layout.Size{Width: 200, Height: 300},
+		Expand: flow.Axes[bool]{X: false, Y: false},
+	}
+
+	gl := NewGridLayouter(nil, grid, regions, nil, false)
+	err := gl.measureColumns()
+	if err != nil {
+		t.Fatalf("measureColumns failed: %v", err)
+	}
+
+	// Width should match the measurable's reported width
+	expectedWidth := measurableContent.MeasureWidth()
+	if gl.RCols[0] != expectedWidth {
+		t.Errorf("expected column 0 width %v, got %v", expectedWidth, gl.RCols[0])
+	}
+}
+
+func TestMeasureColumns_MixedSizing(t *testing.T) {
+	// Mix of auto, fixed, and fractional columns
+	cell := &Cell{X: 1, Y: 0, Colspan: 1, Rowspan: 1, Body: "AutoContent"}
+
+	grid := &Grid{
+		Cols: []Sizing{
+			SizingRel{Abs: 30},       // Fixed 30
+			SizingAuto{},             // Auto
+			SizingFr{Fr: 1},          // 1fr
+		},
+		Rows:    []Sizing{SizingAuto{}},
+		Entries: []Entry{nil, EntryCell{Cell: cell}, nil},
+		ColCount: 3,
+		RowCount: 1,
+	}
+
+	regions := &flow.Regions{
+		Size:   layout.Size{Width: 200, Height: 300},
+		Full:   layout.Size{Width: 200, Height: 300},
+		Expand: flow.Axes[bool]{X: false, Y: false},
+	}
+
+	gl := NewGridLayouter(nil, grid, regions, nil, false)
+	err := gl.measureColumns()
+	if err != nil {
+		t.Fatalf("measureColumns failed: %v", err)
+	}
+
+	// Column 0 should be exactly 30 (fixed)
+	if gl.RCols[0] != 30 {
+		t.Errorf("expected column 0 width 30, got %v", gl.RCols[0])
+	}
+
+	// Column 1 should have auto width based on content
+	if gl.RCols[1] <= 0 {
+		t.Errorf("expected column 1 to have positive width, got %v", gl.RCols[1])
+	}
+
+	// Column 2 should get the remaining space (1fr)
+	expectedRemaining := 200 - gl.RCols[0] - gl.RCols[1]
+	if !gl.RCols[2].ApproxEq(expectedRemaining) {
+		t.Errorf("expected column 2 width ~%v, got %v", expectedRemaining, gl.RCols[2])
+	}
+}
+
+func TestTextContent_MeasureWidth(t *testing.T) {
+	tc := &TextContent{
+		Text:            "Hello",
+		FontSize:        12,
+		ApproxCharWidth: 6,
+	}
+
+	width := tc.MeasureWidth()
+	expected := layout.Abs(5 * 6) // 5 chars * 6pt per char
+	if width != expected {
+		t.Errorf("expected width %v, got %v", expected, width)
+	}
+}
+
+func TestTextContent_MeasureHeight(t *testing.T) {
+	tc := &TextContent{
+		Text:            "Hello World Test",
+		FontSize:        12,
+		ApproxCharWidth: 6,
+	}
+
+	// With wide width, should be single line
+	height := tc.MeasureHeight(200)
+	expectedSingleLine := layout.Abs(12 * 1.2) // 12pt * 1.2 line height
+	if !height.ApproxEq(expectedSingleLine) {
+		t.Errorf("expected height %v for single line, got %v", expectedSingleLine, height)
+	}
+
+	// With narrow width, should wrap to multiple lines
+	height = tc.MeasureHeight(36) // 36pt = 6 chars per line
+	// "Hello World Test" = 16 chars, 6 chars per line = 3 lines
+	expectedMultiLine := layout.Abs(3 * 12 * 1.2)
+	if !height.ApproxEq(expectedMultiLine) {
+		t.Errorf("expected height %v for multiple lines, got %v", expectedMultiLine, height)
+	}
+}
+
+func TestFrameContent_Measure(t *testing.T) {
+	fc := &FrameContent{
+		Width:  100,
+		Height: 50,
+	}
+
+	if fc.MeasureWidth() != 100 {
+		t.Errorf("expected width 100, got %v", fc.MeasureWidth())
+	}
+
+	if fc.MeasureHeight(200) != 50 {
+		t.Errorf("expected height 50, got %v", fc.MeasureHeight(200))
+	}
+}
+
+func TestMeasuredCell(t *testing.T) {
+	mc := &MeasuredCell{
+		Body:   "test",
+		Width:  80,
+		Height: 20,
+	}
+
+	if mc.MeasureWidth() != 80 {
+		t.Errorf("expected width 80, got %v", mc.MeasureWidth())
+	}
+
+	if mc.MeasureHeight(100) != 20 {
+		t.Errorf("expected height 20, got %v", mc.MeasureHeight(100))
+	}
+}
