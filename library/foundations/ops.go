@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 )
 
 // OpError represents an error that occurred during an operation.
@@ -119,6 +120,18 @@ func Add(lhs, rhs Value) (Value, error) {
 			}
 			return result, nil
 		}
+	case *Datetime:
+		switch b := rhs.(type) {
+		case Duration:
+			return addDurationToDatetime(a, b)
+		}
+	case Duration:
+		switch b := rhs.(type) {
+		case Duration:
+			return Duration(int64(a) + int64(b)), nil
+		case *Datetime:
+			return addDurationToDatetime(b, a)
+		}
 	}
 	return nil, mismatch("'+'", lhs, rhs)
 }
@@ -143,6 +156,18 @@ func Sub(lhs, rhs Value) (Value, error) {
 			return Float(float64(a) - float64(b)), nil
 		case Float:
 			return Float(a - b), nil
+		}
+	case *Datetime:
+		switch b := rhs.(type) {
+		case *Datetime:
+			return subtractDatetimes(a, b)
+		case Duration:
+			return addDurationToDatetime(a, Duration(-int64(b)))
+		}
+	case Duration:
+		switch b := rhs.(type) {
+		case Duration:
+			return Duration(int64(a) - int64(b)), nil
 		}
 	}
 	return nil, mismatch("'-'", lhs, rhs)
@@ -416,8 +441,44 @@ func equal(lhs, rhs Value) bool {
 			}
 		}
 		return true
+	case *Datetime:
+		b, ok := rhs.(*Datetime)
+		if !ok {
+			return false
+		}
+		return datetimesEqual(a, b)
+	case Duration:
+		b, ok := rhs.(Duration)
+		return ok && a == b
 	}
 	return false
+}
+
+// datetimesEqual checks if two datetimes are equal.
+func datetimesEqual(a, b *Datetime) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return ptrIntEqual(a.year, b.year) &&
+		ptrIntEqual(a.month, b.month) &&
+		ptrIntEqual(a.day, b.day) &&
+		ptrIntEqual(a.hour, b.hour) &&
+		ptrIntEqual(a.minute, b.minute) &&
+		ptrIntEqual(a.second, b.second)
+}
+
+// ptrIntEqual checks if two *int are equal.
+func ptrIntEqual(a, b *int) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
 }
 
 // compare returns -1, 0, or 1 comparing lhs to rhs.
@@ -442,10 +503,50 @@ func compare(lhs, rhs Value) (int, error) {
 		if ok {
 			return strings.Compare(string(a), string(b)), nil
 		}
+	case *Datetime:
+		b, ok := rhs.(*Datetime)
+		if ok {
+			return compareDatetimes(a, b)
+		}
+	case Duration:
+		b, ok := rhs.(Duration)
+		if ok {
+			return cmp.Compare(int64(a), int64(b)), nil
+		}
 	}
 	return 0, &OpError{
 		Message: fmt.Sprintf("cannot compare %s with %s", lhs.Type(), rhs.Type()),
 	}
+}
+
+// compareDatetimes compares two datetimes.
+func compareDatetimes(a, b *Datetime) (int, error) {
+	if a == nil && b == nil {
+		return 0, nil
+	}
+	if a == nil {
+		return -1, nil
+	}
+	if b == nil {
+		return 1, nil
+	}
+
+	// Both must have date components or both must have only time
+	if a.HasDate() != b.HasDate() {
+		return 0, &OpError{Message: "cannot compare datetime with different component sets"}
+	}
+
+	// Compare using time.Time conversion
+	ta := a.ToTime()
+	tb := b.ToTime()
+
+	if ta.Before(tb) {
+		return -1, nil
+	}
+	if ta.After(tb) {
+		return 1, nil
+	}
+	return 0, nil
 }
 
 // contains checks if container contains element.
@@ -548,4 +649,80 @@ func IsZero(v Value) bool {
 	default:
 		return false
 	}
+}
+
+// --- Datetime/Duration Arithmetic Helpers ---
+
+// addDurationToDatetime adds a duration to a datetime, returning a new datetime.
+func addDurationToDatetime(dt *Datetime, d Duration) (*Datetime, error) {
+	if dt == nil {
+		return nil, &OpError{Message: "cannot add duration to nil datetime"}
+	}
+
+	// Convert datetime to time.Time, add duration, convert back
+	t := dt.ToTime()
+	t = t.Add(time.Duration(d))
+
+	// Create new datetime preserving which components were originally set
+	var year, month, day, hour, minute, second *int
+
+	if dt.year != nil {
+		y := t.Year()
+		year = &y
+	}
+	if dt.month != nil {
+		m := int(t.Month())
+		month = &m
+	}
+	if dt.day != nil {
+		d := t.Day()
+		day = &d
+	}
+	if dt.hour != nil {
+		h := t.Hour()
+		hour = &h
+	}
+	if dt.minute != nil {
+		mi := t.Minute()
+		minute = &mi
+	}
+	if dt.second != nil {
+		s := t.Second()
+		second = &s
+	}
+
+	return &Datetime{
+		year:   year,
+		month:  month,
+		day:    day,
+		hour:   hour,
+		minute: minute,
+		second: second,
+	}, nil
+}
+
+// subtractDatetimes computes the duration between two datetimes.
+func subtractDatetimes(a, b *Datetime) (Duration, error) {
+	if a == nil || b == nil {
+		return 0, &OpError{Message: "cannot subtract nil datetime"}
+	}
+
+	// Both must have date components to compute a meaningful duration
+	if !a.HasDate() || !b.HasDate() {
+		// If both only have time, we can still compute time difference
+		if a.HasTime() && b.HasTime() && !a.HasDate() && !b.HasDate() {
+			// Time-only subtraction
+			aSec := int64(a.HourOr(0))*3600 + int64(a.MinuteOr(0))*60 + int64(a.SecondOr(0))
+			bSec := int64(b.HourOr(0))*3600 + int64(b.MinuteOr(0))*60 + int64(b.SecondOr(0))
+			return Duration((aSec - bSec) * 1e9), nil
+		}
+		return 0, &OpError{Message: "cannot subtract datetimes with incompatible components"}
+	}
+
+	// Convert to time.Time and compute difference
+	ta := a.ToTime()
+	tb := b.ToTime()
+	diff := ta.Sub(tb)
+
+	return Duration(diff.Nanoseconds()), nil
 }
