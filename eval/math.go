@@ -18,7 +18,7 @@ type EquationElement struct {
 	Block bool
 }
 
-func (*EquationElement) isContentElement() {}
+func (*EquationElement) IsContentElement() {}
 
 // MathFracElement represents a fraction.
 type MathFracElement struct {
@@ -28,7 +28,7 @@ type MathFracElement struct {
 	Denom Content
 }
 
-func (*MathFracElement) isContentElement() {}
+func (*MathFracElement) IsContentElement() {}
 
 // MathRootElement represents a root (square root, nth root).
 type MathRootElement struct {
@@ -38,7 +38,7 @@ type MathRootElement struct {
 	Radicand Content
 }
 
-func (*MathRootElement) isContentElement() {}
+func (*MathRootElement) IsContentElement() {}
 
 // MathAttachElement represents subscripts and superscripts.
 type MathAttachElement struct {
@@ -52,7 +52,7 @@ type MathAttachElement struct {
 	Primes int
 }
 
-func (*MathAttachElement) isContentElement() {}
+func (*MathAttachElement) IsContentElement() {}
 
 // MathDelimitedElement represents delimited math content.
 type MathDelimitedElement struct {
@@ -64,12 +64,12 @@ type MathDelimitedElement struct {
 	Body Content
 }
 
-func (*MathDelimitedElement) isContentElement() {}
+func (*MathDelimitedElement) IsContentElement() {}
 
 // MathAlignElement represents an alignment point in equations.
 type MathAlignElement struct{}
 
-func (*MathAlignElement) isContentElement() {}
+func (*MathAlignElement) IsContentElement() {}
 
 // MathSymbolElement represents a math symbol.
 type MathSymbolElement struct {
@@ -77,7 +77,7 @@ type MathSymbolElement struct {
 	Symbol string
 }
 
-func (*MathSymbolElement) isContentElement() {}
+func (*MathSymbolElement) IsContentElement() {}
 
 // ----------------------------------------------------------------------------
 // Math Expression Evaluators

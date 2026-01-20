@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"github.com/boergens/gotypst/eval"
 	"github.com/boergens/gotypst/layout"
 )
 
@@ -311,8 +312,25 @@ func layoutFlow(engine *Engine, children []Pair, locator *SplitLocator, styles S
 		// Return a single empty frame for blank pages
 		return []Frame{{Size: area}}, nil
 	}
-	// Placeholder: return a single frame with the content area
-	return []Frame{{Size: area}}, nil
+
+	// Minimal implementation: extract text and create simple positioned items
+	frame := Frame{Size: area}
+	var y layout.Abs = 12 // Start with some top margin
+	fontSize := layout.Abs(12) // Default font size
+
+	for _, pair := range children {
+		// Check if this is a text element
+		if textElem, ok := pair.Element.(*eval.TextElement); ok {
+			frame.Push(
+				layout.Point{X: 0, Y: y},
+				TextItem{Text: textElem.Text, FontSize: fontSize},
+			)
+			y += fontSize * 1.2 // Simple line spacing
+		}
+		// Skip other element types for now (spaces, etc.)
+	}
+
+	return []Frame{frame}, nil
 }
 
 // layoutMarginal lays out a marginal (header, footer, etc.)

@@ -94,6 +94,9 @@ func (r *Renderer) renderPagesFrameItem(cs *ContentStream, item pages.FrameItem,
 		r.renderPagesFrame(cs, &it.Frame, pos)
 	case pages.TagItem:
 		// Tags are metadata, not rendered
+	case pages.TextItem:
+		// Render text directly
+		r.renderSimpleText(cs, it.Text, it.FontSize, pos)
 	}
 }
 
@@ -199,6 +202,24 @@ func (r *Renderer) renderShapedText(cs *ContentStream, text *inline.ShapedText, 
 	}
 
 	cs.ShowTextWithPositioning(items)
+	cs.EndText()
+}
+
+// renderSimpleText renders simple text directly at a position.
+// This is a minimal implementation for basic text rendering without shaping.
+func (r *Renderer) renderSimpleText(cs *ContentStream, text string, fontSize layout.Abs, pos layout.Point) {
+	if text == "" {
+		return
+	}
+
+	// Convert to PDF coordinates (origin at bottom-left)
+	pdfX := pos.X
+	pdfY := r.pageHeight - pos.Y - fontSize
+
+	cs.BeginText()
+	cs.SetFont("/F1", fontSize)
+	cs.SetTextMatrixPos(pdfX, pdfY)
+	cs.ShowText(text)
 	cs.EndText()
 }
 

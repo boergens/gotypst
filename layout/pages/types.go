@@ -105,6 +105,17 @@ type TagItem struct {
 
 func (TagItem) isFrameItem() {}
 
+// TextItem represents text content for rendering.
+// This is a simplified item for direct text rendering.
+type TextItem struct {
+	// Text is the text content to render.
+	Text string
+	// FontSize is the font size in points.
+	FontSize layout.Abs
+}
+
+func (TextItem) isFrameItem() {}
+
 // ImageItem represents an embedded image.
 type ImageItem struct {
 	// Image contains the image data and metadata.

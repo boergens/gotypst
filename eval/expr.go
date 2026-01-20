@@ -541,7 +541,7 @@ type TextElement struct {
 	Text string
 }
 
-func (*TextElement) isContentElement() {}
+func (*TextElement) IsContentElement() {}
 
 // ----------------------------------------------------------------------------
 // Operator Evaluators
@@ -1645,7 +1645,7 @@ func evalLinebreak(_ *Vm, _ *syntax.LinebreakExpr) (Value, error) {
 
 type LinebreakElement struct{}
 
-func (*LinebreakElement) isContentElement() {}
+func (*LinebreakElement) IsContentElement() {}
 
 func evalParbreak(_ *Vm, _ *syntax.ParbreakExpr) (Value, error) {
 	return ContentValue{Content: Content{
@@ -1655,7 +1655,7 @@ func evalParbreak(_ *Vm, _ *syntax.ParbreakExpr) (Value, error) {
 
 type ParbreakElement struct{}
 
-func (*ParbreakElement) isContentElement() {}
+func (*ParbreakElement) IsContentElement() {}
 
 // ParagraphElement represents a paragraph with styling properties.
 // This wraps content in paragraph-level formatting.
@@ -1679,7 +1679,7 @@ type ParagraphElement struct {
 	HangingIndent *float64
 }
 
-func (*ParagraphElement) isContentElement() {}
+func (*ParagraphElement) IsContentElement() {}
 
 func evalStrong(vm *Vm, e *syntax.StrongExpr) (Value, error) {
 	body := e.Body()
@@ -1702,7 +1702,7 @@ type StrongElement struct {
 	Content Content
 }
 
-func (*StrongElement) isContentElement() {}
+func (*StrongElement) IsContentElement() {}
 
 func evalEmph(vm *Vm, e *syntax.EmphExpr) (Value, error) {
 	body := e.Body()
@@ -1725,7 +1725,7 @@ type EmphElement struct {
 	Content Content
 }
 
-func (*EmphElement) isContentElement() {}
+func (*EmphElement) IsContentElement() {}
 
 func evalRaw(_ *Vm, e *syntax.RawExpr) (Value, error) {
 	// Join lines into a single string
@@ -1748,7 +1748,7 @@ type RawElement struct {
 	Block bool
 }
 
-func (*RawElement) isContentElement() {}
+func (*RawElement) IsContentElement() {}
 
 func evalLink(_ *Vm, e *syntax.LinkExpr) (Value, error) {
 	return ContentValue{Content: Content{
@@ -1760,7 +1760,7 @@ type LinkElement struct {
 	URL string
 }
 
-func (*LinkElement) isContentElement() {}
+func (*LinkElement) IsContentElement() {}
 
 func evalLabel(_ *Vm, e *syntax.LabelExpr) (Value, error) {
 	return LabelValue(e.Get()), nil
@@ -1790,7 +1790,7 @@ type RefElement struct {
 	Supplement *Content // Optional supplement content (e.g., @label[supplement])
 }
 
-func (*RefElement) isContentElement() {}
+func (*RefElement) IsContentElement() {}
 
 func evalHeading(vm *Vm, e *syntax.HeadingExpr) (Value, error) {
 	body := e.Body()
@@ -1814,7 +1814,7 @@ type HeadingElement struct {
 	Content Content
 }
 
-func (*HeadingElement) isContentElement() {}
+func (*HeadingElement) IsContentElement() {}
 
 func evalListItem(vm *Vm, e *syntax.ListItemExpr) (Value, error) {
 	body := e.Body()
@@ -1837,7 +1837,7 @@ type ListItemElement struct {
 	Content Content
 }
 
-func (*ListItemElement) isContentElement() {}
+func (*ListItemElement) IsContentElement() {}
 
 func evalEnumItem(vm *Vm, e *syntax.EnumItemExpr) (Value, error) {
 	body := e.Body()
@@ -1861,7 +1861,7 @@ type EnumItemElement struct {
 	Content Content
 }
 
-func (*EnumItemElement) isContentElement() {}
+func (*EnumItemElement) IsContentElement() {}
 
 func evalTermItem(vm *Vm, e *syntax.TermItemExpr) (Value, error) {
 	term := e.Term()
@@ -1893,7 +1893,7 @@ type TermItemElement struct {
 	Description Content
 }
 
-func (*TermItemElement) isContentElement() {}
+func (*TermItemElement) IsContentElement() {}
 
 func evalEscape(_ *Vm, e *syntax.EscapeExpr) (Value, error) {
 	// Get the full escape text to handle Unicode escapes
@@ -1974,7 +1974,7 @@ type SmartQuoteElement struct {
 	Double bool // true for double quotes, false for single quotes
 }
 
-func (*SmartQuoteElement) isContentElement() {}
+func (*SmartQuoteElement) IsContentElement() {}
 
 // ----------------------------------------------------------------------------
 // Error Types

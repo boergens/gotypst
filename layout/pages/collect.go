@@ -46,6 +46,8 @@ type PagebreakElem struct {
 	Boundary bool
 }
 
+func (*PagebreakElem) IsContentElement() {}
+
 // isPagebreak checks if an element is a pagebreak.
 func isPagebreak(elem interface{}) (*PagebreakElem, bool) {
 	if pb, ok := elem.(*PagebreakElem); ok {
@@ -58,6 +60,8 @@ func isPagebreak(elem interface{}) (*PagebreakElem, bool) {
 type TagElem struct {
 	Tag Tag
 }
+
+func (TagElem) IsContentElement() {}
 
 // isTag checks if an element is a tag.
 func isTag(elem interface{}) bool {

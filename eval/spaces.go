@@ -12,7 +12,7 @@ type SpaceElement struct {
 	Weak bool
 }
 
-func (*SpaceElement) isContentElement() {}
+func (*SpaceElement) IsContentElement() {}
 
 // SpaceState categorizes content elements for the space collapsing algorithm.
 // The state determines how an element interacts with adjacent spaces.

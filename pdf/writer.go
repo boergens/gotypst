@@ -83,16 +83,28 @@ func (w *Writer) Write(doc *pages.PagedDocument, out io.Writer) error {
 			},
 		}
 
-		// Add resources if there are images
+		// Build resources dictionary
+		resources := make(Dict)
+
+		// Always add default font for text rendering
+		resources[Name("Font")] = Dict{
+			Name("F1"): Dict{
+				Name("Type"):     Name("Font"),
+				Name("Subtype"):  Name("Type1"),
+				Name("BaseFont"): Name("Helvetica"),
+			},
+		}
+
+		// Add XObjects if there are images
 		if len(pageImageRefs[i]) > 0 {
 			xobjects := make(Dict)
 			for name, ref := range pageImageRefs[i] {
 				xobjects[Name(name)] = ref
 			}
-			pageDict[Name("Resources")] = Dict{
-				Name("XObject"): xobjects,
-			}
+			resources[Name("XObject")] = xobjects
 		}
+
+		pageDict[Name("Resources")] = resources
 
 		w.addObjectWithRef(pageRef, pageDict)
 	}
@@ -202,9 +214,38 @@ func (w *Writer) processFrame(frame *pages.Frame, content *bytes.Buffer, imageRe
 
 		case pages.TagItem:
 			// Tags don't produce PDF content
+
+		case pages.TextItem:
+			// Render simple text
+			// PDF origin is bottom-left, so we need to flip Y coordinate
+			fontSize := float64(v.FontSize)
+			xPos := float64(x)
+			// Y position needs to account for page height and baseline
+			yPos := float64(frame.Size.Height - y - v.FontSize)
+
+			fmt.Fprintf(content, "BT\n")              // Begin text
+			fmt.Fprintf(content, "/F1 %g Tf\n", fontSize) // Set font and size
+			fmt.Fprintf(content, "%g %g Td\n", xPos, yPos) // Position
+			fmt.Fprintf(content, "(%s) Tj\n", escapeString(v.Text)) // Show text
+			fmt.Fprintf(content, "ET\n")              // End text
 		}
 	}
 	return nil
+}
+
+// escapeString escapes special characters for PDF string literals.
+func escapeString(s string) string {
+	var result bytes.Buffer
+	for _, r := range s {
+		switch r {
+		case '(', ')', '\\':
+			result.WriteByte('\\')
+			result.WriteRune(r)
+		default:
+			result.WriteRune(r)
+		}
+	}
+	return result.String()
 }
 
 // getOrCreateImageXObject returns a reference to an image XObject,

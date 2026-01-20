@@ -10,7 +10,7 @@ type ListElement struct {
 	Items []*ListItemElement
 }
 
-func (*ListElement) isContentElement() {}
+func (*ListElement) IsContentElement() {}
 
 // EnumElement represents an enumerated (numbered) list containing enum items.
 // This is created by grouping consecutive EnumItemElements.
@@ -18,7 +18,7 @@ type EnumElement struct {
 	Items []*EnumItemElement
 }
 
-func (*EnumElement) isContentElement() {}
+func (*EnumElement) IsContentElement() {}
 
 // TermsElement represents a terms (definition) list containing term items.
 // This is created by grouping consecutive TermItemElements.
@@ -26,7 +26,7 @@ type TermsElement struct {
 	Items []*TermItemElement
 }
 
-func (*TermsElement) isContentElement() {}
+func (*TermsElement) IsContentElement() {}
 
 // ----------------------------------------------------------------------------
 // Citation Elements
@@ -46,7 +46,7 @@ type CiteElement struct {
 	Form string
 }
 
-func (*CiteElement) isContentElement() {}
+func (*CiteElement) IsContentElement() {}
 
 // CitationGroup represents multiple citations grouped together.
 // For example: [1, 2, 3] or (Smith 2020; Jones 2021)
@@ -54,4 +54,4 @@ type CitationGroup struct {
 	Citations []*CiteElement
 }
 
-func (*CitationGroup) isContentElement() {}
+func (*CitationGroup) IsContentElement() {}

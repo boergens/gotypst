@@ -317,7 +317,7 @@ type StackElement struct {
 	Children []Content
 }
 
-func (*StackElement) isContentElement() {}
+func (*StackElement) IsContentElement() {}
 
 // StackFunc creates the stack element function.
 func StackFunc() *Func {
@@ -447,7 +447,7 @@ type AlignElement struct {
 	Body Content
 }
 
-func (*AlignElement) isContentElement() {}
+func (*AlignElement) IsContentElement() {}
 
 // AlignFunc creates the align element function.
 func AlignFunc() *Func {

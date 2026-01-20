@@ -348,8 +348,9 @@ type Content struct {
 }
 
 // ContentElement is a placeholder interface for content elements.
+// IsContentElement is exported to allow cross-package type assertions.
 type ContentElement interface {
-	isContentElement()
+	IsContentElement()
 }
 
 // ContentValue represents content as a Value.
