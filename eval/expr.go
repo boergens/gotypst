@@ -1774,18 +1774,48 @@ func evalHeading(vm *Vm, e *syntax.HeadingExpr) (Value, error) {
 	}
 	if c, ok := content.(ContentValue); ok {
 		return ContentValue{Content: Content{
-			Elements: []ContentElement{&HeadingElement{Level: e.Level(), Content: c.Content}},
+			Elements: []ContentElement{&HeadingElement{
+				Level:    e.Level(),
+				Content:  c.Content,
+				Outlined: true, // Default: headings appear in outline
+				// Bookmarked: nil means auto (follows Outlined)
+				// Numbering: empty means no numbering by default from markup
+			}},
 		}}, nil
 	}
 	return content, nil
 }
 
+// HeadingElement represents a heading in the document.
+// It supports levels, numbering, and controls for outline and bookmark inclusion.
 type HeadingElement struct {
-	Level   int
+	// Level is the heading level (1-6, where 1 is the most important).
+	Level int
+	// Content is the heading body content.
 	Content Content
+	// Numbering is the numbering pattern for the heading (e.g., "1.", "1.1").
+	// Empty string means no numbering, "auto" means automatic numbering.
+	Numbering string
+	// Outlined controls whether this heading appears in the document outline.
+	// Default is true.
+	Outlined bool
+	// Bookmarked controls whether this heading appears in PDF bookmarks.
+	// nil means auto (follows Outlined), true/false overrides.
+	Bookmarked *bool
+	// Supplement is optional content for references to this heading.
+	Supplement *Content
 }
 
 func (*HeadingElement) isContentElement() {}
+
+// IsBookmarked returns whether this heading should appear in PDF bookmarks.
+// If Bookmarked is nil (auto), it follows the Outlined setting.
+func (h *HeadingElement) IsBookmarked() bool {
+	if h.Bookmarked != nil {
+		return *h.Bookmarked
+	}
+	return h.Outlined
+}
 
 func evalListItem(vm *Vm, e *syntax.ListItemExpr) (Value, error) {
 	body := e.Body()
