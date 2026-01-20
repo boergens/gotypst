@@ -1787,6 +1787,96 @@ type HeadingElement struct {
 
 func (*HeadingElement) isContentElement() {}
 
+// PageElement represents a page configuration element.
+// This is created by the page() function and configures page layout.
+type PageElement struct {
+	// Paper is the paper size name (e.g., "a4", "us-letter").
+	// If empty, Width and Height must be specified.
+	Paper string
+	// Width is the explicit page width. If nil, derived from Paper.
+	Width *Relative
+	// Height is the explicit page height. If nil, derived from Paper.
+	Height *Relative
+	// Flipped swaps width and height (landscape orientation).
+	Flipped bool
+	// Margin specifies page margins. Can be a uniform value or per-side values.
+	Margin *PageMargin
+	// Binding specifies the binding side for two-sided documents.
+	Binding *PageBinding
+	// Columns is the number of text columns.
+	Columns int
+	// Fill is the page background fill (color, gradient, or tiling).
+	Fill Value
+	// Numbering is the page numbering pattern.
+	Numbering *string
+	// NumberAlign specifies the alignment of page numbers.
+	NumberAlign *Alignment
+	// Header is the page header content.
+	Header *Content
+	// HeaderAscent is the header's vertical offset from the top margin.
+	HeaderAscent *Relative
+	// Footer is the page footer content.
+	Footer *Content
+	// FooterDescent is the footer's vertical offset from the bottom margin.
+	FooterDescent *Relative
+	// Background is background content placed behind the main content.
+	Background *Content
+	// Foreground is foreground content placed in front of the main content.
+	Foreground *Content
+	// Body is the page content.
+	Body Content
+}
+
+func (*PageElement) isContentElement() {}
+
+// PageMargin represents page margins.
+type PageMargin struct {
+	// Uniform is set if all margins are the same.
+	Uniform *Relative
+	// Left, Right, Top, Bottom are individual margins.
+	Left, Right, Top, Bottom *Relative
+	// Inside, Outside are for two-sided binding.
+	Inside, Outside *Relative
+	// X, Y are horizontal and vertical margins.
+	X, Y *Relative
+	// Rest is the fallback for unspecified margins.
+	Rest *Relative
+}
+
+// PageBinding represents the binding side for two-sided documents.
+type PageBinding int
+
+const (
+	PageBindingLeft PageBinding = iota
+	PageBindingRight
+)
+
+// Alignment represents horizontal or vertical alignment.
+type Alignment struct {
+	Horizontal *HorizontalAlign
+	Vertical   *VerticalAlign
+}
+
+// HorizontalAlign represents horizontal alignment options.
+type HorizontalAlign int
+
+const (
+	HAlignStart HorizontalAlign = iota
+	HAlignCenter
+	HAlignEnd
+	HAlignLeft
+	HAlignRight
+)
+
+// VerticalAlign represents vertical alignment options.
+type VerticalAlign int
+
+const (
+	VAlignTop VerticalAlign = iota
+	VAlignHorizon
+	VAlignBottom
+)
+
 func evalListItem(vm *Vm, e *syntax.ListItemExpr) (Value, error) {
 	body := e.Body()
 	if body == nil {
