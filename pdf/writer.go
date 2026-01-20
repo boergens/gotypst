@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/boergens/gotypst/font"
 	"github.com/boergens/gotypst/layout"
 	"github.com/boergens/gotypst/layout/pages"
 )
@@ -23,13 +24,16 @@ type Writer struct {
 	tagManager *TagManager
 	// tagged indicates whether to generate tagged PDF output.
 	tagged bool
+	// fontManager handles font subsetting and embedding.
+	fontManager *FontManager
 }
 
 // NewWriter creates a new PDF writer.
 func NewWriter() *Writer {
 	return &Writer{
-		nextID: 1,
-		images: make(map[*pages.Image]Ref),
+		nextID:      1,
+		images:      make(map[*pages.Image]Ref),
+		fontManager: NewFontManager(),
 	}
 }
 
@@ -85,6 +89,21 @@ func (w *Writer) Write(doc *pages.PagedDocument, out io.Writer) error {
 		structTreeRootRef = w.allocRef()
 	}
 
+	// First pass: collect glyph usage from all pages
+	for _, page := range doc.Pages {
+		w.collectGlyphUsage(&page.Frame)
+	}
+
+	// Subset all fonts that have been used
+	if err := w.fontManager.SubsetFonts(); err != nil {
+		return fmt.Errorf("subset fonts: %w", err)
+	}
+
+	// Write font objects
+	if err := w.fontManager.WriteFontObjects(w); err != nil {
+		return fmt.Errorf("write font objects: %w", err)
+	}
+
 	// Process all pages and collect image XObjects
 	var pageContentsRefs []Ref
 	var pageImageRefs []map[string]Ref // per-page image resources
@@ -127,13 +146,18 @@ func (w *Writer) Write(doc *pages.PagedDocument, out io.Writer) error {
 		// Build resources dictionary
 		resources := make(Dict)
 
-		// Always add default font for text rendering
-		resources[Name("Font")] = Dict{
-			Name("F1"): Dict{
-				Name("Type"):     Name("Font"),
-				Name("Subtype"):  Name("Type1"),
-				Name("BaseFont"): Name("Helvetica"),
-			},
+		// Add fonts from font manager
+		if w.fontManager.HasFonts() {
+			resources[Name("Font")] = w.fontManager.BuildFontResources()
+		} else {
+			// Fallback to default font for text rendering
+			resources[Name("Font")] = Dict{
+				Name("F1"): Dict{
+					Name("Type"):     Name("Font"),
+					Name("Subtype"):  Name("Type1"),
+					Name("BaseFont"): Name("Helvetica"),
+				},
+			}
 		}
 
 		// Add XObjects if there are images
@@ -420,11 +444,89 @@ func (w *Writer) processFrame(frame *pages.Frame, content *bytes.Buffer, imageRe
 			// Y position needs to account for page height and baseline
 			yPos := float64(frame.Size.Height - y - v.FontSize)
 
-			fmt.Fprintf(content, "BT\n")              // Begin text
-			fmt.Fprintf(content, "/F1 %g Tf\n", fontSize) // Set font and size
-			fmt.Fprintf(content, "%g %g Td\n", xPos, yPos) // Position
+			fmt.Fprintf(content, "BT\n")                            // Begin text
+			fmt.Fprintf(content, "/F1 %g Tf\n", fontSize)           // Set font and size
+			fmt.Fprintf(content, "%g %g Td\n", xPos, yPos)          // Position
 			fmt.Fprintf(content, "(%s) Tj\n", escapeString(v.Text)) // Show text
-			fmt.Fprintf(content, "ET\n")              // End text
+			fmt.Fprintf(content, "ET\n")                            // End text
+
+		case pages.ShapedTextItem:
+			// Render shaped text with precise glyph positioning
+			if len(v.Glyphs) == 0 {
+				continue
+			}
+
+			// Set fill color if specified
+			if v.Fill != nil && v.Fill.Color != nil {
+				r := float64(v.Fill.Color.R) / 255.0
+				g := float64(v.Fill.Color.G) / 255.0
+				b := float64(v.Fill.Color.B) / 255.0
+				fmt.Fprintf(content, "%g %g %g rg\n", r, g, b)
+			}
+
+			fontSize := float64(v.FontSize)
+			xPos := float64(x)
+			yPos := float64(frame.Size.Height - y - v.FontSize)
+
+			fmt.Fprintf(content, "BT\n") // Begin text
+
+			// Group glyphs by font
+			var currentFont *font.Font
+			var currentPDFFont *PDFFont
+			var glyphRun []uint16
+			runStartX := xPos
+
+			flushRun := func() {
+				if len(glyphRun) == 0 || currentPDFFont == nil {
+					return
+				}
+
+				// Set font
+				fmt.Fprintf(content, "/%s %g Tf\n", currentPDFFont.Name, fontSize)
+
+				// Position
+				fmt.Fprintf(content, "%g %g Td\n", runStartX, yPos)
+
+				// Use hex encoding for Identity-H CIDFont
+				if currentPDFFont.Subset != nil {
+					// Map glyph IDs to subset IDs
+					mappedGlyphs := make([]uint16, len(glyphRun))
+					for i, gid := range glyphRun {
+						if newGID, ok := currentPDFFont.Subset.GlyphMapping[gid]; ok {
+							mappedGlyphs[i] = newGID
+						} else {
+							mappedGlyphs[i] = 0 // .notdef
+						}
+					}
+					fmt.Fprintf(content, "%s Tj\n", EncodeGlyphString(mappedGlyphs))
+				} else {
+					// Fallback: use hex encoding with original glyph IDs
+					fmt.Fprintf(content, "%s Tj\n", EncodeGlyphString(glyphRun))
+				}
+
+				glyphRun = glyphRun[:0]
+			}
+
+			for _, glyph := range v.Glyphs {
+				f, ok := glyph.Font.(*font.Font)
+				if !ok {
+					continue
+				}
+
+				// Check if font changed
+				if f != currentFont {
+					flushRun()
+					currentFont = f
+					currentPDFFont = w.fontManager.GetOrCreateFont(f)
+					runStartX = xPos
+				}
+
+				glyphRun = append(glyphRun, glyph.GlyphID)
+				xPos += glyph.XAdvance * fontSize
+			}
+
+			flushRun()
+			fmt.Fprintf(content, "ET\n") // End text
 		}
 	}
 	return nil
@@ -443,6 +545,22 @@ func escapeString(s string) string {
 		}
 	}
 	return result.String()
+}
+
+// collectGlyphUsage walks the frame tree and collects glyph usage from shaped text.
+func (w *Writer) collectGlyphUsage(frame *pages.Frame) {
+	for _, item := range frame.Items {
+		switch v := item.Item.(type) {
+		case pages.GroupItem:
+			w.collectGlyphUsage(&v.Frame)
+		case pages.ShapedTextItem:
+			for _, glyph := range v.Glyphs {
+				if f, ok := glyph.Font.(*font.Font); ok {
+					w.fontManager.AddGlyph(f, glyph.GlyphID)
+				}
+			}
+		}
+	}
 }
 
 // getOrCreateImageXObject returns a reference to an image XObject,

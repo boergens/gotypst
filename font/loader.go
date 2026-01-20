@@ -51,14 +51,20 @@ func loadTTC(data []byte, path string) ([]*Font, error) {
 		return nil, fmt.Errorf("parse TTC: %w", err)
 	}
 
+	// Keep a copy of the raw TTC data for subsetting
+	// Each font in the collection shares this data
+	rawData := make([]byte, len(data))
+	copy(rawData, data)
+
 	fonts := make([]*Font, 0, len(faces))
 	for i, face := range faces {
 		info := extractInfo(face)
 		fonts = append(fonts, &Font{
-			face:  face,
-			Info:  info,
-			Path:  path,
-			Index: i,
+			face:    face,
+			Info:    info,
+			Path:    path,
+			Index:   i,
+			RawData: rawData, // Shared reference for TTC
 		})
 	}
 
@@ -73,12 +79,17 @@ func loadSingle(data []byte, path string, index int) ([]*Font, error) {
 		return nil, fmt.Errorf("parse font: %w", err)
 	}
 
+	// Keep a copy of the raw data for subsetting
+	rawData := make([]byte, len(data))
+	copy(rawData, data)
+
 	info := extractInfo(face)
 	return []*Font{{
-		face:  face,
-		Info:  info,
-		Path:  path,
-		Index: index,
+		face:    face,
+		Info:    info,
+		Path:    path,
+		Index:   index,
+		RawData: rawData,
 	}}, nil
 }
 

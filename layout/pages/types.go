@@ -116,6 +116,36 @@ type TextItem struct {
 
 func (TextItem) isFrameItem() {}
 
+// ShapedTextItem represents shaped text with glyph-level positioning.
+// This provides precise glyph positioning for high-quality PDF output.
+type ShapedTextItem struct {
+	// Glyphs contains the shaped glyph data.
+	Glyphs []ShapedGlyph
+	// FontSize is the font size in points.
+	FontSize layout.Abs
+	// Fill is the text color.
+	Fill *Paint
+}
+
+func (ShapedTextItem) isFrameItem() {}
+
+// ShapedGlyph represents a single shaped glyph for rendering.
+type ShapedGlyph struct {
+	// GlyphID is the glyph index in the font.
+	GlyphID uint16
+	// XAdvance is the horizontal advance in em units.
+	XAdvance float64
+	// XOffset is the horizontal offset in em units.
+	XOffset float64
+	// YOffset is the vertical offset in em units.
+	YOffset float64
+	// Char is the original character (for ToUnicode mapping).
+	Char rune
+	// Font is a pointer to the font used for this glyph.
+	// Using interface{} to avoid circular import with font package.
+	Font interface{}
+}
+
 // ImageItem represents an embedded image.
 type ImageItem struct {
 	// Image contains the image data and metadata.
