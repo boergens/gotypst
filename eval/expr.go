@@ -1994,6 +1994,56 @@ type SmartQuoteElement struct {
 
 func (*SmartQuoteElement) IsContentElement() {}
 
+// PageElement represents a page with explicit settings.
+// This element allows overriding document-level page settings for specific content.
+type PageElement struct {
+	// Body is the content on this page.
+	Body Content
+	// Paper is the paper size name (e.g., "a4", "us-letter").
+	// If nil, uses the document default.
+	Paper *string
+	// Width is the explicit page width. If nil, uses paper size or document default.
+	Width *float64
+	// Height is the explicit page height. If nil, uses paper size or document default.
+	Height *float64
+	// Flipped indicates whether to swap width and height (landscape mode).
+	Flipped *bool
+	// Margin is the uniform margin (in points). For per-side margins, use individual fields.
+	Margin *float64
+	// MarginLeft is the left margin (in points).
+	MarginLeft *float64
+	// MarginTop is the top margin (in points).
+	MarginTop *float64
+	// MarginRight is the right margin (in points).
+	MarginRight *float64
+	// MarginBottom is the bottom margin (in points).
+	MarginBottom *float64
+	// Binding specifies the binding side: "left", "right", or nil for auto.
+	Binding *string
+	// Columns is the number of columns.
+	Columns *int
+	// Fill is the page background color.
+	Fill *Color
+	// Numbering is the page numbering pattern (e.g., "1", "i", "a").
+	Numbering *string
+	// NumberAlign is the alignment for page numbers.
+	NumberAlign *Alignment2D
+	// Header is the page header content.
+	Header *Content
+	// HeaderAscent is the header ascent relative to margin top (0.0-1.0).
+	HeaderAscent *float64
+	// Footer is the page footer content.
+	Footer *Content
+	// FooterDescent is the footer descent relative to margin bottom (0.0-1.0).
+	FooterDescent *float64
+	// Background is the background content (behind page content).
+	Background *Content
+	// Foreground is the foreground content (above page content).
+	Foreground *Content
+}
+
+func (*PageElement) IsContentElement() {}
+
 // ----------------------------------------------------------------------------
 // Error Types
 // ----------------------------------------------------------------------------

@@ -1857,3 +1857,715 @@ func TestElementFunctionsIncludesListAndEnum(t *testing.T) {
 		t.Error("expected 'enum' in ElementFunctions()")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// Page Tests
+// ----------------------------------------------------------------------------
+
+func TestPageFunc(t *testing.T) {
+	// Get the page function
+	pageFunc := PageFunc()
+
+	if pageFunc == nil {
+		t.Fatal("PageFunc() returned nil")
+	}
+
+	if pageFunc.Name == nil || *pageFunc.Name != "page" {
+		t.Errorf("expected function name 'page', got %v", pageFunc.Name)
+	}
+
+	// Verify it's a native function
+	_, ok := pageFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Error("expected NativeFunc representation")
+	}
+}
+
+func TestPageNativeBasic(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create body content
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Page content"}},
+	}}
+
+	// Create args with just the body
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+
+	result, err := pageNative(vm, args)
+	if err != nil {
+		t.Fatalf("pageNative() error: %v", err)
+	}
+
+	// Verify result is ContentValue
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	// Verify it contains one PageElement
+	if len(content.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(content.Content.Elements))
+	}
+
+	page, ok := content.Content.Elements[0].(*PageElement)
+	if !ok {
+		t.Fatalf("expected *PageElement, got %T", content.Content.Elements[0])
+	}
+
+	// Verify element properties (defaults)
+	if len(page.Body.Elements) != 1 {
+		t.Errorf("Body elements = %d, want 1", len(page.Body.Elements))
+	}
+	if page.Paper != nil {
+		t.Errorf("Paper = %v, want nil (default)", page.Paper)
+	}
+	if page.Width != nil {
+		t.Errorf("Width = %v, want nil (default)", page.Width)
+	}
+	if page.Height != nil {
+		t.Errorf("Height = %v, want nil (default)", page.Height)
+	}
+	if page.Margin != nil {
+		t.Errorf("Margin = %v, want nil (default)", page.Margin)
+	}
+	if page.Header != nil {
+		t.Errorf("Header = %v, want nil (default)", page.Header)
+	}
+	if page.Footer != nil {
+		t.Errorf("Footer = %v, want nil (default)", page.Footer)
+	}
+}
+
+func TestPageNativeWithPaper(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("paper", Str("a4"), syntax.Detached())
+
+	result, err := pageNative(vm, args)
+	if err != nil {
+		t.Fatalf("pageNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	page := content.Content.Elements[0].(*PageElement)
+
+	if page.Paper == nil || *page.Paper != "a4" {
+		t.Errorf("Paper = %v, want 'a4'", page.Paper)
+	}
+}
+
+func TestPageNativeWithInvalidPaper(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("paper", Str("invalid-paper-size"), syntax.Detached())
+
+	_, err := pageNative(vm, args)
+	if err == nil {
+		t.Error("expected error for invalid paper size")
+	}
+}
+
+func TestPageNativeWithDimensions(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("width", LengthValue{Length: Length{Points: 612}}, syntax.Detached())
+	args.PushNamed("height", LengthValue{Length: Length{Points: 792}}, syntax.Detached())
+
+	result, err := pageNative(vm, args)
+	if err != nil {
+		t.Fatalf("pageNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	page := content.Content.Elements[0].(*PageElement)
+
+	if page.Width == nil || *page.Width != 612 {
+		t.Errorf("Width = %v, want 612", page.Width)
+	}
+	if page.Height == nil || *page.Height != 792 {
+		t.Errorf("Height = %v, want 792", page.Height)
+	}
+}
+
+func TestPageNativeWithUniformMargin(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("margin", LengthValue{Length: Length{Points: 72}}, syntax.Detached())
+
+	result, err := pageNative(vm, args)
+	if err != nil {
+		t.Fatalf("pageNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	page := content.Content.Elements[0].(*PageElement)
+
+	if page.Margin == nil || *page.Margin != 72 {
+		t.Errorf("Margin = %v, want 72", page.Margin)
+	}
+}
+
+func TestPageNativeWithMarginDict(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+
+	// Create margin dictionary
+	marginDict := NewDict()
+	marginDict.Set("top", LengthValue{Length: Length{Points: 50}})
+	marginDict.Set("bottom", LengthValue{Length: Length{Points: 50}})
+	marginDict.Set("left", LengthValue{Length: Length{Points: 72}})
+	marginDict.Set("right", LengthValue{Length: Length{Points: 72}})
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("margin", marginDict, syntax.Detached())
+
+	result, err := pageNative(vm, args)
+	if err != nil {
+		t.Fatalf("pageNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	page := content.Content.Elements[0].(*PageElement)
+
+	if page.MarginTop == nil || *page.MarginTop != 50 {
+		t.Errorf("MarginTop = %v, want 50", page.MarginTop)
+	}
+	if page.MarginBottom == nil || *page.MarginBottom != 50 {
+		t.Errorf("MarginBottom = %v, want 50", page.MarginBottom)
+	}
+	if page.MarginLeft == nil || *page.MarginLeft != 72 {
+		t.Errorf("MarginLeft = %v, want 72", page.MarginLeft)
+	}
+	if page.MarginRight == nil || *page.MarginRight != 72 {
+		t.Errorf("MarginRight = %v, want 72", page.MarginRight)
+	}
+}
+
+func TestPageNativeWithMarginXY(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+
+	// Create margin dictionary with x and y
+	marginDict := NewDict()
+	marginDict.Set("x", LengthValue{Length: Length{Points: 72}})
+	marginDict.Set("y", LengthValue{Length: Length{Points: 50}})
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("margin", marginDict, syntax.Detached())
+
+	result, err := pageNative(vm, args)
+	if err != nil {
+		t.Fatalf("pageNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	page := content.Content.Elements[0].(*PageElement)
+
+	if page.MarginLeft == nil || *page.MarginLeft != 72 {
+		t.Errorf("MarginLeft = %v, want 72", page.MarginLeft)
+	}
+	if page.MarginRight == nil || *page.MarginRight != 72 {
+		t.Errorf("MarginRight = %v, want 72", page.MarginRight)
+	}
+	if page.MarginTop == nil || *page.MarginTop != 50 {
+		t.Errorf("MarginTop = %v, want 50", page.MarginTop)
+	}
+	if page.MarginBottom == nil || *page.MarginBottom != 50 {
+		t.Errorf("MarginBottom = %v, want 50", page.MarginBottom)
+	}
+}
+
+func TestPageNativeWithHeader(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+	header := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "My Header"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("header", header, syntax.Detached())
+
+	result, err := pageNative(vm, args)
+	if err != nil {
+		t.Fatalf("pageNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	page := content.Content.Elements[0].(*PageElement)
+
+	if page.Header == nil {
+		t.Fatal("Header = nil, want non-nil")
+	}
+	if len(page.Header.Elements) != 1 {
+		t.Errorf("Header elements = %d, want 1", len(page.Header.Elements))
+	}
+}
+
+func TestPageNativeWithFooter(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+	footer := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Page 1"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("footer", footer, syntax.Detached())
+
+	result, err := pageNative(vm, args)
+	if err != nil {
+		t.Fatalf("pageNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	page := content.Content.Elements[0].(*PageElement)
+
+	if page.Footer == nil {
+		t.Fatal("Footer = nil, want non-nil")
+	}
+	if len(page.Footer.Elements) != 1 {
+		t.Errorf("Footer elements = %d, want 1", len(page.Footer.Elements))
+	}
+}
+
+func TestPageNativeWithNumbering(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("numbering", Str("1"), syntax.Detached())
+
+	result, err := pageNative(vm, args)
+	if err != nil {
+		t.Fatalf("pageNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	page := content.Content.Elements[0].(*PageElement)
+
+	if page.Numbering == nil || *page.Numbering != "1" {
+		t.Errorf("Numbering = %v, want '1'", page.Numbering)
+	}
+}
+
+func TestPageNativeWithBinding(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+
+	// Test with "left"
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("binding", Str("left"), syntax.Detached())
+
+	result, err := pageNative(vm, args)
+	if err != nil {
+		t.Fatalf("pageNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	page := content.Content.Elements[0].(*PageElement)
+
+	if page.Binding == nil || *page.Binding != "left" {
+		t.Errorf("Binding = %v, want 'left'", page.Binding)
+	}
+
+	// Test with "right"
+	args = NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("binding", Str("right"), syntax.Detached())
+
+	result, err = pageNative(vm, args)
+	if err != nil {
+		t.Fatalf("pageNative() error: %v", err)
+	}
+
+	content = result.(ContentValue)
+	page = content.Content.Elements[0].(*PageElement)
+
+	if page.Binding == nil || *page.Binding != "right" {
+		t.Errorf("Binding = %v, want 'right'", page.Binding)
+	}
+}
+
+func TestPageNativeWithInvalidBinding(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("binding", Str("invalid"), syntax.Detached())
+
+	_, err := pageNative(vm, args)
+	if err == nil {
+		t.Error("expected error for invalid binding value")
+	}
+}
+
+func TestPageNativeWithColumns(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("columns", Int(2), syntax.Detached())
+
+	result, err := pageNative(vm, args)
+	if err != nil {
+		t.Fatalf("pageNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	page := content.Content.Elements[0].(*PageElement)
+
+	if page.Columns == nil || *page.Columns != 2 {
+		t.Errorf("Columns = %v, want 2", page.Columns)
+	}
+}
+
+func TestPageNativeWithInvalidColumns(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("columns", Int(0), syntax.Detached())
+
+	_, err := pageNative(vm, args)
+	if err == nil {
+		t.Error("expected error for columns < 1")
+	}
+}
+
+func TestPageNativeWithFlipped(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("flipped", True, syntax.Detached())
+
+	result, err := pageNative(vm, args)
+	if err != nil {
+		t.Fatalf("pageNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	page := content.Content.Elements[0].(*PageElement)
+
+	if page.Flipped == nil || *page.Flipped != true {
+		t.Errorf("Flipped = %v, want true", page.Flipped)
+	}
+}
+
+func TestPageNativeWithBackground(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+	background := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Background"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("background", background, syntax.Detached())
+
+	result, err := pageNative(vm, args)
+	if err != nil {
+		t.Fatalf("pageNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	page := content.Content.Elements[0].(*PageElement)
+
+	if page.Background == nil {
+		t.Fatal("Background = nil, want non-nil")
+	}
+}
+
+func TestPageNativeWithForeground(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+	foreground := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Foreground"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("foreground", foreground, syntax.Detached())
+
+	result, err := pageNative(vm, args)
+	if err != nil {
+		t.Fatalf("pageNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	page := content.Content.Elements[0].(*PageElement)
+
+	if page.Foreground == nil {
+		t.Fatal("Foreground = nil, want non-nil")
+	}
+}
+
+func TestPageNativeMissingBody(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("paper", Str("a4"), syntax.Detached())
+
+	_, err := pageNative(vm, args)
+	if err == nil {
+		t.Error("expected error for missing body argument")
+	}
+}
+
+func TestPageNativeWrongBodyType(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.Push(Str("not content"), syntax.Detached())
+
+	_, err := pageNative(vm, args)
+	if err == nil {
+		t.Error("expected error for wrong body type")
+	}
+	if _, ok := err.(*TypeMismatchError); !ok {
+		t.Errorf("expected TypeMismatchError, got %T", err)
+	}
+}
+
+func TestPageNativeUnexpectedArg(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("unknown", Str("value"), syntax.Detached())
+
+	_, err := pageNative(vm, args)
+	if err == nil {
+		t.Error("expected error for unexpected argument")
+	}
+	if _, ok := err.(*UnexpectedArgumentError); !ok {
+		t.Errorf("expected UnexpectedArgumentError, got %T", err)
+	}
+}
+
+func TestPageElement(t *testing.T) {
+	// Test PageElement struct and ContentElement interface
+	paper := "a4"
+	width := 595.0
+	height := 842.0
+	margin := 72.0
+	numbering := "1"
+	columns := 1
+
+	elem := &PageElement{
+		Body: Content{
+			Elements: []ContentElement{&TextElement{Text: "Page content"}},
+		},
+		Paper:     &paper,
+		Width:     &width,
+		Height:    &height,
+		Margin:    &margin,
+		Numbering: &numbering,
+		Columns:   &columns,
+	}
+
+	if len(elem.Body.Elements) != 1 {
+		t.Errorf("Body elements = %d, want 1", len(elem.Body.Elements))
+	}
+	if *elem.Paper != "a4" {
+		t.Errorf("Paper = %v, want 'a4'", *elem.Paper)
+	}
+	if *elem.Width != 595.0 {
+		t.Errorf("Width = %v, want 595.0", *elem.Width)
+	}
+	if *elem.Height != 842.0 {
+		t.Errorf("Height = %v, want 842.0", *elem.Height)
+	}
+	if *elem.Margin != 72.0 {
+		t.Errorf("Margin = %v, want 72.0", *elem.Margin)
+	}
+	if *elem.Numbering != "1" {
+		t.Errorf("Numbering = %v, want '1'", *elem.Numbering)
+	}
+	if *elem.Columns != 1 {
+		t.Errorf("Columns = %v, want 1", *elem.Columns)
+	}
+
+	// Verify it satisfies ContentElement interface
+	var _ ContentElement = elem
+}
+
+// ----------------------------------------------------------------------------
+// Registration Tests for Page
+// ----------------------------------------------------------------------------
+
+func TestRegisterElementFunctionsIncludesPage(t *testing.T) {
+	scope := NewScope()
+	RegisterElementFunctions(scope)
+
+	// Verify page function is registered
+	pageBinding := scope.Get("page")
+	if pageBinding == nil {
+		t.Fatal("expected 'page' to be registered")
+	}
+
+	pageFunc, ok := pageBinding.Value.(FuncValue)
+	if !ok {
+		t.Fatalf("expected FuncValue for page, got %T", pageBinding.Value)
+	}
+	if pageFunc.Func.Name == nil || *pageFunc.Func.Name != "page" {
+		t.Errorf("expected function name 'page', got %v", pageFunc.Func.Name)
+	}
+}
+
+func TestElementFunctionsIncludesPage(t *testing.T) {
+	funcs := ElementFunctions()
+
+	if _, ok := funcs["page"]; !ok {
+		t.Error("expected 'page' in ElementFunctions()")
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Helper Tests for Page
+// ----------------------------------------------------------------------------
+
+func TestIsValidPaperSize(t *testing.T) {
+	validSizes := []string{
+		"a4", "a3", "a5", "us-letter", "us-legal",
+		"jis-b5", "presentation-16-9",
+	}
+	for _, size := range validSizes {
+		if !isValidPaperSize(size) {
+			t.Errorf("isValidPaperSize(%q) = false, want true", size)
+		}
+	}
+
+	invalidSizes := []string{
+		"invalid", "A4", "letter", "custom",
+	}
+	for _, size := range invalidSizes {
+		if isValidPaperSize(size) {
+			t.Errorf("isValidPaperSize(%q) = true, want false", size)
+		}
+	}
+}
+
+func TestParseColorName(t *testing.T) {
+	tests := []struct {
+		name     string
+		expected *Color
+	}{
+		{"black", &Color{R: 0, G: 0, B: 0, A: 255}},
+		{"white", &Color{R: 255, G: 255, B: 255, A: 255}},
+		{"red", &Color{R: 255, G: 0, B: 0, A: 255}},
+		{"green", &Color{R: 0, G: 255, B: 0, A: 255}},
+		{"blue", &Color{R: 0, G: 0, B: 255, A: 255}},
+		{"unknown", nil},
+	}
+
+	for _, tt := range tests {
+		result := parseColorName(tt.name)
+		if tt.expected == nil {
+			if result != nil {
+				t.Errorf("parseColorName(%q) = %v, want nil", tt.name, result)
+			}
+		} else {
+			if result == nil {
+				t.Errorf("parseColorName(%q) = nil, want %v", tt.name, tt.expected)
+			} else if *result != *tt.expected {
+				t.Errorf("parseColorName(%q) = %v, want %v", tt.name, *result, *tt.expected)
+			}
+		}
+	}
+}
