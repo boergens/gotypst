@@ -98,7 +98,7 @@ func TestRefElement(t *testing.T) {
 	var _ ContentElement = ref
 }
 
-func TestRawElement(t *testing.T) {
+func TestMarkupRawElement(t *testing.T) {
 	// Test basic RawElement creation
 	raw := &RawElement{
 		Text:  "print('hello')",
