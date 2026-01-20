@@ -28,6 +28,8 @@ var (
 	_ Value = Str("")
 	_ Value = (*Array)(nil)
 	_ Value = (*Dict)(nil)
+	_ Value = (*Datetime)(nil)
+	_ Value = Duration(0)
 )
 
 // NoneValue represents the absence of a value.
@@ -229,4 +231,197 @@ func (d *Dict) Values() []Value {
 func (d *Dict) Contains(key string) bool {
 	_, ok := d.Get(key)
 	return ok
+}
+
+// Datetime represents a date, time, or datetime value.
+// Components are optional: nil means not specified.
+type Datetime struct {
+	year   *int
+	month  *int
+	day    *int
+	hour   *int
+	minute *int
+	second *int
+}
+
+func (*Datetime) valueMarker() {}
+func (*Datetime) Type() string { return "datetime" }
+func (dt *Datetime) String() string {
+	if dt == nil {
+		return "datetime()"
+	}
+	// Format based on which components are present
+	hasDate := dt.year != nil || dt.month != nil || dt.day != nil
+	hasTime := dt.hour != nil || dt.minute != nil || dt.second != nil
+
+	if hasDate && hasTime {
+		return fmt.Sprintf("datetime(year: %d, month: %d, day: %d, hour: %d, minute: %d, second: %d)",
+			dt.YearOr(0), dt.MonthOr(0), dt.DayOr(0), dt.HourOr(0), dt.MinuteOr(0), dt.SecondOr(0))
+	}
+	if hasDate {
+		return fmt.Sprintf("datetime(year: %d, month: %d, day: %d)",
+			dt.YearOr(0), dt.MonthOr(0), dt.DayOr(0))
+	}
+	if hasTime {
+		return fmt.Sprintf("datetime(hour: %d, minute: %d, second: %d)",
+			dt.HourOr(0), dt.MinuteOr(0), dt.SecondOr(0))
+	}
+	return "datetime()"
+}
+
+// Year returns the year component or nil if not set.
+func (dt *Datetime) Year() *int {
+	if dt == nil {
+		return nil
+	}
+	return dt.year
+}
+
+// YearOr returns the year component or a default value.
+func (dt *Datetime) YearOr(def int) int {
+	if dt == nil || dt.year == nil {
+		return def
+	}
+	return *dt.year
+}
+
+// Month returns the month component or nil if not set.
+func (dt *Datetime) Month() *int {
+	if dt == nil {
+		return nil
+	}
+	return dt.month
+}
+
+// MonthOr returns the month component or a default value.
+func (dt *Datetime) MonthOr(def int) int {
+	if dt == nil || dt.month == nil {
+		return def
+	}
+	return *dt.month
+}
+
+// Day returns the day component or nil if not set.
+func (dt *Datetime) Day() *int {
+	if dt == nil {
+		return nil
+	}
+	return dt.day
+}
+
+// DayOr returns the day component or a default value.
+func (dt *Datetime) DayOr(def int) int {
+	if dt == nil || dt.day == nil {
+		return def
+	}
+	return *dt.day
+}
+
+// Hour returns the hour component or nil if not set.
+func (dt *Datetime) Hour() *int {
+	if dt == nil {
+		return nil
+	}
+	return dt.hour
+}
+
+// HourOr returns the hour component or a default value.
+func (dt *Datetime) HourOr(def int) int {
+	if dt == nil || dt.hour == nil {
+		return def
+	}
+	return *dt.hour
+}
+
+// Minute returns the minute component or nil if not set.
+func (dt *Datetime) Minute() *int {
+	if dt == nil {
+		return nil
+	}
+	return dt.minute
+}
+
+// MinuteOr returns the minute component or a default value.
+func (dt *Datetime) MinuteOr(def int) int {
+	if dt == nil || dt.minute == nil {
+		return def
+	}
+	return *dt.minute
+}
+
+// Second returns the second component or nil if not set.
+func (dt *Datetime) Second() *int {
+	if dt == nil {
+		return nil
+	}
+	return dt.second
+}
+
+// SecondOr returns the second component or a default value.
+func (dt *Datetime) SecondOr(def int) int {
+	if dt == nil || dt.second == nil {
+		return def
+	}
+	return *dt.second
+}
+
+// HasDate returns true if the datetime has date components.
+func (dt *Datetime) HasDate() bool {
+	return dt != nil && (dt.year != nil || dt.month != nil || dt.day != nil)
+}
+
+// HasTime returns true if the datetime has time components.
+func (dt *Datetime) HasTime() bool {
+	return dt != nil && (dt.hour != nil || dt.minute != nil || dt.second != nil)
+}
+
+// Duration represents a duration in nanoseconds.
+// Positive values represent forward time, negative values represent backward time.
+type Duration int64
+
+func (Duration) valueMarker() {}
+func (Duration) Type() string { return "duration" }
+func (d Duration) String() string {
+	// Express in a human-readable form
+	ns := int64(d)
+	if ns == 0 {
+		return "duration(seconds: 0)"
+	}
+
+	// Convert to seconds for display
+	sec := float64(ns) / 1e9
+	if sec == float64(int64(sec)) {
+		return fmt.Sprintf("duration(seconds: %d)", int64(sec))
+	}
+	return fmt.Sprintf("duration(seconds: %g)", sec)
+}
+
+// Nanoseconds returns the duration in nanoseconds.
+func (d Duration) Nanoseconds() int64 {
+	return int64(d)
+}
+
+// Seconds returns the duration expressed in seconds (as a float).
+func (d Duration) Seconds() float64 {
+	return float64(d) / 1e9
+}
+
+// Minutes returns the duration expressed in minutes (as a float).
+func (d Duration) Minutes() float64 {
+	return float64(d) / (60 * 1e9)
+}
+
+// Hours returns the duration expressed in hours (as a float).
+func (d Duration) Hours() float64 {
+	return float64(d) / (3600 * 1e9)
+}
+
+// Days returns the duration expressed in days (as a float).
+func (d Duration) Days() float64 {
+	return float64(d) / (86400 * 1e9)
+}
+
+// Weeks returns the duration expressed in weeks (as a float).
+func (d Duration) Weeks() float64 {
+	return float64(d) / (604800 * 1e9)
 }
