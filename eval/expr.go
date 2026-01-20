@@ -849,7 +849,10 @@ func evalFieldAccess(vm *Vm, e *syntax.FieldAccessExpr) (Value, error) {
 
 // getBuiltinMethod returns a built-in method for a value, or nil if not found.
 func getBuiltinMethod(target Value, name string) Value {
-	// Return nil for now - built-in methods will be implemented later
+	switch t := target.(type) {
+	case ArrayValue:
+		return getArrayMethod(t, name, syntax.Detached())
+	}
 	return nil
 }
 
@@ -859,8 +862,18 @@ func evalFuncCall(vm *Vm, e *syntax.FuncCallExpr) (Value, error) {
 		return nil, err
 	}
 
-	// Evaluate the callee
+	// Check for mutable array method calls
 	calleeExpr := e.Callee()
+	if fieldAccess, ok := calleeExpr.(*syntax.FieldAccessExpr); ok {
+		if field := fieldAccess.Field(); field != nil {
+			methodName := field.Get()
+			if isMutableArrayMethod(methodName) {
+				return evalMutableArrayMethodCall(vm, e, fieldAccess, methodName)
+			}
+		}
+	}
+
+	// Evaluate the callee
 	callee, err := EvalExpr(vm, calleeExpr)
 	if err != nil {
 		return nil, err
@@ -874,6 +887,64 @@ func evalFuncCall(vm *Vm, e *syntax.FuncCallExpr) (Value, error) {
 
 	// Call the function
 	return callFunc(vm, callee, args, e.ToUntyped().Span())
+}
+
+// isMutableArrayMethod returns true if the method mutates the array.
+func isMutableArrayMethod(name string) bool {
+	switch name {
+	case "push", "pop", "insert", "remove":
+		return true
+	}
+	return false
+}
+
+// evalMutableArrayMethodCall handles calls to mutable array methods.
+func evalMutableArrayMethodCall(vm *Vm, e *syntax.FuncCallExpr, fieldAccess *syntax.FieldAccessExpr, methodName string) (Value, error) {
+	// Get mutable access to the target
+	targetExpr := fieldAccess.Target()
+	targetPtr, err := AccessExpr(vm, targetExpr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check that the target is an array
+	arr, ok := (*targetPtr).(ArrayValue)
+	if !ok {
+		return nil, &TypeError{
+			Expected: TypeArray,
+			Got:      (*targetPtr).Type(),
+			Span:     targetExpr.ToUntyped().Span(),
+		}
+	}
+
+	// Build arguments
+	args, err := evalArgs(vm, e.Args())
+	if err != nil {
+		return nil, err
+	}
+
+	// Call the mutable method
+	var result Value
+	switch methodName {
+	case "push":
+		result, err = arrayPushMutable(&arr, args)
+	case "pop":
+		result, err = arrayPopMutable(&arr, args)
+	case "insert":
+		result, err = arrayInsertMutable(&arr, args)
+	case "remove":
+		result, err = arrayRemoveMutable(&arr, args)
+	default:
+		return nil, &FieldNotFoundError{Field: methodName, Type: TypeArray, Span: fieldAccess.ToUntyped().Span()}
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Update the binding with the modified array
+	*targetPtr = arr
+	return result, nil
 }
 
 // evalArgs evaluates function arguments.
