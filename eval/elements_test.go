@@ -817,3 +817,424 @@ func TestElementFunctionsIncludesParAndParbreak(t *testing.T) {
 		t.Error("expected 'parbreak' in ElementFunctions()")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// Grid Tests
+// ----------------------------------------------------------------------------
+
+func TestGridFunc(t *testing.T) {
+	gridFunc := GridFunc()
+
+	if gridFunc == nil {
+		t.Fatal("GridFunc() returned nil")
+	}
+
+	if gridFunc.Name == nil || *gridFunc.Name != "grid" {
+		t.Errorf("expected function name 'grid', got %v", gridFunc.Name)
+	}
+
+	_, ok := gridFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Error("expected NativeFunc representation")
+	}
+}
+
+func TestGridNativeBasic(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create args with just children
+	args := NewArgs(syntax.Detached())
+	args.Push(ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Cell 1"}},
+	}}, syntax.Detached())
+	args.Push(ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Cell 2"}},
+	}}, syntax.Detached())
+
+	result, err := gridNative(vm, args)
+	if err != nil {
+		t.Fatalf("gridNative() error: %v", err)
+	}
+
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	if len(content.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(content.Content.Elements))
+	}
+
+	grid, ok := content.Content.Elements[0].(*GridElement)
+	if !ok {
+		t.Fatalf("expected *GridElement, got %T", content.Content.Elements[0])
+	}
+
+	if len(grid.Children) != 2 {
+		t.Errorf("Children = %d, want 2", len(grid.Children))
+	}
+}
+
+func TestGridNativeWithColumns(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create args with columns as integer
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("columns", Int(3), syntax.Detached())
+	args.Push(ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Cell"}},
+	}}, syntax.Detached())
+
+	result, err := gridNative(vm, args)
+	if err != nil {
+		t.Fatalf("gridNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	grid := content.Content.Elements[0].(*GridElement)
+
+	if len(grid.Columns) != 3 {
+		t.Errorf("Columns = %d, want 3", len(grid.Columns))
+	}
+	for i, col := range grid.Columns {
+		if !col.Auto {
+			t.Errorf("Columns[%d].Auto = false, want true", i)
+		}
+	}
+}
+
+func TestGridNativeWithArrayColumns(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create args with columns as array
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("columns", ArrayValue{
+		LengthValue{Length: Length{Points: 50}},
+		FractionValue{Fraction: Fraction{Value: 1}},
+		Auto,
+	}, syntax.Detached())
+
+	result, err := gridNative(vm, args)
+	if err != nil {
+		t.Fatalf("gridNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	grid := content.Content.Elements[0].(*GridElement)
+
+	if len(grid.Columns) != 3 {
+		t.Errorf("Columns = %d, want 3", len(grid.Columns))
+	}
+	if grid.Columns[0].Length == nil || *grid.Columns[0].Length != 50 {
+		t.Errorf("Columns[0].Length = %v, want 50", grid.Columns[0].Length)
+	}
+	if grid.Columns[1].Fraction == nil || *grid.Columns[1].Fraction != 1 {
+		t.Errorf("Columns[1].Fraction = %v, want 1", grid.Columns[1].Fraction)
+	}
+	if !grid.Columns[2].Auto {
+		t.Error("Columns[2].Auto = false, want true")
+	}
+}
+
+func TestGridNativeWithGutter(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("gutter", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
+
+	result, err := gridNative(vm, args)
+	if err != nil {
+		t.Fatalf("gridNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	grid := content.Content.Elements[0].(*GridElement)
+
+	if len(grid.ColumnGutter) != 1 || grid.ColumnGutter[0].Length == nil || *grid.ColumnGutter[0].Length != 10 {
+		t.Errorf("ColumnGutter = %v, want 10pt", grid.ColumnGutter)
+	}
+	if len(grid.RowGutter) != 1 || grid.RowGutter[0].Length == nil || *grid.RowGutter[0].Length != 10 {
+		t.Errorf("RowGutter = %v, want 10pt", grid.RowGutter)
+	}
+}
+
+func TestGridNativeWithSeparateGutters(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("column-gutter", LengthValue{Length: Length{Points: 5}}, syntax.Detached())
+	args.PushNamed("row-gutter", LengthValue{Length: Length{Points: 15}}, syntax.Detached())
+
+	result, err := gridNative(vm, args)
+	if err != nil {
+		t.Fatalf("gridNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	grid := content.Content.Elements[0].(*GridElement)
+
+	if len(grid.ColumnGutter) != 1 || grid.ColumnGutter[0].Length == nil || *grid.ColumnGutter[0].Length != 5 {
+		t.Errorf("ColumnGutter = %v, want 5pt", grid.ColumnGutter)
+	}
+	if len(grid.RowGutter) != 1 || grid.RowGutter[0].Length == nil || *grid.RowGutter[0].Length != 15 {
+		t.Errorf("RowGutter = %v, want 15pt", grid.RowGutter)
+	}
+}
+
+func TestGridNativeWithInset(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("inset", LengthValue{Length: Length{Points: 8}}, syntax.Detached())
+
+	result, err := gridNative(vm, args)
+	if err != nil {
+		t.Fatalf("gridNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	grid := content.Content.Elements[0].(*GridElement)
+
+	if grid.Inset == nil || grid.Inset.All == nil || *grid.Inset.All != 8 {
+		t.Errorf("Inset.All = %v, want 8", grid.Inset)
+	}
+}
+
+func TestGridElement(t *testing.T) {
+	// Test GridElement struct and ContentElement interface
+	pts := 50.0
+	fr := 1.0
+	elem := &GridElement{
+		Columns: []TrackSize{
+			{Length: &pts},
+			{Fraction: &fr},
+			{Auto: true},
+		},
+		Children: []Content{
+			{Elements: []ContentElement{&TextElement{Text: "A"}}},
+			{Elements: []ContentElement{&TextElement{Text: "B"}}},
+		},
+	}
+
+	if len(elem.Columns) != 3 {
+		t.Errorf("Columns = %d, want 3", len(elem.Columns))
+	}
+	if len(elem.Children) != 2 {
+		t.Errorf("Children = %d, want 2", len(elem.Children))
+	}
+
+	// Verify it satisfies ContentElement interface
+	var _ ContentElement = elem
+}
+
+// ----------------------------------------------------------------------------
+// Columns Tests
+// ----------------------------------------------------------------------------
+
+func TestColumnsFunc(t *testing.T) {
+	colsFunc := ColumnsFunc()
+
+	if colsFunc == nil {
+		t.Fatal("ColumnsFunc() returned nil")
+	}
+
+	if colsFunc.Name == nil || *colsFunc.Name != "columns" {
+		t.Errorf("expected function name 'columns', got %v", colsFunc.Name)
+	}
+
+	_, ok := colsFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Error("expected NativeFunc representation")
+	}
+}
+
+func TestColumnsNativeBasic(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create args with body content
+	args := NewArgs(syntax.Detached())
+	args.Push(ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Column content"}},
+	}}, syntax.Detached())
+
+	result, err := columnsNative(vm, args)
+	if err != nil {
+		t.Fatalf("columnsNative() error: %v", err)
+	}
+
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	if len(content.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(content.Content.Elements))
+	}
+
+	cols, ok := content.Content.Elements[0].(*ColumnsElement)
+	if !ok {
+		t.Fatalf("expected *ColumnsElement, got %T", content.Content.Elements[0])
+	}
+
+	if len(cols.Body.Elements) != 1 {
+		t.Errorf("Body.Elements = %d, want 1", len(cols.Body.Elements))
+	}
+}
+
+func TestColumnsNativeWithCount(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("count", Int(3), syntax.Detached())
+	args.Push(ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}, syntax.Detached())
+
+	result, err := columnsNative(vm, args)
+	if err != nil {
+		t.Fatalf("columnsNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	cols := content.Content.Elements[0].(*ColumnsElement)
+
+	if cols.Count == nil || *cols.Count != 3 {
+		t.Errorf("Count = %v, want 3", cols.Count)
+	}
+}
+
+func TestColumnsNativeWithGutter(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("gutter", LengthValue{Length: Length{Points: 12}}, syntax.Detached())
+	args.Push(ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}, syntax.Detached())
+
+	result, err := columnsNative(vm, args)
+	if err != nil {
+		t.Fatalf("columnsNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	cols := content.Content.Elements[0].(*ColumnsElement)
+
+	if cols.Gutter == nil || *cols.Gutter != 12 {
+		t.Errorf("Gutter = %v, want 12", cols.Gutter)
+	}
+}
+
+func TestColumnsNativeWithAllParams(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("count", Int(2), syntax.Detached())
+	args.PushNamed("gutter", LengthValue{Length: Length{Points: 8}}, syntax.Detached())
+	args.Push(ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "First paragraph"}},
+	}}, syntax.Detached())
+	args.Push(ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Second paragraph"}},
+	}}, syntax.Detached())
+
+	result, err := columnsNative(vm, args)
+	if err != nil {
+		t.Fatalf("columnsNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	cols := content.Content.Elements[0].(*ColumnsElement)
+
+	if cols.Count == nil || *cols.Count != 2 {
+		t.Errorf("Count = %v, want 2", cols.Count)
+	}
+	if cols.Gutter == nil || *cols.Gutter != 8 {
+		t.Errorf("Gutter = %v, want 8", cols.Gutter)
+	}
+	if len(cols.Body.Elements) != 2 {
+		t.Errorf("Body.Elements = %d, want 2", len(cols.Body.Elements))
+	}
+}
+
+func TestColumnsElement(t *testing.T) {
+	// Test ColumnsElement struct and ContentElement interface
+	count := 3
+	gutter := 10.0
+	elem := &ColumnsElement{
+		Count:  &count,
+		Gutter: &gutter,
+		Body: Content{
+			Elements: []ContentElement{&TextElement{Text: "Content"}},
+		},
+	}
+
+	if *elem.Count != 3 {
+		t.Errorf("Count = %v, want 3", *elem.Count)
+	}
+	if *elem.Gutter != 10 {
+		t.Errorf("Gutter = %v, want 10", *elem.Gutter)
+	}
+
+	// Verify it satisfies ContentElement interface
+	var _ ContentElement = elem
+}
+
+// ----------------------------------------------------------------------------
+// Registration Tests for Grid and Columns
+// ----------------------------------------------------------------------------
+
+func TestRegisterElementFunctionsIncludesGridAndColumns(t *testing.T) {
+	scope := NewScope()
+	RegisterElementFunctions(scope)
+
+	// Verify grid function is registered
+	gridBinding := scope.Get("grid")
+	if gridBinding == nil {
+		t.Fatal("expected 'grid' to be registered")
+	}
+
+	gridFunc, ok := gridBinding.Value.(FuncValue)
+	if !ok {
+		t.Fatalf("expected FuncValue for grid, got %T", gridBinding.Value)
+	}
+	if gridFunc.Func.Name == nil || *gridFunc.Func.Name != "grid" {
+		t.Errorf("expected function name 'grid', got %v", gridFunc.Func.Name)
+	}
+
+	// Verify columns function is registered
+	colsBinding := scope.Get("columns")
+	if colsBinding == nil {
+		t.Fatal("expected 'columns' to be registered")
+	}
+
+	colsFunc, ok := colsBinding.Value.(FuncValue)
+	if !ok {
+		t.Fatalf("expected FuncValue for columns, got %T", colsBinding.Value)
+	}
+	if colsFunc.Func.Name == nil || *colsFunc.Func.Name != "columns" {
+		t.Errorf("expected function name 'columns', got %v", colsFunc.Func.Name)
+	}
+}
+
+func TestElementFunctionsIncludesGridAndColumns(t *testing.T) {
+	funcs := ElementFunctions()
+
+	if _, ok := funcs["grid"]; !ok {
+		t.Error("expected 'grid' in ElementFunctions()")
+	}
+
+	if _, ok := funcs["columns"]; !ok {
+		t.Error("expected 'columns' in ElementFunctions()")
+	}
+}
