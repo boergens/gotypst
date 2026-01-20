@@ -214,6 +214,30 @@ type ContentElement interface {
 	isContentElement()
 }
 
+// EvalElement wraps an eval.ContentElement for use in layout.
+// This allows the layout package to work with elements from the eval package.
+type EvalElement struct {
+	// Inner is the wrapped eval content element.
+	Inner interface{}
+}
+
+func (*EvalElement) isContentElement() {}
+
+// ContentFromEval creates a pages.Content from eval content elements.
+// Each eval element is wrapped in an EvalElement.
+func ContentFromEval(elements []interface{}) *Content {
+	if len(elements) == 0 {
+		return nil
+	}
+	content := &Content{
+		Elements: make([]ContentElement, len(elements)),
+	}
+	for i, elem := range elements {
+		content.Elements[i] = &EvalElement{Inner: elem}
+	}
+	return content
+}
+
 // Sides represents values for all four sides.
 type Sides[T any] struct {
 	Left, Top, Right, Bottom T

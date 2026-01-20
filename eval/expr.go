@@ -452,7 +452,7 @@ func evalContentBlock(vm *Vm, e *syntax.ContentBlockExpr) (Value, error) {
 	vm.EnterScope()
 	defer vm.ExitScope()
 
-	return evalMarkup(vm, body)
+	return EvalMarkup(vm, body)
 }
 
 // evalCode evaluates a code block and returns its result.
@@ -480,8 +480,9 @@ func evalCode(vm *Vm, code *syntax.CodeNode) (Value, error) {
 	return result, nil
 }
 
-// evalMarkup evaluates markup content and returns Content.
-func evalMarkup(vm *Vm, markup *syntax.MarkupNode) (Value, error) {
+// EvalMarkup evaluates markup content and returns Content.
+// This is an exported entry point for the compile pipeline.
+func EvalMarkup(vm *Vm, markup *syntax.MarkupNode) (Value, error) {
 	var content Content
 	exprs := markup.Exprs()
 
@@ -1682,12 +1683,84 @@ type ParagraphElement struct {
 
 func (*ParagraphElement) isContentElement() {}
 
+// BoxElement represents an inline-level container for content.
+// This wraps content in a box with optional sizing and styling.
+type BoxElement struct {
+	// Body is the content of the box.
+	Body Content
+	// Width is the width of the box (in points).
+	// If nil, uses auto sizing.
+	Width *float64
+	// Height is the height of the box (in points).
+	// If nil, uses auto sizing.
+	Height *float64
+	// Baseline is the baseline offset (in points).
+	// If nil, uses auto baseline.
+	Baseline *float64
+	// Fill is the background fill color.
+	// If nil, no fill is applied.
+	Fill *Color
+	// Inset is the inner padding (in points).
+	// If nil, uses default (0pt).
+	Inset *float64
+	// Outset is the outer padding (in points).
+	// If nil, uses default (0pt).
+	Outset *float64
+	// Radius is the corner radius (in points).
+	// If nil, uses default (0pt).
+	Radius *float64
+	// Clip indicates whether to clip content to the box boundaries.
+	// If nil, uses default (true).
+	Clip *bool
+}
+
+func (*BoxElement) isContentElement() {}
+
+// BlockElement represents a block-level container for content.
+// This wraps content in a block with optional sizing, spacing, and styling.
+type BlockElement struct {
+	// Body is the content of the block.
+	Body Content
+	// Width is the width of the block (in points).
+	// If nil, uses auto sizing (full width).
+	Width *float64
+	// Height is the height of the block (in points).
+	// If nil, uses auto sizing.
+	Height *float64
+	// Fill is the background fill color.
+	// If nil, no fill is applied.
+	Fill *Color
+	// Inset is the inner padding (in points).
+	// If nil, uses default (0pt).
+	Inset *float64
+	// Outset is the outer padding (in points).
+	// If nil, uses default (0pt).
+	Outset *float64
+	// Radius is the corner radius (in points).
+	// If nil, uses default (0pt).
+	Radius *float64
+	// Clip indicates whether to clip content to the block boundaries.
+	// If nil, uses default (true).
+	Clip *bool
+	// Breakable indicates whether the block can be broken across pages.
+	// If nil, uses default (true).
+	Breakable *bool
+	// Above is the spacing above the block (in points).
+	// If nil, uses default spacing.
+	Above *float64
+	// Below is the spacing below the block (in points).
+	// If nil, uses default spacing.
+	Below *float64
+}
+
+func (*BlockElement) isContentElement() {}
+
 func evalStrong(vm *Vm, e *syntax.StrongExpr) (Value, error) {
 	body := e.Body()
 	if body == nil {
 		return ContentValue{}, nil
 	}
-	content, err := evalMarkup(vm, body)
+	content, err := EvalMarkup(vm, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1710,7 +1783,7 @@ func evalEmph(vm *Vm, e *syntax.EmphExpr) (Value, error) {
 	if body == nil {
 		return ContentValue{}, nil
 	}
-	content, err := evalMarkup(vm, body)
+	content, err := EvalMarkup(vm, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1798,7 +1871,7 @@ func evalHeading(vm *Vm, e *syntax.HeadingExpr) (Value, error) {
 	if body == nil {
 		return ContentValue{}, nil
 	}
-	content, err := evalMarkup(vm, body)
+	content, err := EvalMarkup(vm, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1822,7 +1895,7 @@ func evalListItem(vm *Vm, e *syntax.ListItemExpr) (Value, error) {
 	if body == nil {
 		return ContentValue{}, nil
 	}
-	content, err := evalMarkup(vm, body)
+	content, err := EvalMarkup(vm, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1845,7 +1918,7 @@ func evalEnumItem(vm *Vm, e *syntax.EnumItemExpr) (Value, error) {
 	if body == nil {
 		return ContentValue{}, nil
 	}
-	content, err := evalMarkup(vm, body)
+	content, err := EvalMarkup(vm, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1870,14 +1943,14 @@ func evalTermItem(vm *Vm, e *syntax.TermItemExpr) (Value, error) {
 
 	var termContent, descContent Content
 	if term != nil {
-		if v, err := evalMarkup(vm, term); err == nil {
+		if v, err := EvalMarkup(vm, term); err == nil {
 			if c, ok := v.(ContentValue); ok {
 				termContent = c.Content
 			}
 		}
 	}
 	if desc != nil {
-		if v, err := evalMarkup(vm, desc); err == nil {
+		if v, err := EvalMarkup(vm, desc); err == nil {
 			if c, ok := v.(ContentValue); ok {
 				descContent = c.Content
 			}

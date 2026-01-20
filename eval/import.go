@@ -489,7 +489,7 @@ func evalModule(vm *Vm, source *syntax.Source, fileID FileID) (*Module, error) {
 		}
 	}
 
-	content, err := evalMarkup(moduleVm, markup)
+	content, err := EvalMarkup(moduleVm, markup)
 	if err != nil {
 		return nil, err
 	}
