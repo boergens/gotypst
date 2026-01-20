@@ -536,12 +536,7 @@ func appendToContent(content Content, value Value) Content {
 	return content
 }
 
-// TextElement is a simple text content element.
-type TextElement struct {
-	Text string
-}
-
-func (*TextElement) isContentElement() {}
+// Note: TextElement is defined in text.go with full styling support.
 
 // ----------------------------------------------------------------------------
 // Operator Evaluators
