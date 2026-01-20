@@ -817,3 +817,520 @@ func TestElementFunctionsIncludesParAndParbreak(t *testing.T) {
 		t.Error("expected 'parbreak' in ElementFunctions()")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// Stack Tests
+// ----------------------------------------------------------------------------
+
+func TestStackFunc(t *testing.T) {
+	stackFunc := StackFunc()
+
+	if stackFunc == nil {
+		t.Fatal("StackFunc() returned nil")
+	}
+
+	if stackFunc.Name == nil || *stackFunc.Name != "stack" {
+		t.Errorf("expected function name 'stack', got %v", stackFunc.Name)
+	}
+
+	_, ok := stackFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Error("expected NativeFunc representation")
+	}
+}
+
+func TestStackNativeBasic(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create two content children
+	child1 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "First"}},
+	}}
+	child2 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Second"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(child1, syntax.Detached())
+	args.Push(child2, syntax.Detached())
+
+	result, err := stackNative(vm, args)
+	if err != nil {
+		t.Fatalf("stackNative() error: %v", err)
+	}
+
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	if len(content.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(content.Content.Elements))
+	}
+
+	stack, ok := content.Content.Elements[0].(*StackElement)
+	if !ok {
+		t.Fatalf("expected *StackElement, got %T", content.Content.Elements[0])
+	}
+
+	// Verify defaults
+	if stack.Dir != StackDirTTB {
+		t.Errorf("Dir = %v, want StackDirTTB", stack.Dir)
+	}
+	if stack.Spacing != nil {
+		t.Errorf("Spacing = %v, want nil", stack.Spacing)
+	}
+	if len(stack.Children) != 2 {
+		t.Errorf("Children count = %d, want 2", len(stack.Children))
+	}
+}
+
+func TestStackNativeWithDir(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	tests := []struct {
+		dirStr   string
+		expected StackDir
+	}{
+		{"ltr", StackDirLTR},
+		{"rtl", StackDirRTL},
+		{"ttb", StackDirTTB},
+		{"btt", StackDirBTT},
+	}
+
+	for _, tt := range tests {
+		child := ContentValue{Content: Content{
+			Elements: []ContentElement{&TextElement{Text: "Test"}},
+		}}
+
+		args := NewArgs(syntax.Detached())
+		args.PushNamed("dir", Str(tt.dirStr), syntax.Detached())
+		args.Push(child, syntax.Detached())
+
+		result, err := stackNative(vm, args)
+		if err != nil {
+			t.Fatalf("stackNative(dir: %q) error: %v", tt.dirStr, err)
+		}
+
+		content := result.(ContentValue)
+		stack := content.Content.Elements[0].(*StackElement)
+
+		if stack.Dir != tt.expected {
+			t.Errorf("dir=%q: Dir = %v, want %v", tt.dirStr, stack.Dir, tt.expected)
+		}
+	}
+}
+
+func TestStackNativeWithSpacing(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	child := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Test"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("spacing", LengthValue{Length: Length{Points: 12}}, syntax.Detached())
+	args.Push(child, syntax.Detached())
+
+	result, err := stackNative(vm, args)
+	if err != nil {
+		t.Fatalf("stackNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	stack := content.Content.Elements[0].(*StackElement)
+
+	if stack.Spacing == nil || *stack.Spacing != 12 {
+		t.Errorf("Spacing = %v, want 12", stack.Spacing)
+	}
+}
+
+func TestStackNativeInvalidDir(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	child := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Test"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("dir", Str("invalid"), syntax.Detached())
+	args.Push(child, syntax.Detached())
+
+	_, err := stackNative(vm, args)
+	if err == nil {
+		t.Error("expected error for invalid dir value")
+	}
+}
+
+func TestStackNativeWrongChildType(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.Push(Str("not content"), syntax.Detached())
+
+	_, err := stackNative(vm, args)
+	if err == nil {
+		t.Error("expected error for wrong child type")
+	}
+	if _, ok := err.(*TypeMismatchError); !ok {
+		t.Errorf("expected TypeMismatchError, got %T", err)
+	}
+}
+
+func TestStackDirString(t *testing.T) {
+	tests := []struct {
+		dir      StackDir
+		expected string
+	}{
+		{StackDirLTR, "ltr"},
+		{StackDirRTL, "rtl"},
+		{StackDirTTB, "ttb"},
+		{StackDirBTT, "btt"},
+	}
+
+	for _, tt := range tests {
+		if got := tt.dir.String(); got != tt.expected {
+			t.Errorf("StackDir(%d).String() = %q, want %q", tt.dir, got, tt.expected)
+		}
+	}
+}
+
+func TestStackElement(t *testing.T) {
+	spacing := 10.0
+	elem := &StackElement{
+		Dir:     StackDirLTR,
+		Spacing: &spacing,
+		Children: []Content{
+			{Elements: []ContentElement{&TextElement{Text: "Child 1"}}},
+			{Elements: []ContentElement{&TextElement{Text: "Child 2"}}},
+		},
+	}
+
+	if elem.Dir != StackDirLTR {
+		t.Errorf("Dir = %v, want StackDirLTR", elem.Dir)
+	}
+	if *elem.Spacing != 10.0 {
+		t.Errorf("Spacing = %v, want 10.0", *elem.Spacing)
+	}
+	if len(elem.Children) != 2 {
+		t.Errorf("Children count = %d, want 2", len(elem.Children))
+	}
+
+	// Verify it satisfies ContentElement interface
+	var _ ContentElement = elem
+}
+
+// ----------------------------------------------------------------------------
+// Align Tests
+// ----------------------------------------------------------------------------
+
+func TestAlignFunc(t *testing.T) {
+	alignFunc := AlignFunc()
+
+	if alignFunc == nil {
+		t.Fatal("AlignFunc() returned nil")
+	}
+
+	if alignFunc.Name == nil || *alignFunc.Name != "align" {
+		t.Errorf("expected function name 'align', got %v", alignFunc.Name)
+	}
+
+	_, ok := alignFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Error("expected NativeFunc representation")
+	}
+}
+
+func TestAlignNativeHorizontal(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	tests := []struct {
+		alignStr string
+		expected HAlignment
+	}{
+		{"start", HAlignStart},
+		{"center", HAlignCenter},
+		{"end", HAlignEnd},
+		{"left", HAlignLeft},
+		{"right", HAlignRight},
+	}
+
+	for _, tt := range tests {
+		body := ContentValue{Content: Content{
+			Elements: []ContentElement{&TextElement{Text: "Test"}},
+		}}
+
+		args := NewArgs(syntax.Detached())
+		args.Push(Str(tt.alignStr), syntax.Detached())
+		args.Push(body, syntax.Detached())
+
+		result, err := alignNative(vm, args)
+		if err != nil {
+			t.Fatalf("alignNative(%q) error: %v", tt.alignStr, err)
+		}
+
+		content := result.(ContentValue)
+		align := content.Content.Elements[0].(*AlignElement)
+
+		if align.Horizontal == nil || *align.Horizontal != tt.expected {
+			t.Errorf("align=%q: Horizontal = %v, want %v", tt.alignStr, align.Horizontal, tt.expected)
+		}
+	}
+}
+
+func TestAlignNativeVertical(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	tests := []struct {
+		alignStr string
+		expected VAlignment
+	}{
+		{"top", VAlignTop},
+		{"horizon", VAlignHorizon},
+		{"bottom", VAlignBottom},
+	}
+
+	for _, tt := range tests {
+		body := ContentValue{Content: Content{
+			Elements: []ContentElement{&TextElement{Text: "Test"}},
+		}}
+
+		args := NewArgs(syntax.Detached())
+		args.Push(Str(tt.alignStr), syntax.Detached())
+		args.Push(body, syntax.Detached())
+
+		result, err := alignNative(vm, args)
+		if err != nil {
+			t.Fatalf("alignNative(%q) error: %v", tt.alignStr, err)
+		}
+
+		content := result.(ContentValue)
+		align := content.Content.Elements[0].(*AlignElement)
+
+		if align.Vertical == nil || *align.Vertical != tt.expected {
+			t.Errorf("align=%q: Vertical = %v, want %v", tt.alignStr, align.Vertical, tt.expected)
+		}
+	}
+}
+
+func TestAlignNativeCombined(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Test"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(Str("center + horizon"), syntax.Detached())
+	args.Push(body, syntax.Detached())
+
+	result, err := alignNative(vm, args)
+	if err != nil {
+		t.Fatalf("alignNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	align := content.Content.Elements[0].(*AlignElement)
+
+	if align.Horizontal == nil || *align.Horizontal != HAlignCenter {
+		t.Errorf("Horizontal = %v, want HAlignCenter", align.Horizontal)
+	}
+	if align.Vertical == nil || *align.Vertical != VAlignHorizon {
+		t.Errorf("Vertical = %v, want VAlignHorizon", align.Vertical)
+	}
+}
+
+func TestAlignNativeCombinedLeftBottom(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Test"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(Str("left + bottom"), syntax.Detached())
+	args.Push(body, syntax.Detached())
+
+	result, err := alignNative(vm, args)
+	if err != nil {
+		t.Fatalf("alignNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	align := content.Content.Elements[0].(*AlignElement)
+
+	if align.Horizontal == nil || *align.Horizontal != HAlignLeft {
+		t.Errorf("Horizontal = %v, want HAlignLeft", align.Horizontal)
+	}
+	if align.Vertical == nil || *align.Vertical != VAlignBottom {
+		t.Errorf("Vertical = %v, want VAlignBottom", align.Vertical)
+	}
+}
+
+func TestAlignNativeInvalidAlignment(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Test"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(Str("invalid"), syntax.Detached())
+	args.Push(body, syntax.Detached())
+
+	_, err := alignNative(vm, args)
+	if err == nil {
+		t.Error("expected error for invalid alignment value")
+	}
+}
+
+func TestAlignNativeMissingAlignment(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Test"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+
+	_, err := alignNative(vm, args)
+	if err == nil {
+		t.Error("expected error for missing alignment argument")
+	}
+}
+
+func TestAlignNativeWrongBodyType(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.Push(Str("center"), syntax.Detached())
+	args.Push(Str("not content"), syntax.Detached())
+
+	_, err := alignNative(vm, args)
+	if err == nil {
+		t.Error("expected error for wrong body type")
+	}
+	if _, ok := err.(*TypeMismatchError); !ok {
+		t.Errorf("expected TypeMismatchError, got %T", err)
+	}
+}
+
+func TestHAlignmentString(t *testing.T) {
+	tests := []struct {
+		align    HAlignment
+		expected string
+	}{
+		{HAlignStart, "start"},
+		{HAlignCenter, "center"},
+		{HAlignEnd, "end"},
+		{HAlignLeft, "left"},
+		{HAlignRight, "right"},
+	}
+
+	for _, tt := range tests {
+		if got := tt.align.String(); got != tt.expected {
+			t.Errorf("HAlignment(%d).String() = %q, want %q", tt.align, got, tt.expected)
+		}
+	}
+}
+
+func TestVAlignmentString(t *testing.T) {
+	tests := []struct {
+		align    VAlignment
+		expected string
+	}{
+		{VAlignTop, "top"},
+		{VAlignHorizon, "horizon"},
+		{VAlignBottom, "bottom"},
+	}
+
+	for _, tt := range tests {
+		if got := tt.align.String(); got != tt.expected {
+			t.Errorf("VAlignment(%d).String() = %q, want %q", tt.align, got, tt.expected)
+		}
+	}
+}
+
+func TestAlignElement(t *testing.T) {
+	h := HAlignCenter
+	v := VAlignHorizon
+	elem := &AlignElement{
+		Body: Content{
+			Elements: []ContentElement{&TextElement{Text: "Centered"}},
+		},
+		Horizontal: &h,
+		Vertical:   &v,
+	}
+
+	if *elem.Horizontal != HAlignCenter {
+		t.Errorf("Horizontal = %v, want HAlignCenter", *elem.Horizontal)
+	}
+	if *elem.Vertical != VAlignHorizon {
+		t.Errorf("Vertical = %v, want VAlignHorizon", *elem.Vertical)
+	}
+
+	// Verify it satisfies ContentElement interface
+	var _ ContentElement = elem
+}
+
+// ----------------------------------------------------------------------------
+// Registration Tests for Stack and Align
+// ----------------------------------------------------------------------------
+
+func TestRegisterElementFunctionsIncludesStackAndAlign(t *testing.T) {
+	scope := NewScope()
+	RegisterElementFunctions(scope)
+
+	// Verify stack function is registered
+	stackBinding := scope.Get("stack")
+	if stackBinding == nil {
+		t.Fatal("expected 'stack' to be registered")
+	}
+
+	stackFunc, ok := stackBinding.Value.(FuncValue)
+	if !ok {
+		t.Fatalf("expected FuncValue for stack, got %T", stackBinding.Value)
+	}
+	if stackFunc.Func.Name == nil || *stackFunc.Func.Name != "stack" {
+		t.Errorf("expected function name 'stack', got %v", stackFunc.Func.Name)
+	}
+
+	// Verify align function is registered
+	alignBinding := scope.Get("align")
+	if alignBinding == nil {
+		t.Fatal("expected 'align' to be registered")
+	}
+
+	alignFunc, ok := alignBinding.Value.(FuncValue)
+	if !ok {
+		t.Fatalf("expected FuncValue for align, got %T", alignBinding.Value)
+	}
+	if alignFunc.Func.Name == nil || *alignFunc.Func.Name != "align" {
+		t.Errorf("expected function name 'align', got %v", alignFunc.Func.Name)
+	}
+}
+
+func TestElementFunctionsIncludesStackAndAlign(t *testing.T) {
+	funcs := ElementFunctions()
+
+	if _, ok := funcs["stack"]; !ok {
+		t.Error("expected 'stack' in ElementFunctions()")
+	}
+
+	if _, ok := funcs["align"]; !ok {
+		t.Error("expected 'align' in ElementFunctions()")
+	}
+}

@@ -292,6 +292,442 @@ func parbreakNative(vm *Vm, args *Args) (Value, error) {
 }
 
 // ----------------------------------------------------------------------------
+// Stack Element
+// ----------------------------------------------------------------------------
+
+// StackDir represents the stacking direction.
+type StackDir int
+
+const (
+	// StackDirLTR stacks left-to-right (horizontal).
+	StackDirLTR StackDir = iota
+	// StackDirRTL stacks right-to-left (horizontal).
+	StackDirRTL
+	// StackDirTTB stacks top-to-bottom (vertical, default).
+	StackDirTTB
+	// StackDirBTT stacks bottom-to-top (vertical).
+	StackDirBTT
+)
+
+// String returns the string representation of the direction.
+func (d StackDir) String() string {
+	switch d {
+	case StackDirLTR:
+		return "ltr"
+	case StackDirRTL:
+		return "rtl"
+	case StackDirTTB:
+		return "ttb"
+	case StackDirBTT:
+		return "btt"
+	default:
+		return "ttb"
+	}
+}
+
+// StackElement represents a stack layout container.
+// It arranges its children linearly in a specified direction.
+type StackElement struct {
+	// Dir is the stacking direction (ltr, rtl, ttb, btt).
+	// Default is ttb (top-to-bottom).
+	Dir StackDir
+	// Spacing is the space between children (in points).
+	// If nil, no spacing is applied.
+	Spacing *float64
+	// Children is the content to stack.
+	Children []Content
+}
+
+func (*StackElement) isContentElement() {}
+
+// StackFunc creates the stack element function.
+func StackFunc() *Func {
+	name := "stack"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: stackNative,
+			Info: &FuncInfo{
+				Name: "stack",
+				Params: []ParamInfo{
+					{Name: "dir", Type: TypeStr, Default: None, Named: true},
+					{Name: "spacing", Type: TypeLength, Default: None, Named: true},
+					{Name: "children", Type: TypeContent, Variadic: true, Named: false},
+				},
+			},
+		},
+	}
+}
+
+// stackNative implements the stack() function.
+// Creates a StackElement for linear layout of children.
+//
+// Arguments:
+//   - dir (named, str, default: "ttb"): Direction - "ltr", "rtl", "ttb", or "btt"
+//   - spacing (named, length, default: none): Spacing between children
+//   - ..children (positional, content): Content to stack
+func stackNative(vm *Vm, args *Args) (Value, error) {
+	// Create element with defaults
+	elem := &StackElement{
+		Dir: StackDirTTB, // default top-to-bottom
+	}
+
+	// Get optional dir argument
+	if dirArg := args.Find("dir"); dirArg != nil {
+		if !IsNone(dirArg.V) {
+			dirStr, ok := AsStr(dirArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "string or none",
+					Got:      dirArg.V.Type().String(),
+					Span:     dirArg.Span,
+				}
+			}
+			switch dirStr {
+			case "ltr":
+				elem.Dir = StackDirLTR
+			case "rtl":
+				elem.Dir = StackDirRTL
+			case "ttb":
+				elem.Dir = StackDirTTB
+			case "btt":
+				elem.Dir = StackDirBTT
+			default:
+				return nil, &TypeMismatchError{
+					Expected: "\"ltr\", \"rtl\", \"ttb\", or \"btt\"",
+					Got:      "\"" + dirStr + "\"",
+					Span:     dirArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional spacing argument
+	if spacingArg := args.Find("spacing"); spacingArg != nil {
+		if !IsNone(spacingArg.V) {
+			if lv, ok := spacingArg.V.(LengthValue); ok {
+				spacing := lv.Length.Points
+				elem.Spacing = &spacing
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      spacingArg.V.Type().String(),
+					Span:     spacingArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get all remaining positional arguments as children
+	childArgs := args.All()
+	for _, childArg := range childArgs {
+		if cv, ok := childArg.V.(ContentValue); ok {
+			elem.Children = append(elem.Children, cv.Content)
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "content",
+				Got:      childArg.V.Type().String(),
+				Span:     childArg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the StackElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// ----------------------------------------------------------------------------
+// Align Element
+// ----------------------------------------------------------------------------
+
+// HAlignment represents horizontal alignment.
+type HAlignment int
+
+const (
+	// HAlignStart aligns to the start (left in LTR, right in RTL).
+	HAlignStart HAlignment = iota
+	// HAlignCenter centers horizontally.
+	HAlignCenter
+	// HAlignEnd aligns to the end (right in LTR, left in RTL).
+	HAlignEnd
+	// HAlignLeft always aligns left.
+	HAlignLeft
+	// HAlignRight always aligns right.
+	HAlignRight
+)
+
+// String returns the string representation of horizontal alignment.
+func (a HAlignment) String() string {
+	switch a {
+	case HAlignStart:
+		return "start"
+	case HAlignCenter:
+		return "center"
+	case HAlignEnd:
+		return "end"
+	case HAlignLeft:
+		return "left"
+	case HAlignRight:
+		return "right"
+	default:
+		return "start"
+	}
+}
+
+// VAlignment represents vertical alignment.
+type VAlignment int
+
+const (
+	// VAlignTop aligns to the top.
+	VAlignTop VAlignment = iota
+	// VAlignHorizon centers vertically.
+	VAlignHorizon
+	// VAlignBottom aligns to the bottom.
+	VAlignBottom
+)
+
+// String returns the string representation of vertical alignment.
+func (a VAlignment) String() string {
+	switch a {
+	case VAlignTop:
+		return "top"
+	case VAlignHorizon:
+		return "horizon"
+	case VAlignBottom:
+		return "bottom"
+	default:
+		return "top"
+	}
+}
+
+// AlignElement represents an alignment container.
+// It positions its content according to the specified alignment.
+type AlignElement struct {
+	// Body is the content to align.
+	Body Content
+	// Horizontal is the horizontal alignment.
+	// If nil, defaults to start.
+	Horizontal *HAlignment
+	// Vertical is the vertical alignment.
+	// If nil, defaults to top.
+	Vertical *VAlignment
+}
+
+func (*AlignElement) isContentElement() {}
+
+// AlignFunc creates the align element function.
+func AlignFunc() *Func {
+	name := "align"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: alignNative,
+			Info: &FuncInfo{
+				Name: "align",
+				Params: []ParamInfo{
+					{Name: "alignment", Type: TypeStr, Default: None, Named: false},
+					{Name: "body", Type: TypeContent, Named: false},
+				},
+			},
+		},
+	}
+}
+
+// alignNative implements the align() function.
+// Creates an AlignElement for content positioning.
+//
+// Arguments:
+//   - alignment (positional, str): Alignment value like "center", "left", "right",
+//     "top", "bottom", "horizon", "start", "end", or combinations like "center + horizon"
+//   - body (positional, content): Content to align
+func alignNative(vm *Vm, args *Args) (Value, error) {
+	// Get required alignment argument
+	alignArg := args.Find("alignment")
+	if alignArg == nil {
+		alignArgSpanned, err := args.Expect("alignment")
+		if err != nil {
+			return nil, err
+		}
+		alignArg = &alignArgSpanned
+	}
+
+	elem := &AlignElement{}
+
+	// Parse alignment value
+	alignStr, ok := AsStr(alignArg.V)
+	if !ok {
+		return nil, &TypeMismatchError{
+			Expected: "string",
+			Got:      alignArg.V.Type().String(),
+			Span:     alignArg.Span,
+		}
+	}
+
+	// Parse alignment string (can be single value or "h + v" combination)
+	if err := parseAlignment(alignStr, elem, alignArg.Span); err != nil {
+		return nil, err
+	}
+
+	// Get required body argument
+	bodyArg := args.Find("body")
+	if bodyArg == nil {
+		bodyArgSpanned, err := args.Expect("body")
+		if err != nil {
+			return nil, err
+		}
+		bodyArg = &bodyArgSpanned
+	}
+
+	if cv, ok := bodyArg.V.(ContentValue); ok {
+		elem.Body = cv.Content
+	} else {
+		return nil, &TypeMismatchError{
+			Expected: "content",
+			Got:      bodyArg.V.Type().String(),
+			Span:     bodyArg.Span,
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the AlignElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// parseAlignment parses an alignment string and sets the element's alignment fields.
+func parseAlignment(s string, elem *AlignElement, span syntax.Span) error {
+	// Handle simple single values
+	switch s {
+	case "start":
+		h := HAlignStart
+		elem.Horizontal = &h
+		return nil
+	case "center":
+		h := HAlignCenter
+		elem.Horizontal = &h
+		return nil
+	case "end":
+		h := HAlignEnd
+		elem.Horizontal = &h
+		return nil
+	case "left":
+		h := HAlignLeft
+		elem.Horizontal = &h
+		return nil
+	case "right":
+		h := HAlignRight
+		elem.Horizontal = &h
+		return nil
+	case "top":
+		v := VAlignTop
+		elem.Vertical = &v
+		return nil
+	case "horizon":
+		v := VAlignHorizon
+		elem.Vertical = &v
+		return nil
+	case "bottom":
+		v := VAlignBottom
+		elem.Vertical = &v
+		return nil
+	}
+
+	// Handle combinations like "center + horizon" or "left + top"
+	// For now, we'll support simple parsing - a more robust parser would handle whitespace variations
+	parts := splitAlignment(s)
+	if len(parts) == 2 {
+		for _, part := range parts {
+			switch part {
+			case "start":
+				h := HAlignStart
+				elem.Horizontal = &h
+			case "center":
+				h := HAlignCenter
+				elem.Horizontal = &h
+			case "end":
+				h := HAlignEnd
+				elem.Horizontal = &h
+			case "left":
+				h := HAlignLeft
+				elem.Horizontal = &h
+			case "right":
+				h := HAlignRight
+				elem.Horizontal = &h
+			case "top":
+				v := VAlignTop
+				elem.Vertical = &v
+			case "horizon":
+				v := VAlignHorizon
+				elem.Vertical = &v
+			case "bottom":
+				v := VAlignBottom
+				elem.Vertical = &v
+			default:
+				return &TypeMismatchError{
+					Expected: "valid alignment (start, center, end, left, right, top, horizon, bottom)",
+					Got:      "\"" + part + "\"",
+					Span:     span,
+				}
+			}
+		}
+		return nil
+	}
+
+	return &TypeMismatchError{
+		Expected: "valid alignment (start, center, end, left, right, top, horizon, bottom)",
+		Got:      "\"" + s + "\"",
+		Span:     span,
+	}
+}
+
+// splitAlignment splits an alignment string like "center + horizon" into parts.
+func splitAlignment(s string) []string {
+	var parts []string
+	var current string
+	for _, c := range s {
+		if c == '+' {
+			if trimmed := trimSpaces(current); trimmed != "" {
+				parts = append(parts, trimmed)
+			}
+			current = ""
+		} else {
+			current += string(c)
+		}
+	}
+	if trimmed := trimSpaces(current); trimmed != "" {
+		parts = append(parts, trimmed)
+	}
+	return parts
+}
+
+// trimSpaces removes leading and trailing spaces from a string.
+func trimSpaces(s string) string {
+	start := 0
+	end := len(s)
+	for start < end && s[start] == ' ' {
+		start++
+	}
+	for end > start && s[end-1] == ' ' {
+		end--
+	}
+	return s[start:end]
+}
+
+// ----------------------------------------------------------------------------
 // Library Registration
 // ----------------------------------------------------------------------------
 
@@ -304,6 +740,10 @@ func RegisterElementFunctions(scope *Scope) {
 	scope.DefineFunc("par", ParFunc())
 	// Register parbreak element function
 	scope.DefineFunc("parbreak", ParbreakFunc())
+	// Register stack element function
+	scope.DefineFunc("stack", StackFunc())
+	// Register align element function
+	scope.DefineFunc("align", AlignFunc())
 }
 
 // ElementFunctions returns a map of all element function names to their functions.
@@ -313,5 +753,7 @@ func ElementFunctions() map[string]*Func {
 		"raw":      RawFunc(),
 		"par":      ParFunc(),
 		"parbreak": ParbreakFunc(),
+		"stack":    StackFunc(),
+		"align":    AlignFunc(),
 	}
 }
