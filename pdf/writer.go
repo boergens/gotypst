@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/boergens/gotypst/layout"
+	"github.com/boergens/gotypst/layout/inline"
 	"github.com/boergens/gotypst/layout/pages"
 )
 
@@ -23,13 +24,19 @@ type Writer struct {
 	tagManager *TagManager
 	// tagged indicates whether to generate tagged PDF output.
 	tagged bool
+	// renderer is used for rendering content and managing fonts.
+	renderer *Renderer
+	// fontRefs maps font resource names to their references.
+	fontRefs map[string]Ref
 }
 
 // NewWriter creates a new PDF writer.
 func NewWriter() *Writer {
 	return &Writer{
-		nextID: 1,
-		images: make(map[*pages.Image]Ref),
+		nextID:   1,
+		images:   make(map[*pages.Image]Ref),
+		renderer: NewRenderer(),
+		fontRefs: make(map[string]Ref),
 	}
 }
 
@@ -103,6 +110,17 @@ func (w *Writer) Write(doc *pages.PagedDocument, out io.Writer) error {
 		pageImageRefs = append(pageImageRefs, imageRefs)
 	}
 
+	// Generate font resources from the font manager
+	fontResources := w.renderer.FontManager.GenerateResources(w.allocRef)
+	for _, fontRes := range fontResources {
+		// Add all font-related objects
+		for _, obj := range fontRes.Objects {
+			w.objects = append(w.objects, obj)
+		}
+		// Map font resource name to its reference
+		w.fontRefs[fontRes.ResourceName] = fontRes.Ref
+	}
+
 	// Create page objects
 	for i, page := range doc.Pages {
 		pageRef := w.allocRef()
@@ -127,16 +145,25 @@ func (w *Writer) Write(doc *pages.PagedDocument, out io.Writer) error {
 		// Build resources dictionary
 		resources := make(Dict)
 
-		// Always add default font for text rendering
-		resources[Name("Font")] = Dict{
-			Name("F1"): Dict{
-				Name("Type"):     Name("Font"),
-				Name("Subtype"):  Name("Type1"),
-				Name("BaseFont"): Name("Helvetica"),
-			},
+		// Add font resources - use registered CID fonts if available, else fallback
+		if len(w.fontRefs) > 0 {
+			fonts := make(Dict)
+			for name, ref := range w.fontRefs {
+				fonts[Name(name)] = ref
+			}
+			resources[Name("Font")] = fonts
+		} else {
+			// Fallback to default Type1 font
+			resources[Name("Font")] = Dict{
+				Name("F1"): Dict{
+					Name("Type"):     Name("Font"),
+					Name("Subtype"):  Name("Type1"),
+					Name("BaseFont"): Name("Helvetica"),
+				},
+			}
 		}
 
-		// Add XObjects if there are images
+		// Add image XObjects
 		if len(pageImageRefs[i]) > 0 {
 			xobjects := make(Dict)
 			for name, ref := range pageImageRefs[i] {
@@ -145,6 +172,7 @@ func (w *Writer) Write(doc *pages.PagedDocument, out io.Writer) error {
 			resources[Name("XObject")] = xobjects
 		}
 
+		// Add resources to page
 		pageDict[Name("Resources")] = resources
 
 		// Add StructParents if tagged
@@ -347,9 +375,10 @@ func (w *Writer) processPage(page *pages.Page, pagesRef Ref) (Ref, map[string]Re
 	var content bytes.Buffer
 	imageRefs := make(map[string]Ref)
 	imageCounter := 0
+	pageHeight := page.Frame.Size.Height
 
 	// Process frame items
-	err := w.processFrame(&page.Frame, &content, imageRefs, &imageCounter, 0, 0)
+	err := w.processFrame(&page.Frame, &content, imageRefs, &imageCounter, 0, 0, pageHeight)
 	if err != nil {
 		return Ref{}, nil, err
 	}
@@ -368,7 +397,7 @@ func (w *Writer) processPage(page *pages.Page, pagesRef Ref) (Ref, map[string]Re
 }
 
 // processFrame recursively processes frame items and generates PDF operators.
-func (w *Writer) processFrame(frame *pages.Frame, content *bytes.Buffer, imageRefs map[string]Ref, imageCounter *int, offsetX, offsetY layout.Abs) error {
+func (w *Writer) processFrame(frame *pages.Frame, content *bytes.Buffer, imageRefs map[string]Ref, imageCounter *int, offsetX, offsetY layout.Abs, pageHeight layout.Abs) error {
 	for _, item := range frame.Items {
 		x := offsetX + item.Pos.X
 		y := offsetY + item.Pos.Y
@@ -376,9 +405,19 @@ func (w *Writer) processFrame(frame *pages.Frame, content *bytes.Buffer, imageRe
 		switch v := item.Item.(type) {
 		case pages.GroupItem:
 			// Recurse into nested frame
-			if err := w.processFrame(&v.Frame, content, imageRefs, imageCounter, x, y); err != nil {
+			if err := w.processFrame(&v.Frame, content, imageRefs, imageCounter, x, y, pageHeight); err != nil {
 				return err
 			}
+
+		case pages.InlineItem:
+			// Render inline text content using the renderer
+			cs := NewContentStream()
+			w.renderer.pageHeight = pageHeight
+			if frame, ok := v.Frame.(*inline.FinalFrame); ok {
+				pos := layout.Point{X: x, Y: y}
+				w.renderer.RenderInlineFrame(cs, frame, pos)
+			}
+			content.Write(cs.Bytes())
 
 		case pages.ImageItem:
 			// Get or create image XObject

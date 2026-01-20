@@ -126,6 +126,16 @@ type ImageItem struct {
 
 func (ImageItem) isFrameItem() {}
 
+// InlineItem represents inline text content (shaped text).
+type InlineItem struct {
+	// Frame contains the finalized inline content.
+	Frame interface{} // inline.FinalFrame - using interface to avoid import cycle
+	// Baseline is the text baseline offset from the top.
+	Baseline layout.Abs
+}
+
+func (InlineItem) isFrameItem() {}
+
 // Image represents image data for embedding.
 type Image struct {
 	// Data is the raw image bytes.

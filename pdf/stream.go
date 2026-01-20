@@ -183,12 +183,25 @@ func (cs *ContentStream) ShowTextWithPositioning(items []TextPositionItem) {
 		switch v := item.(type) {
 		case TextPositionString:
 			cs.buf.WriteString(encodeString(string(v)))
+		case TextPositionHex:
+			cs.buf.WriteString(encodeHexString(v))
 		case TextPositionOffset:
 			// Negative value moves right in PDF coordinates
 			cs.buf.WriteString(formatFloat(float64(v)))
 		}
 	}
 	cs.buf.WriteString("] TJ\n")
+}
+
+// encodeHexString encodes bytes as a PDF hex string.
+func encodeHexString(data []byte) string {
+	var buf strings.Builder
+	buf.WriteByte('<')
+	for _, b := range data {
+		fmt.Fprintf(&buf, "%02X", b)
+	}
+	buf.WriteByte('>')
+	return buf.String()
 }
 
 // TextPositionItem is an item in a TJ array.
@@ -200,6 +213,11 @@ type TextPositionItem interface {
 type TextPositionString string
 
 func (TextPositionString) isTextPositionItem() {}
+
+// TextPositionHex is a hex string in a TJ array (for CID fonts).
+type TextPositionHex []byte
+
+func (TextPositionHex) isTextPositionItem() {}
 
 // TextPositionOffset is a positioning offset in a TJ array (in thousandths of em).
 type TextPositionOffset float64
