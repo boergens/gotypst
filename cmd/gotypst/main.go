@@ -16,6 +16,7 @@ import (
 	"github.com/boergens/gotypst/eval"
 	"github.com/boergens/gotypst/layout/pages"
 	"github.com/boergens/gotypst/pdf"
+	"github.com/boergens/gotypst/realize"
 	"github.com/boergens/gotypst/syntax"
 )
 
@@ -271,45 +272,61 @@ func evalMarkup(vm *eval.Vm, markup *syntax.MarkupNode) (eval.Value, error) {
 }
 
 // layout converts evaluated content to a paged document.
+// This is the main entry point that wires up realization and page collection.
 func layout(world *eval.FileWorld, content *eval.Content) (*pages.PagedDocument, error) {
+	// Create evaluation engine for realization
+	evalEngine := eval.NewEngine(world)
+
+	// Create empty styles for initial realization
+	realizeStyles := realize.EmptyStyleChain()
+
+	// Realize the content - apply show rules, group elements, collapse spaces
+	realizedPairs, err := realize.Realize(
+		realize.LayoutDocument{},
+		evalEngine,
+		content,
+		realizeStyles,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("realization failed: %w", err)
+	}
+
+	// Convert realized pairs to pages.Content
+	pageContent := convertRealizedContent(realizedPairs)
+
 	// Create layout engine
-	engine := &pages.Engine{
+	layoutEngine := &pages.Engine{
 		World: world,
 	}
 
-	// Convert eval.Content to pages.Content
-	pageContent := convertContent(content)
-
-	// Create default style chain
-	styles := pages.StyleChain{
+	// Create default style chain for layout
+	layoutStyles := pages.StyleChain{
 		Styles: map[string]interface{}{},
 	}
 
 	// Layout the document
-	return pages.LayoutDocument(engine, pageContent, styles)
+	return pages.LayoutDocument(layoutEngine, pageContent, layoutStyles)
 }
 
-// convertContent converts eval.Content to pages.Content.
-func convertContent(c *eval.Content) *pages.Content {
-	if c == nil {
-		return nil
-	}
-
-	// TODO: Implement proper content conversion through realize step
-	// For now, create a minimal page content
-	pageContent := &pages.Content{
-		Elements: make([]pages.ContentElement, 0),
-	}
-
-	// Convert elements (this is a simplified conversion)
-	for _, elem := range c.Elements {
-		if pe, ok := elem.(pages.ContentElement); ok {
-			pageContent.Elements = append(pageContent.Elements, pe)
+// convertRealizedContent converts realized pairs to pages.Content.
+// This bridges the realize package output to the pages package input.
+func convertRealizedContent(pairs []realize.Pair) *pages.Content {
+	if len(pairs) == 0 {
+		return &pages.Content{
+			Elements: make([]eval.ContentElement, 0),
 		}
-		// TODO: Handle other element types through realize
 	}
 
-	return pageContent
+	elements := make([]eval.ContentElement, 0, len(pairs))
+	for _, pair := range pairs {
+		if pair.Element != nil {
+			elements = append(elements, pair.Element)
+		}
+	}
+
+	return &pages.Content{
+		Elements: elements,
+	}
 }
 
 // formatParseErrors formats parse errors for display.
