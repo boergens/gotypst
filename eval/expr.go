@@ -1978,6 +1978,54 @@ type SmartQuoteElement struct {
 func (*SmartQuoteElement) isContentElement() {}
 
 // ----------------------------------------------------------------------------
+// Layout Elements
+// ----------------------------------------------------------------------------
+
+// TrackSizing represents the sizing specification for a grid column or row.
+// It can be auto, a fixed length, a fraction, or a relative value.
+type TrackSizing struct {
+	// Auto indicates the track should be sized automatically.
+	Auto bool
+	// Length is a fixed length in points (if not Auto and not Fr).
+	Length *float64
+	// Fr is the fraction of remaining space (e.g., 1fr = 1.0).
+	Fr *float64
+	// Relative is a percentage of the container (e.g., 50% = 0.5).
+	Relative *float64
+}
+
+// GridElement represents a grid layout with rows and columns.
+type GridElement struct {
+	// Columns defines the sizing for each column.
+	Columns []TrackSizing
+	// Rows defines the sizing for each row.
+	Rows []TrackSizing
+	// ColumnGutter is the spacing between columns in points.
+	ColumnGutter *float64
+	// RowGutter is the spacing between rows in points.
+	RowGutter *float64
+	// Align specifies the alignment of content within cells.
+	// Format: "horizontal vertical" (e.g., "left top", "center center").
+	Align *string
+	// Children contains the content for each grid cell.
+	Children []Content
+}
+
+func (*GridElement) isContentElement() {}
+
+// ColumnsElement represents a multi-column layout.
+type ColumnsElement struct {
+	// Count is the number of columns.
+	Count int
+	// Gutter is the spacing between columns in points.
+	Gutter *float64
+	// Body is the content to be laid out in columns.
+	Body Content
+}
+
+func (*ColumnsElement) isContentElement() {}
+
+// ----------------------------------------------------------------------------
 // Error Types
 // ----------------------------------------------------------------------------
 
