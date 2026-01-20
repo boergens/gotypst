@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
+	"github.com/boergens/gotypst/eval"
 	"github.com/boergens/gotypst/syntax"
 )
 
@@ -129,8 +131,8 @@ func (r *TestRunner) LoadFixtures(categories ...string) ([]*TestCase, error) {
 // delimiterPattern matches test case delimiters: --- name attr1 attr2 ---
 var delimiterPattern = regexp.MustCompile(`^---\s+([a-zA-Z0-9_-]+(?:\s+[a-zA-Z0-9_-]+)*)\s*---\s*$`)
 
-// errorPattern matches error annotations: // Error: line-col message
-var errorPattern = regexp.MustCompile(`^//\s*Error:\s*(\d+)(?:-(\d+))?\s+(.+)$`)
+// errorPattern matches error annotations: // Error: col message or // Error: col-col message or // Error: col-line:col message
+var errorPattern = regexp.MustCompile(`^//\s*Error:\s*(\d+)(?:-(\d+(?::\d+)?))?\s+(.+)$`)
 
 // hintPattern matches hint annotations: // Hint: line-col message
 var hintPattern = regexp.MustCompile(`^//\s*Hint:\s*(\d+)(?:-(\d+))?\s+(.+)$`)
@@ -266,6 +268,12 @@ func (r *TestRunner) RunTest(tc *TestCase) *TestResult {
 
 	result.Tokens = tokens
 
+	// If no lexer errors, try to parse and evaluate the code
+	if len(result.Errors) == 0 {
+		evalErrors := r.evaluateCode(tc.Code)
+		result.Errors = append(result.Errors, evalErrors...)
+	}
+
 	// Validate expected errors
 	if len(tc.Errors) > 0 {
 		// Check if we got the expected errors
@@ -296,6 +304,330 @@ func (r *TestRunner) RunTest(tc *TestCase) *TestResult {
 	}
 
 	return result
+}
+
+// evaluateCode parses and evaluates the given Typst code, returning any errors.
+func (r *TestRunner) evaluateCode(code string) []string {
+	var errors []string
+
+	// Parse the code
+	ast := syntax.Parse(code)
+	if ast == nil {
+		return errors
+	}
+
+	// Check for parse errors
+	for _, err := range ast.Errors() {
+		errors = append(errors, err.Message)
+	}
+	if len(errors) > 0 {
+		return errors
+	}
+
+	// Create a minimal world for evaluation
+	world := &testWorld{}
+	engine := eval.NewEngine(world)
+	scopes := eval.NewScopes(world.Library())
+	ctx := eval.NewContext()
+	vm := eval.NewVm(engine, ctx, scopes, syntax.Detached())
+
+	// Register the test function and other standard functions
+	registerStdlib(vm)
+
+	// Convert AST to expression and evaluate
+	// The AST is a markup node at the top level
+	markup := syntax.MarkupNodeFromNode(ast)
+	if markup != nil {
+		_, err := evalMarkupNode(vm, markup)
+		if err != nil {
+			errors = append(errors, err.Error())
+		}
+	}
+
+	return errors
+}
+
+// testWorld is a minimal World implementation for testing.
+type testWorld struct{}
+
+func (w *testWorld) Library() *eval.Scope {
+	return eval.NewScope()
+}
+
+func (w *testWorld) MainFile() eval.FileID {
+	return eval.FileID{Path: "test.typ"}
+}
+
+func (w *testWorld) Source(id eval.FileID) (*syntax.Source, error) {
+	return nil, fmt.Errorf("source not available")
+}
+
+func (w *testWorld) File(id eval.FileID) ([]byte, error) {
+	return nil, fmt.Errorf("file not available")
+}
+
+func (w *testWorld) Today(offset *int) eval.Date {
+	return eval.Date{Year: 2026, Month: 1, Day: 19}
+}
+
+// registerStdlib registers standard library functions in the VM.
+func registerStdlib(vm *eval.Vm) {
+	// Register the test function
+	vm.Define("test", eval.FuncValue{
+		Func: &eval.Func{
+			Name: strPtr("test"),
+			Span: syntax.Detached(),
+			Repr: eval.NativeFunc{
+				Func: testFunc,
+				Info: &eval.FuncInfo{Name: "test"},
+			},
+		},
+	})
+
+	// Register calc module with rem function
+	calcModule := eval.NewDict()
+	calcModule.Set("rem", eval.FuncValue{
+		Func: &eval.Func{
+			Name: strPtr("rem"),
+			Span: syntax.Detached(),
+			Repr: eval.NativeFunc{
+				Func: calcRemFunc,
+				Info: &eval.FuncInfo{Name: "rem"},
+			},
+		},
+	})
+	vm.Define("calc", calcModule)
+
+	// Register int function
+	vm.Define("int", eval.FuncValue{
+		Func: &eval.Func{
+			Name: strPtr("int"),
+			Span: syntax.Detached(),
+			Repr: eval.NativeFunc{
+				Func: intFunc,
+				Info: &eval.FuncInfo{Name: "int"},
+			},
+		},
+	})
+
+	// Register str function
+	vm.Define("str", eval.FuncValue{
+		Func: &eval.Func{
+			Name: strPtr("str"),
+			Span: syntax.Detached(),
+			Repr: eval.NativeFunc{
+				Func: strFunc,
+				Info: &eval.FuncInfo{Name: "str"},
+			},
+		},
+	})
+}
+
+func strPtr(s string) *string {
+	return &s
+}
+
+// testFunc implements the test function that compares two values.
+func testFunc(vm *eval.Vm, args *eval.Args) (eval.Value, error) {
+	expected, err := args.Expect("expected")
+	if err != nil {
+		return nil, err
+	}
+	actual, err := args.Expect("actual")
+	if err != nil {
+		return nil, err
+	}
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	if !eval.Equal(expected.V, actual.V) {
+		return nil, fmt.Errorf("assertion failed: expected %v, got %v", expected.V, actual.V)
+	}
+	return eval.None, nil
+}
+
+// calcRemFunc implements calc.rem for modulo operations.
+func calcRemFunc(vm *eval.Vm, args *eval.Args) (eval.Value, error) {
+	dividend, err := args.Expect("dividend")
+	if err != nil {
+		return nil, err
+	}
+	divisor, err := args.Expect("divisor")
+	if err != nil {
+		return nil, err
+	}
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	a, ok := eval.AsInt(dividend.V)
+	if !ok {
+		return nil, fmt.Errorf("expected integer for dividend")
+	}
+	b, ok := eval.AsInt(divisor.V)
+	if !ok {
+		return nil, fmt.Errorf("expected integer for divisor")
+	}
+	if b == 0 {
+		return nil, fmt.Errorf("division by zero")
+	}
+	return eval.Int(a % b), nil
+}
+
+// intFunc implements the int constructor.
+func intFunc(vm *eval.Vm, args *eval.Args) (eval.Value, error) {
+	value, err := args.Expect("value")
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for base parameter
+	baseArg := args.Find("base")
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	switch v := value.V.(type) {
+	case eval.BoolValue:
+		if bool(v) {
+			return eval.Int(1), nil
+		}
+		return eval.Int(0), nil
+	case eval.IntValue:
+		if baseArg != nil {
+			return nil, fmt.Errorf("base is only supported for strings")
+		}
+		return v, nil
+	case eval.FloatValue:
+		if baseArg != nil {
+			return nil, fmt.Errorf("base is only supported for strings")
+		}
+		return eval.Int(int64(v)), nil
+	case eval.StrValue:
+		s := string(v)
+		if s == "" {
+			return nil, fmt.Errorf("string must not be empty")
+		}
+
+		base := 10
+		if baseArg != nil {
+			b, ok := eval.AsInt(baseArg.V)
+			if !ok {
+				return nil, fmt.Errorf("base must be an integer")
+			}
+			if b < 2 || b > 36 {
+				return nil, fmt.Errorf("base must be between 2 and 36")
+			}
+			base = int(b)
+		}
+
+		// Handle minus sign variants
+		s = strings.ReplaceAll(s, "\u2212", "-")
+		s = strings.TrimPrefix(s, "+")
+
+		// Parse the integer using strconv for overflow detection
+		result, parseErr := strconv.ParseInt(s, base, 64)
+		if parseErr != nil {
+			// Check for overflow/underflow
+			if numErr, ok := parseErr.(*strconv.NumError); ok {
+				if numErr.Err == strconv.ErrRange {
+					if strings.HasPrefix(s, "-") {
+						return nil, fmt.Errorf("integer value is too small")
+					}
+					return nil, fmt.Errorf("integer value is too large")
+				}
+			}
+			// Invalid digits
+			if base == 10 {
+				return nil, fmt.Errorf("string contains invalid digits")
+			}
+			return nil, fmt.Errorf("string contains invalid digits for a base %d integer", base)
+		}
+
+		return eval.Int(result), nil
+	default:
+		return nil, fmt.Errorf("expected integer, boolean, float, decimal, or string, found %s", value.V.Type())
+	}
+}
+
+// strFunc implements the str constructor.
+func strFunc(vm *eval.Vm, args *eval.Args) (eval.Value, error) {
+	value, err := args.Expect("value")
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for base parameter
+	baseArg := args.Find("base")
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	switch v := value.V.(type) {
+	case eval.IntValue:
+		base := 10
+		if baseArg != nil {
+			b, ok := eval.AsInt(baseArg.V)
+			if !ok {
+				return nil, fmt.Errorf("base must be an integer")
+			}
+			if b < 2 || b > 36 {
+				return nil, fmt.Errorf("base must be between 2 and 36")
+			}
+			base = int(b)
+		}
+		if base == 10 {
+			return eval.Str(fmt.Sprintf("%d", int64(v))), nil
+		}
+		// Convert to base
+		n := int64(v)
+		negative := n < 0
+		if negative {
+			n = -n
+		}
+		if n == 0 {
+			return eval.Str("0"), nil
+		}
+		digits := ""
+		for n > 0 {
+			d := n % int64(base)
+			if d < 10 {
+				digits = string('0'+byte(d)) + digits
+			} else {
+				digits = string('a'+byte(d-10)) + digits
+			}
+			n /= int64(base)
+		}
+		if negative {
+			digits = "-" + digits
+		}
+		return eval.Str(digits), nil
+	case eval.FloatValue:
+		if baseArg != nil {
+			return nil, fmt.Errorf("base is only supported for integers")
+		}
+		return eval.Str(fmt.Sprintf("%g", float64(v))), nil
+	case eval.StrValue:
+		return v, nil
+	default:
+		return nil, fmt.Errorf("expected integer, float, decimal, version, bytes, label, type, or string, found %s", value.V.Type())
+	}
+}
+
+// evalMarkupNode evaluates a markup node.
+func evalMarkupNode(vm *eval.Vm, markup *syntax.MarkupNode) (eval.Value, error) {
+	var result eval.Value = eval.None
+
+	for _, expr := range markup.Exprs() {
+		val, err := eval.EvalExpr(vm, expr)
+		if err != nil {
+			return nil, err
+		}
+		result = val
+	}
+
+	return result, nil
 }
 
 // RunAll runs all loaded test cases.

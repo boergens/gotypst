@@ -829,11 +829,16 @@ func evalFieldAccess(vm *Vm, e *syntax.FieldAccessExpr) (Value, error) {
 		return nil, &FieldNotFoundError{Field: fieldName, Type: target.Type(), Span: e.ToUntyped().Span()}
 
 	case FuncValue:
-		// Functions can have fields (their scope)
+		// Functions can have fields (their scope) or builtin methods (like str.from-unicode)
 		if t.Func != nil && t.Func.Repr != nil {
 			if nf, ok := t.Func.Repr.(NativeFunc); ok && nf.Info != nil {
 				// Native functions might have metadata fields
 			}
+		}
+		// Check for built-in methods on functions
+		method := getBuiltinMethod(t, fieldName)
+		if method != nil {
+			return method, nil
 		}
 		return nil, &FieldNotFoundError{Field: fieldName, Type: target.Type(), Span: e.ToUntyped().Span()}
 
@@ -849,8 +854,305 @@ func evalFieldAccess(vm *Vm, e *syntax.FieldAccessExpr) (Value, error) {
 
 // getBuiltinMethod returns a built-in method for a value, or nil if not found.
 func getBuiltinMethod(target Value, name string) Value {
-	// Return nil for now - built-in methods will be implemented later
+	switch v := target.(type) {
+	case ArrayValue:
+		return getArrayMethod(v, name)
+	case StrValue:
+		return getStrMethod(v, name)
+	case FuncValue:
+		return getFuncMethod(v, name)
+	}
 	return nil
+}
+
+// getFuncMethod returns a method for a function value (for type constructors like str.from-unicode).
+func getFuncMethod(f FuncValue, name string) Value {
+	// Check if this is the str function
+	if f.Func != nil && f.Func.Name != nil && *f.Func.Name == "str" {
+		switch name {
+		case "from-unicode":
+			return makeNativeFunc("from-unicode", func(_ *Vm, args *Args) (Value, error) {
+				codepoint, err := args.Expect("codepoint")
+				if err != nil {
+					return nil, err
+				}
+				if err := args.Finish(); err != nil {
+					return nil, err
+				}
+				cp, ok := AsInt(codepoint.V)
+				if !ok {
+					return nil, fmt.Errorf("expected integer, found %s", codepoint.V.Type())
+				}
+				if cp < 0 {
+					return nil, fmt.Errorf("number must be at least zero")
+				}
+				if cp > 0x10FFFF {
+					return nil, fmt.Errorf("0x%x is not a valid codepoint", cp)
+				}
+				return Str(string(rune(cp))), nil
+			})
+		case "to-unicode":
+			return makeNativeFunc("to-unicode", func(_ *Vm, args *Args) (Value, error) {
+				s, err := args.Expect("string")
+				if err != nil {
+					return nil, err
+				}
+				if err := args.Finish(); err != nil {
+					return nil, err
+				}
+				str, ok := s.V.(StrValue)
+				if !ok {
+					return nil, fmt.Errorf("expected string, found %s", s.V.Type())
+				}
+				runes := []rune(string(str))
+				if len(runes) != 1 {
+					return nil, fmt.Errorf("expected exactly one character")
+				}
+				return Int(int64(runes[0])), nil
+			})
+		}
+	}
+	return nil
+}
+
+// getArrayMethod returns a method for an array value.
+func getArrayMethod(arr ArrayValue, name string) Value {
+	switch name {
+	case "len":
+		return makeNativeFunc("len", func(_ *Vm, args *Args) (Value, error) {
+			if err := args.Finish(); err != nil {
+				return nil, err
+			}
+			return Int(int64(len(arr))), nil
+		})
+	case "first":
+		return makeNativeFunc("first", func(_ *Vm, args *Args) (Value, error) {
+			// Check for default parameter
+			defaultVal := args.Find("default")
+			if err := args.Finish(); err != nil {
+				return nil, err
+			}
+			if len(arr) == 0 {
+				if defaultVal != nil {
+					return defaultVal.V, nil
+				}
+				return nil, &ArrayEmptyError{Method: "first"}
+			}
+			return arr[0], nil
+		})
+	case "last":
+		return makeNativeFunc("last", func(_ *Vm, args *Args) (Value, error) {
+			// Check for default parameter
+			defaultVal := args.Find("default")
+			if err := args.Finish(); err != nil {
+				return nil, err
+			}
+			if len(arr) == 0 {
+				if defaultVal != nil {
+					return defaultVal.V, nil
+				}
+				return nil, &ArrayEmptyError{Method: "last"}
+			}
+			return arr[len(arr)-1], nil
+		})
+	case "at":
+		return makeNativeFunc("at", func(_ *Vm, args *Args) (Value, error) {
+			indexArg, err := args.Expect("index")
+			if err != nil {
+				return nil, err
+			}
+			defaultVal := args.Find("default")
+			if err := args.Finish(); err != nil {
+				return nil, err
+			}
+			index, ok := AsInt(indexArg.V)
+			if !ok {
+				return nil, &TypeError{Expected: TypeInt, Got: indexArg.V.Type(), Span: indexArg.Span}
+			}
+			// Handle negative indexing
+			idx := int(index)
+			if idx < 0 {
+				idx = len(arr) + idx
+			}
+			if idx < 0 || idx >= len(arr) {
+				if defaultVal != nil {
+					return defaultVal.V, nil
+				}
+				return nil, &ArrayIndexError{Index: int(index), Length: len(arr)}
+			}
+			return arr[idx], nil
+		})
+	case "pop":
+		return makeNativeFunc("pop", func(_ *Vm, args *Args) (Value, error) {
+			if err := args.Finish(); err != nil {
+				return nil, err
+			}
+			if len(arr) == 0 {
+				return nil, &ArrayEmptyError{Method: "pop"}
+			}
+			// Note: pop modifies the array in place, but we return the value
+			return arr[len(arr)-1], nil
+		})
+	case "push", "insert", "remove", "slice", "contains", "find", "position",
+		"filter", "map", "fold", "sum", "product", "rev", "join", "sorted",
+		"zip", "enumerate", "dedup":
+		// Stub for other array methods - implement as needed
+		return nil
+	}
+	return nil
+}
+
+// getStrMethod returns a method for a string value.
+func getStrMethod(s StrValue, name string) Value {
+	str := string(s)
+	switch name {
+	case "len":
+		return makeNativeFunc("len", func(_ *Vm, args *Args) (Value, error) {
+			if err := args.Finish(); err != nil {
+				return nil, err
+			}
+			// Count grapheme clusters (simplified to runes for now)
+			count := 0
+			for range str {
+				count++
+			}
+			return Int(int64(count)), nil
+		})
+	case "first":
+		return makeNativeFunc("first", func(_ *Vm, args *Args) (Value, error) {
+			defaultVal := args.Find("default")
+			if err := args.Finish(); err != nil {
+				return nil, err
+			}
+			if len(str) == 0 {
+				if defaultVal != nil {
+					return defaultVal.V, nil
+				}
+				return nil, &StringEmptyError{Method: "first"}
+			}
+			// Return first grapheme (simplified to first rune)
+			for _, r := range str {
+				return Str(string(r)), nil
+			}
+			return Str(""), nil
+		})
+	case "last":
+		return makeNativeFunc("last", func(_ *Vm, args *Args) (Value, error) {
+			defaultVal := args.Find("default")
+			if err := args.Finish(); err != nil {
+				return nil, err
+			}
+			if len(str) == 0 {
+				if defaultVal != nil {
+					return defaultVal.V, nil
+				}
+				return nil, &StringEmptyError{Method: "last"}
+			}
+			// Return last grapheme (simplified to last rune)
+			var last rune
+			for _, r := range str {
+				last = r
+			}
+			return Str(string(last)), nil
+		})
+	case "at":
+		return makeNativeFunc("at", func(_ *Vm, args *Args) (Value, error) {
+			indexArg, err := args.Expect("index")
+			if err != nil {
+				return nil, err
+			}
+			defaultVal := args.Find("default")
+			if err := args.Finish(); err != nil {
+				return nil, err
+			}
+			index, ok := AsInt(indexArg.V)
+			if !ok {
+				return nil, &TypeError{Expected: TypeInt, Got: indexArg.V.Type(), Span: indexArg.Span}
+			}
+			// Convert to runes for indexing
+			runes := []rune(str)
+			idx := int(index)
+			if idx < 0 {
+				idx = len(runes) + idx
+			}
+			if idx < 0 || idx >= len(runes) {
+				if defaultVal != nil {
+					return defaultVal.V, nil
+				}
+				return nil, &StringIndexError{Index: int(index), Length: len(runes)}
+			}
+			return Str(string(runes[idx])), nil
+		})
+	case "to-unicode":
+		return makeNativeFunc("to-unicode", func(_ *Vm, args *Args) (Value, error) {
+			if err := args.Finish(); err != nil {
+				return nil, err
+			}
+			runes := []rune(str)
+			if len(runes) != 1 {
+				return nil, fmt.Errorf("expected exactly one character")
+			}
+			return Int(int64(runes[0])), nil
+		})
+	case "contains", "starts-with", "ends-with", "find", "position",
+		"slice", "split", "rev":
+		// Stub for other string methods - implement as needed
+		return nil
+	}
+	return nil
+}
+
+// makeNativeFunc creates a FuncValue wrapping a native function.
+func makeNativeFunc(name string, fn func(*Vm, *Args) (Value, error)) FuncValue {
+	n := name
+	return FuncValue{
+		Func: &Func{
+			Name: &n,
+			Span: syntax.Detached(),
+			Repr: NativeFunc{
+				Func: fn,
+				Info: &FuncInfo{Name: name},
+			},
+		},
+	}
+}
+
+// ArrayEmptyError is returned when accessing an empty array.
+type ArrayEmptyError struct {
+	Method string
+}
+
+func (e *ArrayEmptyError) Error() string {
+	return "array is empty"
+}
+
+// ArrayIndexError is returned when array index is out of bounds.
+type ArrayIndexError struct {
+	Index  int
+	Length int
+}
+
+func (e *ArrayIndexError) Error() string {
+	return fmt.Sprintf("array index out of bounds (index: %d, len: %d) and no default value was specified", e.Index, e.Length)
+}
+
+// StringEmptyError is returned when accessing an empty string.
+type StringEmptyError struct {
+	Method string
+}
+
+func (e *StringEmptyError) Error() string {
+	return "string is empty"
+}
+
+// StringIndexError is returned when string index is out of bounds.
+type StringIndexError struct {
+	Index  int
+	Length int
+}
+
+func (e *StringIndexError) Error() string {
+	return fmt.Sprintf("no default value was specified and string index out of bounds (index: %d, len: %d)", e.Index, e.Length)
 }
 
 func evalFuncCall(vm *Vm, e *syntax.FuncCallExpr) (Value, error) {

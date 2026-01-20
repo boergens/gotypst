@@ -397,6 +397,20 @@ func (n *SyntaxNode) CastFirst(kind SyntaxKind) *SyntaxNode {
 	return nil
 }
 
+// CastLast returns the last child that has the given kind.
+func (n *SyntaxNode) CastLast(kind SyntaxKind) *SyntaxNode {
+	if n == nil {
+		return nil
+	}
+	var result *SyntaxNode
+	for _, child := range n.Children() {
+		if child.Kind() == kind {
+			result = child
+		}
+	}
+	return result
+}
+
 // CastAll returns all children that have the given kind.
 func (n *SyntaxNode) CastAll(kind SyntaxKind) []*SyntaxNode {
 	if n == nil {

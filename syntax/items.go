@@ -14,7 +14,10 @@ func ArgFromNode(node *SyntaxNode) Arg {
 	if node == nil {
 		return nil
 	}
+	// Skip trivia and delimiters - they're not arguments
 	switch node.Kind() {
+	case Space, Linebreak, Parbreak, Comma, LeftParen, RightParen:
+		return nil
 	case Spread:
 		return &SpreadArg{node: node}
 	case Named:
@@ -66,6 +69,11 @@ func (a *NamedArg) Expr() Expr {
 			continue
 		}
 		if foundColon {
+			// Skip trivia - find the actual value
+			switch child.Kind() {
+			case Space, Linebreak, Parbreak:
+				continue
+			}
 			return ExprFromNode(child)
 		}
 	}
@@ -103,7 +111,10 @@ func ArrayItemFromNode(node *SyntaxNode) ArrayItem {
 	if node == nil {
 		return nil
 	}
+	// Skip trivia and delimiters - they're not array items
 	switch node.Kind() {
+	case Space, Linebreak, Parbreak, Comma, LeftParen, RightParen:
+		return nil
 	case Spread:
 		return &ArraySpreadItem{node: node}
 	default:

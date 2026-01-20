@@ -986,11 +986,12 @@ func (l *Lexer) number(start int, firstC rune) SyntaxKind {
 	}
 
 	// Read the initial digits
-	if base == 16 {
+	// For hex/binary/octal, include all alphanumeric so invalid digits are detected
+	if base == 16 || base == 8 || base == 2 {
 		l.s.EatWhile(func(r rune) bool {
 			return (r >= '0' && r <= '9') ||
-				(r >= 'a' && r <= 'f') ||
-				(r >= 'A' && r <= 'F')
+				(r >= 'a' && r <= 'z') ||
+				(r >= 'A' && r <= 'Z')
 		})
 	} else {
 		l.s.EatWhile(func(r rune) bool { return r >= '0' && r <= '9' })

@@ -1028,10 +1028,63 @@ func (e *IntExpr) isExpr()               {}
 // Get returns the integer value.
 func (e *IntExpr) Get() int64 {
 	text := e.node.Text()
+
+	// Handle hex, octal, binary prefixes
+	if len(text) >= 2 {
+		switch text[:2] {
+		case "0x", "0X":
+			return parseHex(text[2:])
+		case "0o", "0O":
+			return parseOctal(text[2:])
+		case "0b", "0B":
+			return parseBinary(text[2:])
+		}
+	}
+
+	// Parse decimal
 	var result int64
 	for _, c := range text {
 		if c >= '0' && c <= '9' {
 			result = result*10 + int64(c-'0')
+		}
+	}
+	return result
+}
+
+func parseHex(s string) int64 {
+	var result int64
+	for _, c := range s {
+		var digit int64
+		switch {
+		case c >= '0' && c <= '9':
+			digit = int64(c - '0')
+		case c >= 'a' && c <= 'f':
+			digit = int64(c - 'a' + 10)
+		case c >= 'A' && c <= 'F':
+			digit = int64(c - 'A' + 10)
+		default:
+			continue
+		}
+		result = result*16 + digit
+	}
+	return result
+}
+
+func parseOctal(s string) int64 {
+	var result int64
+	for _, c := range s {
+		if c >= '0' && c <= '7' {
+			result = result*8 + int64(c-'0')
+		}
+	}
+	return result
+}
+
+func parseBinary(s string) int64 {
+	var result int64
+	for _, c := range s {
+		if c == '0' || c == '1' {
+			result = result*2 + int64(c-'0')
 		}
 	}
 	return result
@@ -1489,7 +1542,8 @@ func (e *FieldAccessExpr) Target() Expr {
 
 // Field returns the field name.
 func (e *FieldAccessExpr) Field() *IdentExpr {
-	child := e.node.CastFirst(Ident)
+	// Get the last Ident child, which is the field name (the first is the target)
+	child := e.node.CastLast(Ident)
 	if child != nil {
 		return &IdentExpr{node: child}
 	}
