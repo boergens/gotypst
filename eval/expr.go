@@ -1227,17 +1227,16 @@ func evalLetBinding(vm *Vm, e *syntax.LetBindingExpr) (Value, error) {
 	}
 
 	// Plain binding: let x = ...
-	init := e.Init()
-	if init == nil {
-		return None, nil
-	}
-
-	value, err := EvalExpr(vm, init)
-	if err != nil {
-		return nil, err
-	}
-	if vm.HasFlow() {
-		return None, nil
+	var value Value = None
+	if init := e.Init(); init != nil {
+		var err error
+		value, err = EvalExpr(vm, init)
+		if err != nil {
+			return nil, err
+		}
+		if vm.HasFlow() {
+			return None, nil
+		}
 	}
 
 	// Destructure the pattern using the complete binding.go implementation
