@@ -163,6 +163,17 @@ func (a *Args) HasNamed(name string) bool {
 	return false
 }
 
+// GetNamed returns a named argument by name without removing it.
+// Returns nil if not found.
+func (a *Args) GetNamed(name string) *syntax.Spanned[Value] {
+	for _, arg := range a.Items {
+		if arg.Name != nil && *arg.Name == name {
+			return &arg.Value
+		}
+	}
+	return nil
+}
+
 // Remaining returns the number of remaining arguments.
 func (a *Args) Remaining() int {
 	return len(a.Items)
