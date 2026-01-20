@@ -174,7 +174,13 @@ func Collect(children []Pair, locator *SplitLocator, initial StyleChain) []Item 
 
 // migrateUnterminatedTags migrates trailing start tags without accompanying
 // end tags from before a pagebreak to after it.
-// Returns the position right after the last non-migrated tag.
+//
+// This function reorders elements in the children slice so that:
+// 1. End tags and their matching start tags stay before pagebreaks
+// 2. Pagebreaks remain in their relative position
+// 3. Unterminated start tags move after the pagebreaks
+//
+// Returns the position right after the last tag that should stay before pagebreaks.
 func migrateUnterminatedTags(children []Pair, start, mid int) int {
 	if mid <= start {
 		return mid
@@ -194,41 +200,77 @@ func migrateUnterminatedTags(children []Pair, start, mid int) int {
 	}
 
 	// Find pagebreaks after mid
-	end := mid
-	for end < len(children) {
-		if _, ok := isPagebreak(children[end].Element); !ok {
+	pbEnd := mid
+	for pbEnd < len(children) {
+		if _, ok := isPagebreak(children[pbEnd].Element); !ok {
 			break
 		}
-		end++
+		pbEnd++
 	}
 
-	if end == mid {
+	if pbEnd == mid {
 		return mid // No pagebreaks to migrate across
 	}
 
-	// Collect excluded locations (end tags)
-	excluded := make(map[Location]bool)
+	// Collect locations that have end tags in this trailing group.
+	// Tags with these locations are "terminated" and should stay.
+	terminatedLocations := make(map[Location]bool)
 	for i := tagStart; i < mid; i++ {
 		if te, ok := children[i].Element.(*TagElem); ok {
 			if te.Tag.Kind == TagEnd {
-				excluded[te.Tag.Location] = true
+				terminatedLocations[te.Tag.Location] = true
 			}
 		}
 	}
 
-	// Sort: excluded tags first, then pagebreaks, then start tags
-	// For simplicity, we'll just move unexcluded start tags after pagebreaks
-	// This is a simplified version - full implementation would do proper sorting
+	// Partition trailing tags into those that stay and those that migrate.
+	// We need to actually reorder the slice.
+	var stayTags []Pair
+	var migrateTags []Pair
 
-	// Count how many tags should stay before pagebreaks
-	stayCount := 0
 	for i := tagStart; i < mid; i++ {
-		if te, ok := children[i].Element.(*TagElem); ok {
-			if excluded[te.Tag.Location] {
-				stayCount++
+		pair := children[i]
+		if te, ok := pair.Element.(*TagElem); ok {
+			if te.Tag.Kind == TagEnd {
+				// End tags always stay
+				stayTags = append(stayTags, pair)
+			} else if terminatedLocations[te.Tag.Location] {
+				// Start tags with matching end tags stay
+				stayTags = append(stayTags, pair)
+			} else {
+				// Unterminated start tags migrate
+				migrateTags = append(migrateTags, pair)
 			}
 		}
 	}
 
-	return tagStart + stayCount
+	// If nothing to migrate, return original mid
+	if len(migrateTags) == 0 {
+		return mid
+	}
+
+	// Collect the pagebreaks
+	var pagebreaks []Pair
+	for i := mid; i < pbEnd; i++ {
+		pagebreaks = append(pagebreaks, children[i])
+	}
+
+	// Reorder: stayTags, then pagebreaks, then migrateTags
+	// Write back to children slice starting at tagStart
+	writeIdx := tagStart
+	for _, p := range stayTags {
+		children[writeIdx] = p
+		writeIdx++
+	}
+	for _, p := range pagebreaks {
+		children[writeIdx] = p
+		writeIdx++
+	}
+	for _, p := range migrateTags {
+		children[writeIdx] = p
+		writeIdx++
+	}
+
+	// Return position after the tags that stayed (before pagebreaks)
+	return tagStart + len(stayTags)
 }
