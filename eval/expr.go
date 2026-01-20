@@ -1834,11 +1834,24 @@ func evalListItem(vm *Vm, e *syntax.ListItemExpr) (Value, error) {
 	return content, nil
 }
 
+// ListItemElement represents a single bullet list item.
 type ListItemElement struct {
 	Content Content
 }
 
 func (*ListItemElement) isContentElement() {}
+
+// ListElement represents a bullet list with styling properties.
+type ListElement struct {
+	Children   []Content // The list items
+	Marker     *string   // Custom bullet marker (default: "•")
+	Indent     *float64  // Indent before marker (in points)
+	BodyIndent *float64  // Indent after marker (in points)
+	Spacing    *float64  // Space between items (nil = auto)
+	Tight      *bool     // Whether to use tight spacing
+}
+
+func (*ListElement) isContentElement() {}
 
 func evalEnumItem(vm *Vm, e *syntax.EnumItemExpr) (Value, error) {
 	body := e.Body()
@@ -1857,12 +1870,27 @@ func evalEnumItem(vm *Vm, e *syntax.EnumItemExpr) (Value, error) {
 	return content, nil
 }
 
+// EnumItemElement represents a single numbered list item.
 type EnumItemElement struct {
 	Number  int
 	Content Content
 }
 
 func (*EnumItemElement) isContentElement() {}
+
+// EnumElement represents a numbered (enumerated) list with styling properties.
+type EnumElement struct {
+	Children   []Content // The enum items
+	Numbering  *string   // Number format pattern (e.g., "1.", "a)", "(i)")
+	Start      *int      // Starting number (default: 1)
+	Full       *bool     // Whether to use full numbering (e.g., "1.2.3")
+	Indent     *float64  // Indent before number (in points)
+	BodyIndent *float64  // Indent after number (in points)
+	Spacing    *float64  // Space between items (nil = auto)
+	Tight      *bool     // Whether to use tight spacing
+}
+
+func (*EnumElement) isContentElement() {}
 
 func evalTermItem(vm *Vm, e *syntax.TermItemExpr) (Value, error) {
 	term := e.Term()
@@ -1889,12 +1917,25 @@ func evalTermItem(vm *Vm, e *syntax.TermItemExpr) (Value, error) {
 	}}, nil
 }
 
+// TermItemElement represents a single term item (definition list entry).
 type TermItemElement struct {
 	Term        Content
 	Description Content
 }
 
 func (*TermItemElement) isContentElement() {}
+
+// TermsElement represents a terms (description/definition) list with styling properties.
+type TermsElement struct {
+	Children      []TermItemElement // The term items
+	Separator     *string           // Separator between term and description (default: ": ")
+	Indent        *float64          // Indent for terms (in points)
+	HangingIndent *float64          // Hanging indent for continuation lines (in points)
+	Spacing       *float64          // Space between items (nil = auto)
+	Tight         *bool             // Whether to use tight spacing
+}
+
+func (*TermsElement) isContentElement() {}
 
 func evalEscape(_ *Vm, e *syntax.EscapeExpr) (Value, error) {
 	// Get the full escape text to handle Unicode escapes

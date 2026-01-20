@@ -292,6 +292,500 @@ func parbreakNative(vm *Vm, args *Args) (Value, error) {
 }
 
 // ----------------------------------------------------------------------------
+// List Element Functions
+// ----------------------------------------------------------------------------
+
+// ListFunc creates the list (bullet list) element function.
+func ListFunc() *Func {
+	name := "list"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: listNative,
+			Info: &FuncInfo{
+				Name: "list",
+				Params: []ParamInfo{
+					{Name: "children", Type: TypeContent, Named: false, Variadic: true},
+					{Name: "marker", Type: TypeContent, Default: None, Named: true},
+					{Name: "indent", Type: TypeLength, Default: None, Named: true},
+					{Name: "body-indent", Type: TypeLength, Default: None, Named: true},
+					{Name: "spacing", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "tight", Type: TypeBool, Default: True, Named: true},
+				},
+			},
+		},
+	}
+}
+
+// listNative implements the list() function.
+// Creates a ListElement from variadic content items with optional styling.
+//
+// Arguments:
+//   - children (variadic, content): The list items
+//   - marker (named, content or none, default: none): Custom bullet marker
+//   - indent (named, length or none, default: none): Indent before marker
+//   - body-indent (named, length or none, default: none): Indent after marker
+//   - spacing (named, length or auto, default: auto): Space between items
+//   - tight (named, bool, default: true): Whether to use tight spacing
+func listNative(vm *Vm, args *Args) (Value, error) {
+	// Create element with defaults
+	elem := &ListElement{
+		Children: []Content{},
+	}
+
+	// Get optional marker argument
+	if markerArg := args.Find("marker"); markerArg != nil {
+		if !IsNone(markerArg.V) {
+			if ms, ok := AsStr(markerArg.V); ok {
+				elem.Marker = &ms
+			} else if cv, ok := markerArg.V.(ContentValue); ok {
+				// Convert content to string representation for marker
+				marker := contentToText(cv.Content)
+				elem.Marker = &marker
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or none",
+					Got:      markerArg.V.Type().String(),
+					Span:     markerArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional indent argument
+	if indentArg := args.Find("indent"); indentArg != nil {
+		if !IsNone(indentArg.V) && !IsAuto(indentArg.V) {
+			if lv, ok := indentArg.V.(LengthValue); ok {
+				indent := lv.Length.Points
+				elem.Indent = &indent
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      indentArg.V.Type().String(),
+					Span:     indentArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional body-indent argument
+	if biArg := args.Find("body-indent"); biArg != nil {
+		if !IsNone(biArg.V) && !IsAuto(biArg.V) {
+			if lv, ok := biArg.V.(LengthValue); ok {
+				bi := lv.Length.Points
+				elem.BodyIndent = &bi
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      biArg.V.Type().String(),
+					Span:     biArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional spacing argument
+	if spacingArg := args.Find("spacing"); spacingArg != nil {
+		if !IsNone(spacingArg.V) && !IsAuto(spacingArg.V) {
+			if lv, ok := spacingArg.V.(LengthValue); ok {
+				spacing := lv.Length.Points
+				elem.Spacing = &spacing
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      spacingArg.V.Type().String(),
+					Span:     spacingArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional tight argument
+	if tightArg := args.Find("tight"); tightArg != nil {
+		if tv, ok := AsBool(tightArg.V); ok {
+			elem.Tight = &tv
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "bool",
+				Got:      tightArg.V.Type().String(),
+				Span:     tightArg.Span,
+			}
+		}
+	}
+
+	// Collect variadic children (positional arguments)
+	for {
+		arg := args.Eat()
+		if arg == nil {
+			break // No more positional arguments
+		}
+		if cv, ok := arg.V.(ContentValue); ok {
+			elem.Children = append(elem.Children, cv.Content)
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "content",
+				Got:      arg.V.Type().String(),
+				Span:     arg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the ListElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// EnumFunc creates the enum (numbered list) element function.
+func EnumFunc() *Func {
+	name := "enum"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: enumNative,
+			Info: &FuncInfo{
+				Name: "enum",
+				Params: []ParamInfo{
+					{Name: "children", Type: TypeContent, Named: false, Variadic: true},
+					{Name: "numbering", Type: TypeStr, Default: None, Named: true},
+					{Name: "start", Type: TypeInt, Default: None, Named: true},
+					{Name: "full", Type: TypeBool, Default: None, Named: true},
+					{Name: "indent", Type: TypeLength, Default: None, Named: true},
+					{Name: "body-indent", Type: TypeLength, Default: None, Named: true},
+					{Name: "spacing", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "tight", Type: TypeBool, Default: True, Named: true},
+				},
+			},
+		},
+	}
+}
+
+// enumNative implements the enum() function.
+// Creates an EnumElement from variadic content items with optional styling.
+//
+// Arguments:
+//   - children (variadic, content): The enum items
+//   - numbering (named, str or none, default: none): Number format pattern
+//   - start (named, int or none, default: none): Starting number
+//   - full (named, bool or none, default: none): Whether to show full numbering
+//   - indent (named, length or none, default: none): Indent before number
+//   - body-indent (named, length or none, default: none): Indent after number
+//   - spacing (named, length or auto, default: auto): Space between items
+//   - tight (named, bool, default: true): Whether to use tight spacing
+func enumNative(vm *Vm, args *Args) (Value, error) {
+	// Create element with defaults
+	elem := &EnumElement{
+		Children: []Content{},
+	}
+
+	// Get optional numbering argument
+	if numberingArg := args.Find("numbering"); numberingArg != nil {
+		if !IsNone(numberingArg.V) {
+			if ns, ok := AsStr(numberingArg.V); ok {
+				elem.Numbering = &ns
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "string or none",
+					Got:      numberingArg.V.Type().String(),
+					Span:     numberingArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional start argument
+	if startArg := args.Find("start"); startArg != nil {
+		if !IsNone(startArg.V) {
+			if si, ok := AsInt(startArg.V); ok {
+				startInt := int(si)
+				elem.Start = &startInt
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "int or none",
+					Got:      startArg.V.Type().String(),
+					Span:     startArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional full argument
+	if fullArg := args.Find("full"); fullArg != nil {
+		if !IsNone(fullArg.V) {
+			if fv, ok := AsBool(fullArg.V); ok {
+				elem.Full = &fv
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "bool or none",
+					Got:      fullArg.V.Type().String(),
+					Span:     fullArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional indent argument
+	if indentArg := args.Find("indent"); indentArg != nil {
+		if !IsNone(indentArg.V) && !IsAuto(indentArg.V) {
+			if lv, ok := indentArg.V.(LengthValue); ok {
+				indent := lv.Length.Points
+				elem.Indent = &indent
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      indentArg.V.Type().String(),
+					Span:     indentArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional body-indent argument
+	if biArg := args.Find("body-indent"); biArg != nil {
+		if !IsNone(biArg.V) && !IsAuto(biArg.V) {
+			if lv, ok := biArg.V.(LengthValue); ok {
+				bi := lv.Length.Points
+				elem.BodyIndent = &bi
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      biArg.V.Type().String(),
+					Span:     biArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional spacing argument
+	if spacingArg := args.Find("spacing"); spacingArg != nil {
+		if !IsNone(spacingArg.V) && !IsAuto(spacingArg.V) {
+			if lv, ok := spacingArg.V.(LengthValue); ok {
+				spacing := lv.Length.Points
+				elem.Spacing = &spacing
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      spacingArg.V.Type().String(),
+					Span:     spacingArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional tight argument
+	if tightArg := args.Find("tight"); tightArg != nil {
+		if tv, ok := AsBool(tightArg.V); ok {
+			elem.Tight = &tv
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "bool",
+				Got:      tightArg.V.Type().String(),
+				Span:     tightArg.Span,
+			}
+		}
+	}
+
+	// Collect variadic children (positional arguments)
+	for {
+		arg := args.Eat()
+		if arg == nil {
+			break // No more positional arguments
+		}
+		if cv, ok := arg.V.(ContentValue); ok {
+			elem.Children = append(elem.Children, cv.Content)
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "content",
+				Got:      arg.V.Type().String(),
+				Span:     arg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the EnumElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// TermsFunc creates the terms (description list) element function.
+func TermsFunc() *Func {
+	name := "terms"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: termsNative,
+			Info: &FuncInfo{
+				Name: "terms",
+				Params: []ParamInfo{
+					{Name: "children", Type: TypeContent, Named: false, Variadic: true},
+					{Name: "separator", Type: TypeContent, Default: None, Named: true},
+					{Name: "indent", Type: TypeLength, Default: None, Named: true},
+					{Name: "hanging-indent", Type: TypeLength, Default: None, Named: true},
+					{Name: "spacing", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "tight", Type: TypeBool, Default: True, Named: true},
+				},
+			},
+		},
+	}
+}
+
+// termsNative implements the terms() function.
+// Creates a TermsElement from variadic term items with optional styling.
+//
+// Arguments:
+//   - children (variadic, content): The term items
+//   - separator (named, content or none, default: none): Separator between term and description
+//   - indent (named, length or none, default: none): Indent for terms
+//   - hanging-indent (named, length or none, default: none): Hanging indent
+//   - spacing (named, length or auto, default: auto): Space between items
+//   - tight (named, bool, default: true): Whether to use tight spacing
+func termsNative(vm *Vm, args *Args) (Value, error) {
+	// Create element with defaults
+	elem := &TermsElement{
+		Children: []TermItemElement{},
+	}
+
+	// Get optional separator argument
+	if sepArg := args.Find("separator"); sepArg != nil {
+		if !IsNone(sepArg.V) {
+			if ss, ok := AsStr(sepArg.V); ok {
+				elem.Separator = &ss
+			} else if cv, ok := sepArg.V.(ContentValue); ok {
+				// Convert content to string representation for separator
+				sep := contentToText(cv.Content)
+				elem.Separator = &sep
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or none",
+					Got:      sepArg.V.Type().String(),
+					Span:     sepArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional indent argument
+	if indentArg := args.Find("indent"); indentArg != nil {
+		if !IsNone(indentArg.V) && !IsAuto(indentArg.V) {
+			if lv, ok := indentArg.V.(LengthValue); ok {
+				indent := lv.Length.Points
+				elem.Indent = &indent
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      indentArg.V.Type().String(),
+					Span:     indentArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional hanging-indent argument
+	if hiArg := args.Find("hanging-indent"); hiArg != nil {
+		if !IsNone(hiArg.V) && !IsAuto(hiArg.V) {
+			if lv, ok := hiArg.V.(LengthValue); ok {
+				hi := lv.Length.Points
+				elem.HangingIndent = &hi
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      hiArg.V.Type().String(),
+					Span:     hiArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional spacing argument
+	if spacingArg := args.Find("spacing"); spacingArg != nil {
+		if !IsNone(spacingArg.V) && !IsAuto(spacingArg.V) {
+			if lv, ok := spacingArg.V.(LengthValue); ok {
+				spacing := lv.Length.Points
+				elem.Spacing = &spacing
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      spacingArg.V.Type().String(),
+					Span:     spacingArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional tight argument
+	if tightArg := args.Find("tight"); tightArg != nil {
+		if tv, ok := AsBool(tightArg.V); ok {
+			elem.Tight = &tv
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "bool",
+				Got:      tightArg.V.Type().String(),
+				Span:     tightArg.Span,
+			}
+		}
+	}
+
+	// Collect variadic children (positional arguments)
+	// For terms, children are expected to be TermItemElements embedded in content
+	for {
+		arg := args.Eat()
+		if arg == nil {
+			break // No more positional arguments
+		}
+		if cv, ok := arg.V.(ContentValue); ok {
+			// Extract TermItemElements from the content
+			for _, e := range cv.Content.Elements {
+				if ti, ok := e.(*TermItemElement); ok {
+					elem.Children = append(elem.Children, *ti)
+				}
+			}
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "content",
+				Got:      arg.V.Type().String(),
+				Span:     arg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the TermsElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// contentToText extracts text content from a Content value.
+// This is a helper for converting content markers/separators to strings.
+func contentToText(c Content) string {
+	var result string
+	for _, elem := range c.Elements {
+		if te, ok := elem.(*TextElement); ok {
+			result += te.Text
+		}
+	}
+	return result
+}
+
+// ----------------------------------------------------------------------------
 // Library Registration
 // ----------------------------------------------------------------------------
 
@@ -304,6 +798,10 @@ func RegisterElementFunctions(scope *Scope) {
 	scope.DefineFunc("par", ParFunc())
 	// Register parbreak element function
 	scope.DefineFunc("parbreak", ParbreakFunc())
+	// Register list element functions
+	scope.DefineFunc("list", ListFunc())
+	scope.DefineFunc("enum", EnumFunc())
+	scope.DefineFunc("terms", TermsFunc())
 }
 
 // ElementFunctions returns a map of all element function names to their functions.
@@ -313,5 +811,8 @@ func ElementFunctions() map[string]*Func {
 		"raw":      RawFunc(),
 		"par":      ParFunc(),
 		"parbreak": ParbreakFunc(),
+		"list":     ListFunc(),
+		"enum":     EnumFunc(),
+		"terms":    TermsFunc(),
 	}
 }
