@@ -829,10 +829,11 @@ func evalFieldAccess(vm *Vm, e *syntax.FieldAccessExpr) (Value, error) {
 		return nil, &FieldNotFoundError{Field: fieldName, Type: target.Type(), Span: e.ToUntyped().Span()}
 
 	case FuncValue:
-		// Functions can have fields (their scope)
-		if t.Func != nil && t.Func.Repr != nil {
-			if nf, ok := t.Func.Repr.(NativeFunc); ok && nf.Info != nil {
-				// Native functions might have metadata fields
+		// Check for element methods (e.g., table.cell, raw.line)
+		if t.Func != nil && t.Func.Name != nil {
+			method := GetElementMethod(*t.Func.Name, fieldName, e.ToUntyped().Span())
+			if method != nil {
+				return method, nil
 			}
 		}
 		return nil, &FieldNotFoundError{Field: fieldName, Type: target.Type(), Span: e.ToUntyped().Span()}

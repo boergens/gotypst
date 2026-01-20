@@ -1313,3 +1313,686 @@ func TestElementFunctionsIncludesStackAndAlign(t *testing.T) {
 		t.Error("expected 'align' in ElementFunctions()")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// Table Tests
+// ----------------------------------------------------------------------------
+
+func TestTableFunc(t *testing.T) {
+	// Get the table function
+	tableFunc := TableFunc()
+
+	if tableFunc == nil {
+		t.Fatal("TableFunc() returned nil")
+	}
+
+	if tableFunc.Name == nil || *tableFunc.Name != "table" {
+		t.Errorf("expected function name 'table', got %v", tableFunc.Name)
+	}
+
+	// Verify it's a native function
+	_, ok := tableFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Error("expected NativeFunc representation")
+	}
+}
+
+func TestTableNativeBasic(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create cell content
+	cell1 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Cell 1"}},
+	}}
+	cell2 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Cell 2"}},
+	}}
+
+	// Create args with children
+	args := NewArgs(syntax.Detached())
+	args.Push(cell1, syntax.Detached())
+	args.Push(cell2, syntax.Detached())
+
+	result, err := tableNative(vm, args)
+	if err != nil {
+		t.Fatalf("tableNative() error: %v", err)
+	}
+
+	// Verify result is ContentValue
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	// Verify it contains one TableElement
+	if len(content.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(content.Content.Elements))
+	}
+
+	table, ok := content.Content.Elements[0].(*TableElement)
+	if !ok {
+		t.Fatalf("expected *TableElement, got %T", content.Content.Elements[0])
+	}
+
+	// Verify element properties (defaults)
+	if len(table.Columns) != 1 || !table.Columns[0].Auto {
+		t.Errorf("expected default 1 auto column, got %v", table.Columns)
+	}
+	if len(table.Children) != 2 {
+		t.Errorf("Children length = %d, want 2", len(table.Children))
+	}
+}
+
+func TestTableNativeWithColumns(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create args with 3 columns
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("columns", Int(3), syntax.Detached())
+
+	result, err := tableNative(vm, args)
+	if err != nil {
+		t.Fatalf("tableNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	table := content.Content.Elements[0].(*TableElement)
+
+	if len(table.Columns) != 3 {
+		t.Errorf("Columns length = %d, want 3", len(table.Columns))
+	}
+	for i, col := range table.Columns {
+		if !col.Auto {
+			t.Errorf("Column %d should be auto", i)
+		}
+	}
+}
+
+func TestTableNativeWithColumnArray(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create array of column sizes
+	columns := ArrayValue{
+		Auto,
+		LengthValue{Length: Length{Points: 100}},
+		FractionValue{Fraction: Fraction{Value: 1}},
+	}
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("columns", columns, syntax.Detached())
+
+	result, err := tableNative(vm, args)
+	if err != nil {
+		t.Fatalf("tableNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	table := content.Content.Elements[0].(*TableElement)
+
+	if len(table.Columns) != 3 {
+		t.Errorf("Columns length = %d, want 3", len(table.Columns))
+	}
+	if !table.Columns[0].Auto {
+		t.Error("Column 0 should be auto")
+	}
+	if table.Columns[1].Length == nil || *table.Columns[1].Length != 100 {
+		t.Errorf("Column 1 Length = %v, want 100", table.Columns[1].Length)
+	}
+	if table.Columns[2].Fraction == nil || *table.Columns[2].Fraction != 1 {
+		t.Errorf("Column 2 Fraction = %v, want 1", table.Columns[2].Fraction)
+	}
+}
+
+func TestTableNativeWithGutter(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("gutter", LengthValue{Length: Length{Points: 5}}, syntax.Detached())
+
+	result, err := tableNative(vm, args)
+	if err != nil {
+		t.Fatalf("tableNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	table := content.Content.Elements[0].(*TableElement)
+
+	if table.Gutter == nil || *table.Gutter != 5 {
+		t.Errorf("Gutter = %v, want 5", table.Gutter)
+	}
+}
+
+func TestTableNativeWithInset(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("inset", LengthValue{Length: Length{Points: 8}}, syntax.Detached())
+
+	result, err := tableNative(vm, args)
+	if err != nil {
+		t.Fatalf("tableNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	table := content.Content.Elements[0].(*TableElement)
+
+	if table.Inset == nil || *table.Inset != 8 {
+		t.Errorf("Inset = %v, want 8", table.Inset)
+	}
+}
+
+func TestTableNativeWithAlign(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("align", Str("center"), syntax.Detached())
+
+	result, err := tableNative(vm, args)
+	if err != nil {
+		t.Fatalf("tableNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	table := content.Content.Elements[0].(*TableElement)
+
+	if table.Align == nil || table.Align.Horizontal == nil || *table.Align.Horizontal != "center" {
+		t.Errorf("Align = %v, want center", table.Align)
+	}
+}
+
+func TestTableNativeUnexpectedArg(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("unknown", Str("value"), syntax.Detached())
+
+	_, err := tableNative(vm, args)
+	if err == nil {
+		t.Error("expected error for unexpected argument")
+	}
+	if _, ok := err.(*UnexpectedArgumentError); !ok {
+		t.Errorf("expected UnexpectedArgumentError, got %T", err)
+	}
+}
+
+func TestTableElement(t *testing.T) {
+	// Test TableElement struct and ContentElement interface
+	gutter := 5.0
+	inset := 8.0
+	elem := &TableElement{
+		Columns: []TrackSize{
+			{Auto: true},
+			{Length: &inset},
+		},
+		Gutter: &gutter,
+		Inset:  &inset,
+		Children: []TableChild{
+			{Content: &Content{Elements: []ContentElement{&TextElement{Text: "Cell"}}}},
+		},
+	}
+
+	if len(elem.Columns) != 2 {
+		t.Errorf("Columns length = %d, want 2", len(elem.Columns))
+	}
+	if *elem.Gutter != 5.0 {
+		t.Errorf("Gutter = %v, want 5.0", *elem.Gutter)
+	}
+	if len(elem.Children) != 1 {
+		t.Errorf("Children length = %d, want 1", len(elem.Children))
+	}
+
+	// Verify it satisfies ContentElement interface
+	var _ ContentElement = elem
+}
+
+// ----------------------------------------------------------------------------
+// Table Cell Tests
+// ----------------------------------------------------------------------------
+
+func TestTableCellFunc(t *testing.T) {
+	// Get the table.cell function
+	cellFunc := TableCellFunc()
+
+	if cellFunc == nil {
+		t.Fatal("TableCellFunc() returned nil")
+	}
+
+	if cellFunc.Name == nil || *cellFunc.Name != "cell" {
+		t.Errorf("expected function name 'cell', got %v", cellFunc.Name)
+	}
+
+	// Verify it's a native function
+	_, ok := cellFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Error("expected NativeFunc representation")
+	}
+}
+
+func TestTableCellNativeBasic(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Cell content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+
+	result, err := tableCellNative(vm, args)
+	if err != nil {
+		t.Fatalf("tableCellNative() error: %v", err)
+	}
+
+	// Verify result is ContentValue
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	// Verify it contains one TableCellElement
+	if len(content.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(content.Content.Elements))
+	}
+
+	cell, ok := content.Content.Elements[0].(*TableCellElement)
+	if !ok {
+		t.Fatalf("expected *TableCellElement, got %T", content.Content.Elements[0])
+	}
+
+	// Verify element properties (defaults)
+	if cell.Colspan != 1 {
+		t.Errorf("Colspan = %d, want 1", cell.Colspan)
+	}
+	if cell.Rowspan != 1 {
+		t.Errorf("Rowspan = %d, want 1", cell.Rowspan)
+	}
+	if cell.X != nil {
+		t.Errorf("X = %v, want nil (auto)", cell.X)
+	}
+	if cell.Y != nil {
+		t.Errorf("Y = %v, want nil (auto)", cell.Y)
+	}
+}
+
+func TestTableCellNativeWithPosition(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Positioned cell"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("x", Int(2), syntax.Detached())
+	args.PushNamed("y", Int(1), syntax.Detached())
+
+	result, err := tableCellNative(vm, args)
+	if err != nil {
+		t.Fatalf("tableCellNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	cell := content.Content.Elements[0].(*TableCellElement)
+
+	if cell.X == nil || *cell.X != 2 {
+		t.Errorf("X = %v, want 2", cell.X)
+	}
+	if cell.Y == nil || *cell.Y != 1 {
+		t.Errorf("Y = %v, want 1", cell.Y)
+	}
+}
+
+func TestTableCellNativeWithSpan(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Spanning cell"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("colspan", Int(2), syntax.Detached())
+	args.PushNamed("rowspan", Int(3), syntax.Detached())
+
+	result, err := tableCellNative(vm, args)
+	if err != nil {
+		t.Fatalf("tableCellNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	cell := content.Content.Elements[0].(*TableCellElement)
+
+	if cell.Colspan != 2 {
+		t.Errorf("Colspan = %d, want 2", cell.Colspan)
+	}
+	if cell.Rowspan != 3 {
+		t.Errorf("Rowspan = %d, want 3", cell.Rowspan)
+	}
+}
+
+func TestTableCellNativeWithAlign(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Aligned cell"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("align", Str("right"), syntax.Detached())
+
+	result, err := tableCellNative(vm, args)
+	if err != nil {
+		t.Fatalf("tableCellNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	cell := content.Content.Elements[0].(*TableCellElement)
+
+	if cell.Align == nil || cell.Align.Horizontal == nil || *cell.Align.Horizontal != "right" {
+		t.Errorf("Align = %v, want right", cell.Align)
+	}
+}
+
+func TestTableCellNativeInvalidColspan(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Cell"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("colspan", Int(0), syntax.Detached())
+
+	_, err := tableCellNative(vm, args)
+	if err == nil {
+		t.Error("expected error for colspan < 1")
+	}
+}
+
+func TestTableCellNativeMissingBody(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("colspan", Int(2), syntax.Detached())
+
+	_, err := tableCellNative(vm, args)
+	if err == nil {
+		t.Error("expected error for missing body argument")
+	}
+}
+
+func TestTableCellElement(t *testing.T) {
+	// Test TableCellElement struct
+	x := 1
+	y := 2
+	elem := &TableCellElement{
+		Body: Content{
+			Elements: []ContentElement{&TextElement{Text: "Content"}},
+		},
+		X:       &x,
+		Y:       &y,
+		Colspan: 2,
+		Rowspan: 1,
+	}
+
+	if *elem.X != 1 {
+		t.Errorf("X = %d, want 1", *elem.X)
+	}
+	if *elem.Y != 2 {
+		t.Errorf("Y = %d, want 2", *elem.Y)
+	}
+	if elem.Colspan != 2 {
+		t.Errorf("Colspan = %d, want 2", elem.Colspan)
+	}
+
+	// Verify it satisfies ContentElement interface
+	var _ ContentElement = elem
+}
+
+// ----------------------------------------------------------------------------
+// Table Header/Footer Tests
+// ----------------------------------------------------------------------------
+
+func TestTableHeaderFunc(t *testing.T) {
+	headerFunc := TableHeaderFunc()
+
+	if headerFunc == nil {
+		t.Fatal("TableHeaderFunc() returned nil")
+	}
+
+	if headerFunc.Name == nil || *headerFunc.Name != "header" {
+		t.Errorf("expected function name 'header', got %v", headerFunc.Name)
+	}
+}
+
+func TestTableHeaderNative(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	cell := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Header"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(cell, syntax.Detached())
+
+	result, err := tableHeaderNative(vm, args)
+	if err != nil {
+		t.Fatalf("tableHeaderNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	header, ok := content.Content.Elements[0].(*TableHeaderElement)
+	if !ok {
+		t.Fatalf("expected *TableHeaderElement, got %T", content.Content.Elements[0])
+	}
+
+	if !header.Repeat {
+		t.Error("Repeat should default to true")
+	}
+	if len(header.Children) != 1 {
+		t.Errorf("Children length = %d, want 1", len(header.Children))
+	}
+}
+
+func TestTableFooterFunc(t *testing.T) {
+	footerFunc := TableFooterFunc()
+
+	if footerFunc == nil {
+		t.Fatal("TableFooterFunc() returned nil")
+	}
+
+	if footerFunc.Name == nil || *footerFunc.Name != "footer" {
+		t.Errorf("expected function name 'footer', got %v", footerFunc.Name)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Table Hline/Vline Tests
+// ----------------------------------------------------------------------------
+
+func TestTableHlineFunc(t *testing.T) {
+	hlineFunc := TableHlineFunc()
+
+	if hlineFunc == nil {
+		t.Fatal("TableHlineFunc() returned nil")
+	}
+
+	if hlineFunc.Name == nil || *hlineFunc.Name != "hline" {
+		t.Errorf("expected function name 'hline', got %v", hlineFunc.Name)
+	}
+}
+
+func TestTableHlineNative(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("y", Int(1), syntax.Detached())
+	args.PushNamed("start", Int(0), syntax.Detached())
+	args.PushNamed("end", Int(3), syntax.Detached())
+
+	result, err := tableHlineNative(vm, args)
+	if err != nil {
+		t.Fatalf("tableHlineNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	hline, ok := content.Content.Elements[0].(*TableHlineElement)
+	if !ok {
+		t.Fatalf("expected *TableHlineElement, got %T", content.Content.Elements[0])
+	}
+
+	if hline.Y == nil || *hline.Y != 1 {
+		t.Errorf("Y = %v, want 1", hline.Y)
+	}
+	if hline.Start != 0 {
+		t.Errorf("Start = %d, want 0", hline.Start)
+	}
+	if hline.End == nil || *hline.End != 3 {
+		t.Errorf("End = %v, want 3", hline.End)
+	}
+	if hline.Position != "top" {
+		t.Errorf("Position = %s, want 'top'", hline.Position)
+	}
+}
+
+func TestTableVlineFunc(t *testing.T) {
+	vlineFunc := TableVlineFunc()
+
+	if vlineFunc == nil {
+		t.Fatal("TableVlineFunc() returned nil")
+	}
+
+	if vlineFunc.Name == nil || *vlineFunc.Name != "vline" {
+		t.Errorf("expected function name 'vline', got %v", vlineFunc.Name)
+	}
+}
+
+func TestTableVlineNative(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("x", Int(2), syntax.Detached())
+	args.PushNamed("position", Str("end"), syntax.Detached())
+
+	result, err := tableVlineNative(vm, args)
+	if err != nil {
+		t.Fatalf("tableVlineNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	vline, ok := content.Content.Elements[0].(*TableVlineElement)
+	if !ok {
+		t.Fatalf("expected *TableVlineElement, got %T", content.Content.Elements[0])
+	}
+
+	if vline.X == nil || *vline.X != 2 {
+		t.Errorf("X = %v, want 2", vline.X)
+	}
+	if vline.Position != "end" {
+		t.Errorf("Position = %s, want 'end'", vline.Position)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// GetElementMethod Tests
+// ----------------------------------------------------------------------------
+
+func TestGetElementMethod(t *testing.T) {
+	// Test table.cell
+	cellMethod := GetElementMethod("table", "cell", syntax.Detached())
+	if cellMethod == nil {
+		t.Error("expected table.cell method to be found")
+	} else {
+		funcVal, ok := cellMethod.(FuncValue)
+		if !ok {
+			t.Errorf("expected FuncValue, got %T", cellMethod)
+		} else if funcVal.Func.Name == nil || *funcVal.Func.Name != "cell" {
+			t.Errorf("expected function name 'cell', got %v", funcVal.Func.Name)
+		}
+	}
+
+	// Test table.header
+	headerMethod := GetElementMethod("table", "header", syntax.Detached())
+	if headerMethod == nil {
+		t.Error("expected table.header method to be found")
+	}
+
+	// Test table.footer
+	footerMethod := GetElementMethod("table", "footer", syntax.Detached())
+	if footerMethod == nil {
+		t.Error("expected table.footer method to be found")
+	}
+
+	// Test table.hline
+	hlineMethod := GetElementMethod("table", "hline", syntax.Detached())
+	if hlineMethod == nil {
+		t.Error("expected table.hline method to be found")
+	}
+
+	// Test table.vline
+	vlineMethod := GetElementMethod("table", "vline", syntax.Detached())
+	if vlineMethod == nil {
+		t.Error("expected table.vline method to be found")
+	}
+
+	// Test unknown method
+	unknownMethod := GetElementMethod("table", "unknown", syntax.Detached())
+	if unknownMethod != nil {
+		t.Error("expected unknown method to return nil")
+	}
+
+	// Test unknown element
+	otherMethod := GetElementMethod("other", "method", syntax.Detached())
+	if otherMethod != nil {
+		t.Error("expected method on unknown element to return nil")
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Registration Tests for Table
+// ----------------------------------------------------------------------------
+
+func TestRegisterElementFunctionsIncludesTable(t *testing.T) {
+	scope := NewScope()
+	RegisterElementFunctions(scope)
+
+	// Verify table function is registered
+	tableBinding := scope.Get("table")
+	if tableBinding == nil {
+		t.Fatal("expected 'table' to be registered")
+	}
+
+	tableFunc, ok := tableBinding.Value.(FuncValue)
+	if !ok {
+		t.Fatalf("expected FuncValue for table, got %T", tableBinding.Value)
+	}
+	if tableFunc.Func.Name == nil || *tableFunc.Func.Name != "table" {
+		t.Errorf("expected function name 'table', got %v", tableFunc.Func.Name)
+	}
+}
+
+func TestElementFunctionsIncludesTable(t *testing.T) {
+	funcs := ElementFunctions()
+
+	if _, ok := funcs["table"]; !ok {
+		t.Error("expected 'table' in ElementFunctions()")
+	}
+}

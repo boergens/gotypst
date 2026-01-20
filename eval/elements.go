@@ -738,6 +738,1050 @@ func headingNative(vm *Vm, args *Args) (Value, error) {
 }
 
 // ----------------------------------------------------------------------------
+// Table Element
+// ----------------------------------------------------------------------------
+
+// TrackSize represents a column or row track size.
+// It can be auto, a length, a ratio, a fraction, or an array of such.
+type TrackSize struct {
+	// Auto means the track sizes itself to fit its content.
+	Auto bool
+	// Length is an absolute length (in points) if specified.
+	Length *float64
+	// Ratio is a percentage of available space if specified.
+	Ratio *float64
+	// Fraction is a flexible fraction (fr units) if specified.
+	Fraction *float64
+}
+
+// TableCellElement represents a single cell in a table.
+type TableCellElement struct {
+	// Body is the content of the cell.
+	Body Content
+	// X is the column position (0-indexed). If nil, auto-placed.
+	X *int
+	// Y is the row position (0-indexed). If nil, auto-placed.
+	Y *int
+	// Colspan is the number of columns this cell spans (default: 1).
+	Colspan int
+	// Rowspan is the number of rows this cell spans (default: 1).
+	Rowspan int
+	// Fill is the cell background color (if any).
+	Fill *Color
+	// Align is the cell-specific alignment (if any).
+	Align *Alignment2D
+	// Inset is the cell padding (in points). If nil, uses table default.
+	Inset *float64
+	// Stroke is the cell border stroke (if any).
+	Stroke *Stroke
+}
+
+func (*TableCellElement) IsContentElement() {}
+
+// Stroke represents a stroke style for borders.
+type Stroke struct {
+	// Thickness is the stroke width in points.
+	Thickness float64
+	// Color is the stroke color.
+	Color Color
+	// Dash is the dash pattern (nil for solid).
+	Dash []float64
+}
+
+// TableElement represents a table layout element.
+type TableElement struct {
+	// Columns defines the column track sizes.
+	// Can be a single value (number of columns) or specific sizes.
+	Columns []TrackSize
+	// Rows defines the row track sizes (optional, auto-sized if nil).
+	Rows []TrackSize
+	// Gutter is the default spacing between cells.
+	Gutter *float64
+	// ColumnGutter is the spacing between columns (overrides Gutter).
+	ColumnGutter *float64
+	// RowGutter is the spacing between rows (overrides Gutter).
+	RowGutter *float64
+	// Fill is the default cell background.
+	Fill *Color
+	// Align is the default cell alignment.
+	Align *Alignment2D
+	// Stroke is the table border stroke.
+	Stroke *Stroke
+	// Inset is the default cell padding (in points).
+	Inset *float64
+	// Children contains the table cells and content.
+	Children []TableChild
+}
+
+// TableChild represents either a TableCellElement or plain Content in a table.
+type TableChild struct {
+	// Cell is set if this is an explicit table.cell().
+	Cell *TableCellElement
+	// Content is set if this is plain content (implicitly wrapped in a cell).
+	Content *Content
+}
+
+func (*TableElement) IsContentElement() {}
+
+// TableFunc creates the table element function.
+func TableFunc() *Func {
+	name := "table"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: tableNative,
+			Info: &FuncInfo{
+				Name: "table",
+				Params: []ParamInfo{
+					{Name: "columns", Type: TypeArray, Default: Auto, Named: true},
+					{Name: "rows", Type: TypeArray, Default: Auto, Named: true},
+					{Name: "gutter", Type: TypeLength, Default: None, Named: true},
+					{Name: "column-gutter", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "row-gutter", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "fill", Type: TypeColor, Default: None, Named: true},
+					{Name: "align", Type: TypeStr, Default: Auto, Named: true},
+					{Name: "stroke", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "inset", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "children", Type: TypeContent, Named: false, Variadic: true},
+				},
+			},
+		},
+	}
+}
+
+// tableNative implements the table() function.
+// Creates a TableElement with the given columns, rows, and children.
+//
+// Arguments:
+//   - columns (named, int or array, default: auto): Column track sizes
+//   - rows (named, int or array, default: auto): Row track sizes
+//   - gutter (named, length, default: none): Default cell spacing
+//   - column-gutter (named, length, default: auto): Column spacing
+//   - row-gutter (named, length, default: auto): Row spacing
+//   - fill (named, color, default: none): Default cell background
+//   - align (named, alignment, default: auto): Default cell alignment
+//   - stroke (named, length or stroke, default: auto): Table border
+//   - inset (named, length, default: auto): Default cell padding
+//   - children (positional, variadic): Table cells and content
+func tableNative(vm *Vm, args *Args) (Value, error) {
+	elem := &TableElement{
+		Columns: []TrackSize{{Auto: true}}, // Default: 1 auto column
+	}
+
+	// Get optional columns argument
+	if columnsArg := args.Find("columns"); columnsArg != nil {
+		if !IsAuto(columnsArg.V) && !IsNone(columnsArg.V) {
+			tracks, err := parseTrackSizes(columnsArg.V, columnsArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Columns = tracks
+		}
+	}
+
+	// Get optional rows argument
+	if rowsArg := args.Find("rows"); rowsArg != nil {
+		if !IsAuto(rowsArg.V) && !IsNone(rowsArg.V) {
+			tracks, err := parseTrackSizes(rowsArg.V, rowsArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Rows = tracks
+		}
+	}
+
+	// Get optional gutter argument
+	if gutterArg := args.Find("gutter"); gutterArg != nil {
+		if !IsAuto(gutterArg.V) && !IsNone(gutterArg.V) {
+			if lv, ok := gutterArg.V.(LengthValue); ok {
+				g := lv.Length.Points
+				elem.Gutter = &g
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      gutterArg.V.Type().String(),
+					Span:     gutterArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional column-gutter argument
+	if colGutterArg := args.Find("column-gutter"); colGutterArg != nil {
+		if !IsAuto(colGutterArg.V) && !IsNone(colGutterArg.V) {
+			if lv, ok := colGutterArg.V.(LengthValue); ok {
+				g := lv.Length.Points
+				elem.ColumnGutter = &g
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      colGutterArg.V.Type().String(),
+					Span:     colGutterArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional row-gutter argument
+	if rowGutterArg := args.Find("row-gutter"); rowGutterArg != nil {
+		if !IsAuto(rowGutterArg.V) && !IsNone(rowGutterArg.V) {
+			if lv, ok := rowGutterArg.V.(LengthValue); ok {
+				g := lv.Length.Points
+				elem.RowGutter = &g
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      rowGutterArg.V.Type().String(),
+					Span:     rowGutterArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional fill argument
+	if fillArg := args.Find("fill"); fillArg != nil {
+		if !IsAuto(fillArg.V) && !IsNone(fillArg.V) {
+			if cv, ok := fillArg.V.(ColorValue); ok {
+				elem.Fill = &cv.Color
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "color or none",
+					Got:      fillArg.V.Type().String(),
+					Span:     fillArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional align argument
+	if alignArg := args.Find("align"); alignArg != nil {
+		if !IsAuto(alignArg.V) && !IsNone(alignArg.V) {
+			alignment, err := parseAlignment(alignArg.V, alignArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Align = &alignment
+		}
+	}
+
+	// Get optional stroke argument
+	if strokeArg := args.Find("stroke"); strokeArg != nil {
+		if !IsAuto(strokeArg.V) && !IsNone(strokeArg.V) {
+			stroke, err := parseStroke(strokeArg.V, strokeArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Stroke = stroke
+		}
+	}
+
+	// Get optional inset argument
+	if insetArg := args.Find("inset"); insetArg != nil {
+		if !IsAuto(insetArg.V) && !IsNone(insetArg.V) {
+			if lv, ok := insetArg.V.(LengthValue); ok {
+				i := lv.Length.Points
+				elem.Inset = &i
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      insetArg.V.Type().String(),
+					Span:     insetArg.Span,
+				}
+			}
+		}
+	}
+
+	// Collect remaining positional arguments as children
+	for {
+		childArg := args.Eat()
+		if childArg == nil {
+			break
+		}
+
+		// Check if this is a table.cell() element
+		if cv, ok := childArg.V.(ContentValue); ok {
+			if len(cv.Content.Elements) == 1 {
+				if cell, ok := cv.Content.Elements[0].(*TableCellElement); ok {
+					elem.Children = append(elem.Children, TableChild{Cell: cell})
+					continue
+				}
+			}
+			// Plain content - wrap implicitly
+			elem.Children = append(elem.Children, TableChild{Content: &cv.Content})
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "content",
+				Got:      childArg.V.Type().String(),
+				Span:     childArg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the TableElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// parseTrackSizes parses column or row track sizes from a Value.
+func parseTrackSizes(v Value, span syntax.Span) ([]TrackSize, error) {
+	// Handle single integer (number of auto columns/rows)
+	if i, ok := AsInt(v); ok {
+		if i < 1 {
+			return nil, &ConstructorError{
+				Message: "number of tracks must be at least 1",
+				Span:    span,
+			}
+		}
+		tracks := make([]TrackSize, i)
+		for j := range tracks {
+			tracks[j] = TrackSize{Auto: true}
+		}
+		return tracks, nil
+	}
+
+	// Handle array of track sizes
+	if arr, ok := AsArray(v); ok {
+		tracks := make([]TrackSize, len(arr))
+		for i, elem := range arr {
+			track, err := parseTrackSize(elem, span)
+			if err != nil {
+				return nil, err
+			}
+			tracks[i] = track
+		}
+		return tracks, nil
+	}
+
+	// Handle single track size
+	track, err := parseTrackSize(v, span)
+	if err != nil {
+		return nil, err
+	}
+	return []TrackSize{track}, nil
+}
+
+// parseTrackSize parses a single track size from a Value.
+func parseTrackSize(v Value, span syntax.Span) (TrackSize, error) {
+	switch val := v.(type) {
+	case AutoValue:
+		return TrackSize{Auto: true}, nil
+	case LengthValue:
+		pts := val.Length.Points
+		return TrackSize{Length: &pts}, nil
+	case RatioValue:
+		ratio := val.Ratio.Value
+		return TrackSize{Ratio: &ratio}, nil
+	case FractionValue:
+		fr := val.Fraction.Value
+		return TrackSize{Fraction: &fr}, nil
+	default:
+		return TrackSize{}, &TypeMismatchError{
+			Expected: "auto, length, ratio, or fraction",
+			Got:      v.Type().String(),
+			Span:     span,
+		}
+	}
+}
+
+// parseStroke parses a stroke from a Value.
+func parseStroke(v Value, span syntax.Span) (*Stroke, error) {
+	// Handle length as a simple stroke thickness with black color
+	if lv, ok := v.(LengthValue); ok {
+		return &Stroke{
+			Thickness: lv.Length.Points,
+			Color:     Color{R: 0, G: 0, B: 0, A: 255},
+		}, nil
+	}
+
+	// Handle color as a 1pt stroke with that color
+	if cv, ok := v.(ColorValue); ok {
+		return &Stroke{
+			Thickness: 1.0,
+			Color:     cv.Color,
+		}, nil
+	}
+
+	// Handle none for no stroke
+	if IsNone(v) {
+		return nil, nil
+	}
+
+	return nil, &TypeMismatchError{
+		Expected: "length, color, or none",
+		Got:      v.Type().String(),
+		Span:     span,
+	}
+}
+
+// TableCellFunc creates the table.cell element function.
+func TableCellFunc() *Func {
+	name := "cell"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: tableCellNative,
+			Info: &FuncInfo{
+				Name: "table.cell",
+				Params: []ParamInfo{
+					{Name: "body", Type: TypeContent, Named: false},
+					{Name: "x", Type: TypeInt, Default: Auto, Named: true},
+					{Name: "y", Type: TypeInt, Default: Auto, Named: true},
+					{Name: "colspan", Type: TypeInt, Default: Int(1), Named: true},
+					{Name: "rowspan", Type: TypeInt, Default: Int(1), Named: true},
+					{Name: "fill", Type: TypeColor, Default: Auto, Named: true},
+					{Name: "align", Type: TypeStr, Default: Auto, Named: true},
+					{Name: "inset", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "stroke", Type: TypeLength, Default: Auto, Named: true},
+				},
+			},
+		},
+	}
+}
+
+// tableCellNative implements the table.cell() function.
+// Creates a TableCellElement with the given content and options.
+//
+// Arguments:
+//   - body (positional, content): The cell content
+//   - x (named, int, default: auto): Column position (0-indexed)
+//   - y (named, int, default: auto): Row position (0-indexed)
+//   - colspan (named, int, default: 1): Number of columns to span
+//   - rowspan (named, int, default: 1): Number of rows to span
+//   - fill (named, color, default: auto): Cell background color
+//   - align (named, alignment, default: auto): Cell alignment
+//   - inset (named, length, default: auto): Cell padding
+//   - stroke (named, stroke, default: auto): Cell border
+func tableCellNative(vm *Vm, args *Args) (Value, error) {
+	// Get required body argument
+	bodyArg := args.Find("body")
+	if bodyArg == nil {
+		bodyArgSpanned, err := args.Expect("body")
+		if err != nil {
+			return nil, err
+		}
+		bodyArg = &bodyArgSpanned
+	}
+
+	var body Content
+	if cv, ok := bodyArg.V.(ContentValue); ok {
+		body = cv.Content
+	} else {
+		return nil, &TypeMismatchError{
+			Expected: "content",
+			Got:      bodyArg.V.Type().String(),
+			Span:     bodyArg.Span,
+		}
+	}
+
+	elem := &TableCellElement{
+		Body:    body,
+		Colspan: 1,
+		Rowspan: 1,
+	}
+
+	// Get optional x argument
+	if xArg := args.Find("x"); xArg != nil {
+		if !IsAuto(xArg.V) && !IsNone(xArg.V) {
+			x, ok := AsInt(xArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "int or auto",
+					Got:      xArg.V.Type().String(),
+					Span:     xArg.Span,
+				}
+			}
+			if x < 0 {
+				return nil, &ConstructorError{
+					Message: "cell x position must be non-negative",
+					Span:    xArg.Span,
+				}
+			}
+			xInt := int(x)
+			elem.X = &xInt
+		}
+	}
+
+	// Get optional y argument
+	if yArg := args.Find("y"); yArg != nil {
+		if !IsAuto(yArg.V) && !IsNone(yArg.V) {
+			y, ok := AsInt(yArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "int or auto",
+					Got:      yArg.V.Type().String(),
+					Span:     yArg.Span,
+				}
+			}
+			if y < 0 {
+				return nil, &ConstructorError{
+					Message: "cell y position must be non-negative",
+					Span:    yArg.Span,
+				}
+			}
+			yInt := int(y)
+			elem.Y = &yInt
+		}
+	}
+
+	// Get optional colspan argument
+	if colspanArg := args.Find("colspan"); colspanArg != nil {
+		colspan, ok := AsInt(colspanArg.V)
+		if !ok {
+			return nil, &TypeMismatchError{
+				Expected: "int",
+				Got:      colspanArg.V.Type().String(),
+				Span:     colspanArg.Span,
+			}
+		}
+		if colspan < 1 {
+			return nil, &ConstructorError{
+				Message: "colspan must be at least 1",
+				Span:    colspanArg.Span,
+			}
+		}
+		elem.Colspan = int(colspan)
+	}
+
+	// Get optional rowspan argument
+	if rowspanArg := args.Find("rowspan"); rowspanArg != nil {
+		rowspan, ok := AsInt(rowspanArg.V)
+		if !ok {
+			return nil, &TypeMismatchError{
+				Expected: "int",
+				Got:      rowspanArg.V.Type().String(),
+				Span:     rowspanArg.Span,
+			}
+		}
+		if rowspan < 1 {
+			return nil, &ConstructorError{
+				Message: "rowspan must be at least 1",
+				Span:    rowspanArg.Span,
+			}
+		}
+		elem.Rowspan = int(rowspan)
+	}
+
+	// Get optional fill argument
+	if fillArg := args.Find("fill"); fillArg != nil {
+		if !IsAuto(fillArg.V) && !IsNone(fillArg.V) {
+			if cv, ok := fillArg.V.(ColorValue); ok {
+				elem.Fill = &cv.Color
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "color or auto",
+					Got:      fillArg.V.Type().String(),
+					Span:     fillArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional align argument
+	if alignArg := args.Find("align"); alignArg != nil {
+		if !IsAuto(alignArg.V) && !IsNone(alignArg.V) {
+			alignment, err := parseAlignment(alignArg.V, alignArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Align = &alignment
+		}
+	}
+
+	// Get optional inset argument
+	if insetArg := args.Find("inset"); insetArg != nil {
+		if !IsAuto(insetArg.V) && !IsNone(insetArg.V) {
+			if lv, ok := insetArg.V.(LengthValue); ok {
+				i := lv.Length.Points
+				elem.Inset = &i
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      insetArg.V.Type().String(),
+					Span:     insetArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional stroke argument
+	if strokeArg := args.Find("stroke"); strokeArg != nil {
+		if !IsAuto(strokeArg.V) && !IsNone(strokeArg.V) {
+			stroke, err := parseStroke(strokeArg.V, strokeArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Stroke = stroke
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the TableCellElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// ----------------------------------------------------------------------------
+// Element Methods
+// ----------------------------------------------------------------------------
+
+// GetElementMethod returns a method function for an element function.
+// For example, GetElementMethod("table", "cell") returns the table.cell function.
+// Returns nil if no such method exists.
+func GetElementMethod(elementName, methodName string, span syntax.Span) Value {
+	switch elementName {
+	case "table":
+		switch methodName {
+		case "cell":
+			return FuncValue{Func: TableCellFunc()}
+		case "header":
+			return FuncValue{Func: TableHeaderFunc()}
+		case "footer":
+			return FuncValue{Func: TableFooterFunc()}
+		case "hline":
+			return FuncValue{Func: TableHlineFunc()}
+		case "vline":
+			return FuncValue{Func: TableVlineFunc()}
+		}
+	}
+	return nil
+}
+
+// TableHeaderFunc creates the table.header element function.
+func TableHeaderFunc() *Func {
+	name := "header"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: tableHeaderNative,
+			Info: &FuncInfo{
+				Name: "table.header",
+				Params: []ParamInfo{
+					{Name: "repeat", Type: TypeBool, Default: True, Named: true},
+					{Name: "children", Type: TypeContent, Named: false, Variadic: true},
+				},
+			},
+		},
+	}
+}
+
+// TableHeaderElement represents a table header section.
+type TableHeaderElement struct {
+	// Repeat indicates whether to repeat the header on each page.
+	Repeat bool
+	// Children contains the header cells.
+	Children []TableChild
+}
+
+func (*TableHeaderElement) IsContentElement() {}
+
+// tableHeaderNative implements the table.header() function.
+func tableHeaderNative(vm *Vm, args *Args) (Value, error) {
+	elem := &TableHeaderElement{
+		Repeat: true,
+	}
+
+	// Get optional repeat argument
+	if repeatArg := args.Find("repeat"); repeatArg != nil {
+		repeat, ok := AsBool(repeatArg.V)
+		if !ok {
+			return nil, &TypeMismatchError{
+				Expected: "bool",
+				Got:      repeatArg.V.Type().String(),
+				Span:     repeatArg.Span,
+			}
+		}
+		elem.Repeat = repeat
+	}
+
+	// Collect remaining positional arguments as children
+	for {
+		childArg := args.Eat()
+		if childArg == nil {
+			break
+		}
+
+		if cv, ok := childArg.V.(ContentValue); ok {
+			if len(cv.Content.Elements) == 1 {
+				if cell, ok := cv.Content.Elements[0].(*TableCellElement); ok {
+					elem.Children = append(elem.Children, TableChild{Cell: cell})
+					continue
+				}
+			}
+			elem.Children = append(elem.Children, TableChild{Content: &cv.Content})
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "content",
+				Got:      childArg.V.Type().String(),
+				Span:     childArg.Span,
+			}
+		}
+	}
+
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// TableFooterFunc creates the table.footer element function.
+func TableFooterFunc() *Func {
+	name := "footer"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: tableFooterNative,
+			Info: &FuncInfo{
+				Name: "table.footer",
+				Params: []ParamInfo{
+					{Name: "repeat", Type: TypeBool, Default: True, Named: true},
+					{Name: "children", Type: TypeContent, Named: false, Variadic: true},
+				},
+			},
+		},
+	}
+}
+
+// TableFooterElement represents a table footer section.
+type TableFooterElement struct {
+	// Repeat indicates whether to repeat the footer on each page.
+	Repeat bool
+	// Children contains the footer cells.
+	Children []TableChild
+}
+
+func (*TableFooterElement) IsContentElement() {}
+
+// tableFooterNative implements the table.footer() function.
+func tableFooterNative(vm *Vm, args *Args) (Value, error) {
+	elem := &TableFooterElement{
+		Repeat: true,
+	}
+
+	// Get optional repeat argument
+	if repeatArg := args.Find("repeat"); repeatArg != nil {
+		repeat, ok := AsBool(repeatArg.V)
+		if !ok {
+			return nil, &TypeMismatchError{
+				Expected: "bool",
+				Got:      repeatArg.V.Type().String(),
+				Span:     repeatArg.Span,
+			}
+		}
+		elem.Repeat = repeat
+	}
+
+	// Collect remaining positional arguments as children
+	for {
+		childArg := args.Eat()
+		if childArg == nil {
+			break
+		}
+
+		if cv, ok := childArg.V.(ContentValue); ok {
+			if len(cv.Content.Elements) == 1 {
+				if cell, ok := cv.Content.Elements[0].(*TableCellElement); ok {
+					elem.Children = append(elem.Children, TableChild{Cell: cell})
+					continue
+				}
+			}
+			elem.Children = append(elem.Children, TableChild{Content: &cv.Content})
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "content",
+				Got:      childArg.V.Type().String(),
+				Span:     childArg.Span,
+			}
+		}
+	}
+
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// TableHlineFunc creates the table.hline element function.
+func TableHlineFunc() *Func {
+	name := "hline"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: tableHlineNative,
+			Info: &FuncInfo{
+				Name: "table.hline",
+				Params: []ParamInfo{
+					{Name: "y", Type: TypeInt, Default: Auto, Named: true},
+					{Name: "start", Type: TypeInt, Default: Int(0), Named: true},
+					{Name: "end", Type: TypeInt, Default: None, Named: true},
+					{Name: "stroke", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "position", Type: TypeStr, Default: Str("top"), Named: true},
+				},
+			},
+		},
+	}
+}
+
+// TableHlineElement represents a horizontal line in a table.
+type TableHlineElement struct {
+	// Y is the row position (0-indexed). If nil, auto-placed.
+	Y *int
+	// Start is the starting column (0-indexed, default: 0).
+	Start int
+	// End is the ending column (exclusive). If nil, extends to end.
+	End *int
+	// Stroke is the line stroke.
+	Stroke *Stroke
+	// Position is "top" or "bottom" relative to the row.
+	Position string
+}
+
+func (*TableHlineElement) IsContentElement() {}
+
+// tableHlineNative implements the table.hline() function.
+func tableHlineNative(vm *Vm, args *Args) (Value, error) {
+	elem := &TableHlineElement{
+		Start:    0,
+		Position: "top",
+	}
+
+	// Get optional y argument
+	if yArg := args.Find("y"); yArg != nil {
+		if !IsAuto(yArg.V) && !IsNone(yArg.V) {
+			y, ok := AsInt(yArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "int or auto",
+					Got:      yArg.V.Type().String(),
+					Span:     yArg.Span,
+				}
+			}
+			yInt := int(y)
+			elem.Y = &yInt
+		}
+	}
+
+	// Get optional start argument
+	if startArg := args.Find("start"); startArg != nil {
+		start, ok := AsInt(startArg.V)
+		if !ok {
+			return nil, &TypeMismatchError{
+				Expected: "int",
+				Got:      startArg.V.Type().String(),
+				Span:     startArg.Span,
+			}
+		}
+		elem.Start = int(start)
+	}
+
+	// Get optional end argument
+	if endArg := args.Find("end"); endArg != nil {
+		if !IsNone(endArg.V) {
+			end, ok := AsInt(endArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "int or none",
+					Got:      endArg.V.Type().String(),
+					Span:     endArg.Span,
+				}
+			}
+			endInt := int(end)
+			elem.End = &endInt
+		}
+	}
+
+	// Get optional stroke argument
+	if strokeArg := args.Find("stroke"); strokeArg != nil {
+		if !IsAuto(strokeArg.V) && !IsNone(strokeArg.V) {
+			stroke, err := parseStroke(strokeArg.V, strokeArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Stroke = stroke
+		}
+	}
+
+	// Get optional position argument
+	if posArg := args.Find("position"); posArg != nil {
+		pos, ok := AsStr(posArg.V)
+		if !ok {
+			return nil, &TypeMismatchError{
+				Expected: "string",
+				Got:      posArg.V.Type().String(),
+				Span:     posArg.Span,
+			}
+		}
+		if pos != "top" && pos != "bottom" {
+			return nil, &TypeMismatchError{
+				Expected: "\"top\" or \"bottom\"",
+				Got:      "\"" + pos + "\"",
+				Span:     posArg.Span,
+			}
+		}
+		elem.Position = pos
+	}
+
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// TableVlineFunc creates the table.vline element function.
+func TableVlineFunc() *Func {
+	name := "vline"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: tableVlineNative,
+			Info: &FuncInfo{
+				Name: "table.vline",
+				Params: []ParamInfo{
+					{Name: "x", Type: TypeInt, Default: Auto, Named: true},
+					{Name: "start", Type: TypeInt, Default: Int(0), Named: true},
+					{Name: "end", Type: TypeInt, Default: None, Named: true},
+					{Name: "stroke", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "position", Type: TypeStr, Default: Str("start"), Named: true},
+				},
+			},
+		},
+	}
+}
+
+// TableVlineElement represents a vertical line in a table.
+type TableVlineElement struct {
+	// X is the column position (0-indexed). If nil, auto-placed.
+	X *int
+	// Start is the starting row (0-indexed, default: 0).
+	Start int
+	// End is the ending row (exclusive). If nil, extends to end.
+	End *int
+	// Stroke is the line stroke.
+	Stroke *Stroke
+	// Position is "start" or "end" relative to the column.
+	Position string
+}
+
+func (*TableVlineElement) IsContentElement() {}
+
+// tableVlineNative implements the table.vline() function.
+func tableVlineNative(vm *Vm, args *Args) (Value, error) {
+	elem := &TableVlineElement{
+		Start:    0,
+		Position: "start",
+	}
+
+	// Get optional x argument
+	if xArg := args.Find("x"); xArg != nil {
+		if !IsAuto(xArg.V) && !IsNone(xArg.V) {
+			x, ok := AsInt(xArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "int or auto",
+					Got:      xArg.V.Type().String(),
+					Span:     xArg.Span,
+				}
+			}
+			xInt := int(x)
+			elem.X = &xInt
+		}
+	}
+
+	// Get optional start argument
+	if startArg := args.Find("start"); startArg != nil {
+		start, ok := AsInt(startArg.V)
+		if !ok {
+			return nil, &TypeMismatchError{
+				Expected: "int",
+				Got:      startArg.V.Type().String(),
+				Span:     startArg.Span,
+			}
+		}
+		elem.Start = int(start)
+	}
+
+	// Get optional end argument
+	if endArg := args.Find("end"); endArg != nil {
+		if !IsNone(endArg.V) {
+			end, ok := AsInt(endArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "int or none",
+					Got:      endArg.V.Type().String(),
+					Span:     endArg.Span,
+				}
+			}
+			endInt := int(end)
+			elem.End = &endInt
+		}
+	}
+
+	// Get optional stroke argument
+	if strokeArg := args.Find("stroke"); strokeArg != nil {
+		if !IsAuto(strokeArg.V) && !IsNone(strokeArg.V) {
+			stroke, err := parseStroke(strokeArg.V, strokeArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Stroke = stroke
+		}
+	}
+
+	// Get optional position argument
+	if posArg := args.Find("position"); posArg != nil {
+		pos, ok := AsStr(posArg.V)
+		if !ok {
+			return nil, &TypeMismatchError{
+				Expected: "string",
+				Got:      posArg.V.Type().String(),
+				Span:     posArg.Span,
+			}
+		}
+		if pos != "start" && pos != "end" {
+			return nil, &TypeMismatchError{
+				Expected: "\"start\" or \"end\"",
+				Got:      "\"" + pos + "\"",
+				Span:     posArg.Span,
+			}
+		}
+		elem.Position = pos
+	}
+
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// ----------------------------------------------------------------------------
 // Library Registration
 // ----------------------------------------------------------------------------
 
@@ -756,6 +1800,8 @@ func RegisterElementFunctions(scope *Scope) {
 	scope.DefineFunc("align", AlignFunc())
 	// Register heading element function
 	scope.DefineFunc("heading", HeadingFunc())
+	// Register table element function
+	scope.DefineFunc("table", TableFunc())
 }
 
 // ElementFunctions returns a map of all element function names to their functions.
@@ -768,5 +1814,6 @@ func ElementFunctions() map[string]*Func {
 		"stack":    StackFunc(),
 		"align":    AlignFunc(),
 		"heading":  HeadingFunc(),
+		"table":    TableFunc(),
 	}
 }
