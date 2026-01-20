@@ -71,6 +71,35 @@ type MathAlignElement struct{}
 
 func (*MathAlignElement) IsContentElement() {}
 
+// MathMatrixElement represents a matrix or array in math mode.
+type MathMatrixElement struct {
+	// Rows contains the matrix rows, each row is a slice of cell contents.
+	Rows [][]Content
+	// Delim specifies the delimiter style: "(", "[", "{", "|", "||", or empty for none.
+	Delim string
+	// Augment specifies the column index for an augmented matrix line (optional).
+	Augment *int
+	// RowGap is the gap between rows (in points, optional).
+	RowGap *float64
+	// ColumnGap is the gap between columns (in points, optional).
+	ColumnGap *float64
+}
+
+func (*MathMatrixElement) IsContentElement() {}
+
+// MathVecElement represents a column vector in math mode.
+// This is a convenience type that's equivalent to a single-column matrix.
+type MathVecElement struct {
+	// Elements contains the vector elements.
+	Elements []Content
+	// Delim specifies the delimiter style: "(", "[", "{", "|", "||", or empty for none.
+	Delim string
+	// Gap is the gap between elements (in points, optional).
+	Gap *float64
+}
+
+func (*MathVecElement) IsContentElement() {}
+
 // MathSymbolElement represents a math symbol.
 type MathSymbolElement struct {
 	// Symbol is the symbol text.
@@ -439,4 +468,361 @@ func (c Content) String() string {
 		}
 	}
 	return result
+}
+
+// ----------------------------------------------------------------------------
+// Math Element Functions
+// ----------------------------------------------------------------------------
+
+// MatFunc creates the mat (matrix) function for math mode.
+func MatFunc() *Func {
+	name := "mat"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: matNative,
+			Info: &FuncInfo{
+				Name: "mat",
+				Params: []ParamInfo{
+					{Name: "delim", Type: TypeStr, Default: Str("("), Named: true},
+					{Name: "augment", Type: TypeInt, Default: None, Named: true},
+					{Name: "row-gap", Type: TypeLength, Default: None, Named: true},
+					{Name: "column-gap", Type: TypeLength, Default: None, Named: true},
+					{Name: "rows", Type: TypeArray, Named: false, Variadic: true},
+				},
+			},
+		},
+	}
+}
+
+// matNative implements the mat() function.
+// Creates a MathMatrixElement from rows of values.
+//
+// Arguments:
+//   - delim (named, str, default: "("): The delimiter style
+//   - augment (named, int, default: none): Column index for augmented matrix line
+//   - row-gap (named, length, default: none): Gap between rows
+//   - column-gap (named, length, default: none): Gap between columns
+//   - rows (positional, variadic): The matrix rows (arrays separated by semicolons)
+func matNative(vm *Vm, args *Args) (Value, error) {
+	// Get optional delim argument (default: "(")
+	delim := "("
+	if delimArg := args.Find("delim"); delimArg != nil {
+		if !IsNone(delimArg.V) {
+			delimStr, ok := AsStr(delimArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "string",
+					Got:      delimArg.V.Type().String(),
+					Span:     delimArg.Span,
+				}
+			}
+			// Validate delimiter
+			switch delimStr {
+			case "(", "[", "{", "|", "||", "":
+				delim = delimStr
+			default:
+				return nil, &TypeMismatchError{
+					Expected: "\"(\", \"[\", \"{\", \"|\", \"||\", or empty string",
+					Got:      "\"" + delimStr + "\"",
+					Span:     delimArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional augment argument
+	var augment *int
+	if augmentArg := args.Find("augment"); augmentArg != nil {
+		if !IsNone(augmentArg.V) {
+			augmentVal, ok := augmentArg.V.(IntValue)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "integer",
+					Got:      augmentArg.V.Type().String(),
+					Span:     augmentArg.Span,
+				}
+			}
+			augInt := int(augmentVal)
+			augment = &augInt
+		}
+	}
+
+	// Get optional row-gap argument
+	var rowGap *float64
+	if rowGapArg := args.Find("row-gap"); rowGapArg != nil {
+		if !IsNone(rowGapArg.V) && !IsAuto(rowGapArg.V) {
+			if lv, ok := rowGapArg.V.(LengthValue); ok {
+				rg := lv.Length.Points
+				rowGap = &rg
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      rowGapArg.V.Type().String(),
+					Span:     rowGapArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional column-gap argument
+	var columnGap *float64
+	if columnGapArg := args.Find("column-gap"); columnGapArg != nil {
+		if !IsNone(columnGapArg.V) && !IsAuto(columnGapArg.V) {
+			if lv, ok := columnGapArg.V.(LengthValue); ok {
+				cg := lv.Length.Points
+				columnGap = &cg
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      columnGapArg.V.Type().String(),
+					Span:     columnGapArg.Span,
+				}
+			}
+		}
+	}
+
+	// Collect rows from remaining positional arguments
+	// In math mode, semicolons create Array nodes which become ArrayValue
+	var rows [][]Content
+	for {
+		rowArg := args.Eat()
+		if rowArg == nil {
+			break
+		}
+
+		// Each positional argument is either:
+		// - An ArrayValue (row with multiple cells from semicolon separation)
+		// - A ContentValue (single cell row)
+		// - Other value types
+		row := parseMatrixRow(rowArg.V)
+		rows = append(rows, row)
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the MathMatrixElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{&MathMatrixElement{
+			Rows:      rows,
+			Delim:     delim,
+			Augment:   augment,
+			RowGap:    rowGap,
+			ColumnGap: columnGap,
+		}},
+	}}, nil
+}
+
+// parseMatrixRow parses a value into a row of content cells.
+func parseMatrixRow(v Value) []Content {
+	switch val := v.(type) {
+	case ArrayValue:
+		// Array value - each element is a cell
+		row := make([]Content, len(val))
+		for i, elem := range val {
+			row[i] = valueToContent(elem)
+		}
+		return row
+	case ContentValue:
+		// Single content cell
+		return []Content{val.Content}
+	default:
+		// Convert other values to content
+		return []Content{valueToContent(v)}
+	}
+}
+
+// VecFunc creates the vec (column vector) function for math mode.
+func VecFunc() *Func {
+	name := "vec"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: vecNative,
+			Info: &FuncInfo{
+				Name: "vec",
+				Params: []ParamInfo{
+					{Name: "delim", Type: TypeStr, Default: Str("("), Named: true},
+					{Name: "gap", Type: TypeLength, Default: None, Named: true},
+					{Name: "elements", Type: TypeContent, Named: false, Variadic: true},
+				},
+			},
+		},
+	}
+}
+
+// vecNative implements the vec() function.
+// Creates a MathVecElement (column vector) from elements.
+//
+// Arguments:
+//   - delim (named, str, default: "("): The delimiter style
+//   - gap (named, length, default: none): Gap between elements
+//   - elements (positional, variadic): The vector elements
+func vecNative(vm *Vm, args *Args) (Value, error) {
+	// Get optional delim argument (default: "(")
+	delim := "("
+	if delimArg := args.Find("delim"); delimArg != nil {
+		if !IsNone(delimArg.V) {
+			delimStr, ok := AsStr(delimArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "string",
+					Got:      delimArg.V.Type().String(),
+					Span:     delimArg.Span,
+				}
+			}
+			// Validate delimiter
+			switch delimStr {
+			case "(", "[", "{", "|", "||", "":
+				delim = delimStr
+			default:
+				return nil, &TypeMismatchError{
+					Expected: "\"(\", \"[\", \"{\", \"|\", \"||\", or empty string",
+					Got:      "\"" + delimStr + "\"",
+					Span:     delimArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional gap argument
+	var gap *float64
+	if gapArg := args.Find("gap"); gapArg != nil {
+		if !IsNone(gapArg.V) && !IsAuto(gapArg.V) {
+			if lv, ok := gapArg.V.(LengthValue); ok {
+				g := lv.Length.Points
+				gap = &g
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      gapArg.V.Type().String(),
+					Span:     gapArg.Span,
+				}
+			}
+		}
+	}
+
+	// Collect elements from remaining positional arguments
+	var elements []Content
+	for {
+		elemArg := args.Eat()
+		if elemArg == nil {
+			break
+		}
+		elements = append(elements, valueToContent(elemArg.V))
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the MathVecElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{&MathVecElement{
+			Elements: elements,
+			Delim:    delim,
+			Gap:      gap,
+		}},
+	}}, nil
+}
+
+// CasesFunc creates the cases function for math mode (piecewise functions).
+func CasesFunc() *Func {
+	name := "cases"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: casesNative,
+			Info: &FuncInfo{
+				Name: "cases",
+				Params: []ParamInfo{
+					{Name: "delim", Type: TypeStr, Default: Str("{"), Named: true},
+					{Name: "reverse", Type: TypeBool, Default: False, Named: true},
+					{Name: "gap", Type: TypeLength, Default: None, Named: true},
+					{Name: "branches", Type: TypeArray, Named: false, Variadic: true},
+				},
+			},
+		},
+	}
+}
+
+// casesNative implements the cases() function.
+// Creates a piecewise function definition using matrix layout.
+func casesNative(vm *Vm, args *Args) (Value, error) {
+	// Get optional delim argument (default: "{")
+	delim := "{"
+	if delimArg := args.Find("delim"); delimArg != nil {
+		if !IsNone(delimArg.V) {
+			delimStr, ok := AsStr(delimArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "string",
+					Got:      delimArg.V.Type().String(),
+					Span:     delimArg.Span,
+				}
+			}
+			delim = delimStr
+		}
+	}
+
+	// Get optional reverse argument (default: false)
+	reverse := false
+	if reverseArg := args.Find("reverse"); reverseArg != nil {
+		if reverseVal, ok := AsBool(reverseArg.V); ok {
+			reverse = reverseVal
+		}
+	}
+
+	// Get optional gap argument
+	var gap *float64
+	if gapArg := args.Find("gap"); gapArg != nil {
+		if !IsNone(gapArg.V) && !IsAuto(gapArg.V) {
+			if lv, ok := gapArg.V.(LengthValue); ok {
+				g := lv.Length.Points
+				gap = &g
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      gapArg.V.Type().String(),
+					Span:     gapArg.Span,
+				}
+			}
+		}
+	}
+
+	// Collect branches from remaining positional arguments
+	var rows [][]Content
+	for {
+		branchArg := args.Eat()
+		if branchArg == nil {
+			break
+		}
+		row := parseMatrixRow(branchArg.V)
+		rows = append(rows, row)
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// For cases, we use a matrix with special delimiter handling
+	// If reverse is true, the delimiter goes on the right side
+	// We represent this as a matrix element for now
+	_ = reverse // TODO: Handle reverse in layout
+
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{&MathMatrixElement{
+			Rows:   rows,
+			Delim:  delim,
+			RowGap: gap,
+		}},
+	}}, nil
 }

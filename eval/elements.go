@@ -591,6 +591,11 @@ func RegisterElementFunctions(scope *Scope) {
 	scope.DefineFunc("stack", StackFunc())
 	// Register align element function
 	scope.DefineFunc("align", AlignFunc())
+
+	// Register math element functions
+	scope.DefineFunc("mat", MatFunc())
+	scope.DefineFunc("vec", VecFunc())
+	scope.DefineFunc("cases", CasesFunc())
 }
 
 // ElementFunctions returns a map of all element function names to their functions.
@@ -602,5 +607,8 @@ func ElementFunctions() map[string]*Func {
 		"parbreak": ParbreakFunc(),
 		"stack":    StackFunc(),
 		"align":    AlignFunc(),
+		"mat":      MatFunc(),
+		"vec":      VecFunc(),
+		"cases":    CasesFunc(),
 	}
 }

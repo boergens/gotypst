@@ -420,3 +420,307 @@ func TestValueToContent(t *testing.T) {
 		})
 	}
 }
+
+// TestMatFunc tests the mat() matrix function.
+func TestMatFunc(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []Arg
+		wantRows     int
+		wantDelim    string
+		wantErr      bool
+	}{
+		{
+			name: "simple 2x2 matrix",
+			args: []Arg{
+				// First row: (1, 2)
+				{Value: syntax.Spanned[Value]{V: ArrayValue{Int(1), Int(2)}}},
+				// Second row: (3, 4)
+				{Value: syntax.Spanned[Value]{V: ArrayValue{Int(3), Int(4)}}},
+			},
+			wantRows:  2,
+			wantDelim: "(",
+		},
+		{
+			name: "matrix with bracket delimiters",
+			args: []Arg{
+				{Name: strPtr("delim"), Value: syntax.Spanned[Value]{V: Str("[")}},
+				{Value: syntax.Spanned[Value]{V: ArrayValue{Int(1), Int(2)}}},
+			},
+			wantRows:  1,
+			wantDelim: "[",
+		},
+		{
+			name: "matrix with no delimiter",
+			args: []Arg{
+				{Name: strPtr("delim"), Value: syntax.Spanned[Value]{V: Str("")}},
+				{Value: syntax.Spanned[Value]{V: Int(1)}},
+			},
+			wantRows:  1,
+			wantDelim: "",
+		},
+		{
+			name: "invalid delimiter",
+			args: []Arg{
+				{Name: strPtr("delim"), Value: syntax.Spanned[Value]{V: Str("invalid")}},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scopes := NewScopes(nil)
+			vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+			args := &Args{
+				Span:  syntax.Detached(),
+				Items: tt.args,
+			}
+
+			result, err := matNative(vm, args)
+			if tt.wantErr {
+				if err == nil {
+					t.Error("Expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			content, ok := result.(ContentValue)
+			if !ok {
+				t.Fatalf("Expected ContentValue, got %T", result)
+			}
+
+			if len(content.Content.Elements) == 0 {
+				t.Fatal("Expected at least one element")
+			}
+
+			matrix, ok := content.Content.Elements[0].(*MathMatrixElement)
+			if !ok {
+				t.Fatalf("Expected MathMatrixElement, got %T", content.Content.Elements[0])
+			}
+
+			if len(matrix.Rows) != tt.wantRows {
+				t.Errorf("Got %d rows, want %d", len(matrix.Rows), tt.wantRows)
+			}
+
+			if matrix.Delim != tt.wantDelim {
+				t.Errorf("Got delim %q, want %q", matrix.Delim, tt.wantDelim)
+			}
+		})
+	}
+}
+
+// TestVecFunc tests the vec() vector function.
+func TestVecFunc(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []Arg
+		wantElements int
+		wantDelim    string
+		wantErr      bool
+	}{
+		{
+			name: "simple vector",
+			args: []Arg{
+				{Value: syntax.Spanned[Value]{V: Int(1)}},
+				{Value: syntax.Spanned[Value]{V: Int(2)}},
+				{Value: syntax.Spanned[Value]{V: Int(3)}},
+			},
+			wantElements: 3,
+			wantDelim:    "(",
+		},
+		{
+			name: "vector with bracket delimiters",
+			args: []Arg{
+				{Name: strPtr("delim"), Value: syntax.Spanned[Value]{V: Str("[")}},
+				{Value: syntax.Spanned[Value]{V: Int(1)}},
+				{Value: syntax.Spanned[Value]{V: Int(2)}},
+			},
+			wantElements: 2,
+			wantDelim:    "[",
+		},
+		{
+			name: "empty vector",
+			args: []Arg{},
+			wantElements: 0,
+			wantDelim:    "(",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scopes := NewScopes(nil)
+			vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+			args := &Args{
+				Span:  syntax.Detached(),
+				Items: tt.args,
+			}
+
+			result, err := vecNative(vm, args)
+			if tt.wantErr {
+				if err == nil {
+					t.Error("Expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			content, ok := result.(ContentValue)
+			if !ok {
+				t.Fatalf("Expected ContentValue, got %T", result)
+			}
+
+			if len(content.Content.Elements) == 0 {
+				t.Fatal("Expected at least one element")
+			}
+
+			vec, ok := content.Content.Elements[0].(*MathVecElement)
+			if !ok {
+				t.Fatalf("Expected MathVecElement, got %T", content.Content.Elements[0])
+			}
+
+			if len(vec.Elements) != tt.wantElements {
+				t.Errorf("Got %d elements, want %d", len(vec.Elements), tt.wantElements)
+			}
+
+			if vec.Delim != tt.wantDelim {
+				t.Errorf("Got delim %q, want %q", vec.Delim, tt.wantDelim)
+			}
+		})
+	}
+}
+
+// TestCasesFunc tests the cases() function for piecewise functions.
+func TestCasesFunc(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := &Args{
+		Span: syntax.Detached(),
+		Items: []Arg{
+			// First case: x, if x > 0
+			{Value: syntax.Spanned[Value]{V: ArrayValue{Str("x"), Str("if x > 0")}}},
+			// Second case: -x, if x <= 0
+			{Value: syntax.Spanned[Value]{V: ArrayValue{Str("-x"), Str("if x <= 0")}}},
+		},
+	}
+
+	result, err := casesNative(vm, args)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("Expected ContentValue, got %T", result)
+	}
+
+	if len(content.Content.Elements) == 0 {
+		t.Fatal("Expected at least one element")
+	}
+
+	// Cases produces a MathMatrixElement
+	matrix, ok := content.Content.Elements[0].(*MathMatrixElement)
+	if !ok {
+		t.Fatalf("Expected MathMatrixElement, got %T", content.Content.Elements[0])
+	}
+
+	if len(matrix.Rows) != 2 {
+		t.Errorf("Got %d rows, want 2", len(matrix.Rows))
+	}
+
+	// Default delimiter for cases is "{"
+	if matrix.Delim != "{" {
+		t.Errorf("Got delim %q, want \"{\"", matrix.Delim)
+	}
+}
+
+// TestParseMatrixRow tests the parseMatrixRow helper.
+func TestParseMatrixRow(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    Value
+		wantCols int
+	}{
+		{
+			name:     "array value",
+			value:    ArrayValue{Int(1), Int(2), Int(3)},
+			wantCols: 3,
+		},
+		{
+			name:     "content value",
+			value:    ContentValue{Content: Content{Elements: []ContentElement{&TextElement{Text: "x"}}}},
+			wantCols: 1,
+		},
+		{
+			name:     "int value",
+			value:    Int(42),
+			wantCols: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			row := parseMatrixRow(tt.value)
+			if len(row) != tt.wantCols {
+				t.Errorf("Got %d columns, want %d", len(row), tt.wantCols)
+			}
+		})
+	}
+}
+
+// TestMathMatrixElement tests the MathMatrixElement type.
+func TestMathMatrixElement(t *testing.T) {
+	elem := &MathMatrixElement{
+		Rows: [][]Content{
+			{{Elements: []ContentElement{&TextElement{Text: "1"}}}, {Elements: []ContentElement{&TextElement{Text: "2"}}}},
+			{{Elements: []ContentElement{&TextElement{Text: "3"}}}, {Elements: []ContentElement{&TextElement{Text: "4"}}}},
+		},
+		Delim: "[",
+	}
+
+	// Verify it implements ContentElement
+	var _ ContentElement = elem
+	elem.IsContentElement() // Should not panic
+
+	if len(elem.Rows) != 2 {
+		t.Errorf("Expected 2 rows, got %d", len(elem.Rows))
+	}
+	if len(elem.Rows[0]) != 2 {
+		t.Errorf("Expected 2 columns, got %d", len(elem.Rows[0]))
+	}
+	if elem.Delim != "[" {
+		t.Errorf("Expected delim [, got %s", elem.Delim)
+	}
+}
+
+// TestMathVecElement tests the MathVecElement type.
+func TestMathVecElement(t *testing.T) {
+	elem := &MathVecElement{
+		Elements: []Content{
+			{Elements: []ContentElement{&TextElement{Text: "x"}}},
+			{Elements: []ContentElement{&TextElement{Text: "y"}}},
+			{Elements: []ContentElement{&TextElement{Text: "z"}}},
+		},
+		Delim: "(",
+	}
+
+	// Verify it implements ContentElement
+	var _ ContentElement = elem
+	elem.IsContentElement() // Should not panic
+
+	if len(elem.Elements) != 3 {
+		t.Errorf("Expected 3 elements, got %d", len(elem.Elements))
+	}
+	if elem.Delim != "(" {
+		t.Errorf("Expected delim (, got %s", elem.Delim)
+	}
+}
+
