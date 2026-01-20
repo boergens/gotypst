@@ -1857,3 +1857,309 @@ func TestElementFunctionsIncludesListAndEnum(t *testing.T) {
 		t.Error("expected 'enum' in ElementFunctions()")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// Columns Tests
+// ----------------------------------------------------------------------------
+
+func TestColumnsFunc(t *testing.T) {
+	// Get the columns function
+	columnsFunc := ColumnsFunc()
+
+	if columnsFunc == nil {
+		t.Fatal("ColumnsFunc() returned nil")
+	}
+
+	if columnsFunc.Name == nil || *columnsFunc.Name != "columns" {
+		t.Errorf("expected function name 'columns', got %v", columnsFunc.Name)
+	}
+
+	// Verify it's a native function
+	_, ok := columnsFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Error("expected NativeFunc representation")
+	}
+}
+
+func TestColumnsNativeBasic(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create body content
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Column content"}},
+	}}
+
+	// Create args with just the body (default count: 2)
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+
+	result, err := columnsNative(vm, args)
+	if err != nil {
+		t.Fatalf("columnsNative() error: %v", err)
+	}
+
+	// Verify result is ContentValue
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	// Verify it contains one ColumnsElement
+	if len(content.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(content.Content.Elements))
+	}
+
+	columns, ok := content.Content.Elements[0].(*ColumnsElement)
+	if !ok {
+		t.Fatalf("expected *ColumnsElement, got %T", content.Content.Elements[0])
+	}
+
+	// Verify element properties (defaults)
+	if columns.Count != nil {
+		t.Errorf("Count = %v, want nil (default 2)", columns.Count)
+	}
+	if columns.Gutter != nil {
+		t.Errorf("Gutter = %v, want nil (default)", columns.Gutter)
+	}
+	if len(columns.Body.Elements) != 1 {
+		t.Errorf("Body elements = %d, want 1", len(columns.Body.Elements))
+	}
+}
+
+func TestColumnsNativeWithCount(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Column content"}},
+	}}
+
+	// Create args with count and body
+	args := NewArgs(syntax.Detached())
+	args.Push(Int(3), syntax.Detached())
+	args.Push(body, syntax.Detached())
+
+	result, err := columnsNative(vm, args)
+	if err != nil {
+		t.Fatalf("columnsNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	columns := content.Content.Elements[0].(*ColumnsElement)
+
+	if columns.Count == nil || *columns.Count != 3 {
+		t.Errorf("Count = %v, want 3", columns.Count)
+	}
+}
+
+func TestColumnsNativeWithNamedCount(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Column content"}},
+	}}
+
+	// Create args with named count and body
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("count", Int(4), syntax.Detached())
+	args.Push(body, syntax.Detached())
+
+	result, err := columnsNative(vm, args)
+	if err != nil {
+		t.Fatalf("columnsNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	columns := content.Content.Elements[0].(*ColumnsElement)
+
+	if columns.Count == nil || *columns.Count != 4 {
+		t.Errorf("Count = %v, want 4", columns.Count)
+	}
+}
+
+func TestColumnsNativeWithGutter(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Column content"}},
+	}}
+
+	// Create args with gutter and body
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("gutter", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
+	args.Push(body, syntax.Detached())
+
+	result, err := columnsNative(vm, args)
+	if err != nil {
+		t.Fatalf("columnsNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	columns := content.Content.Elements[0].(*ColumnsElement)
+
+	if columns.Gutter == nil || *columns.Gutter != 10 {
+		t.Errorf("Gutter = %v, want 10", columns.Gutter)
+	}
+}
+
+func TestColumnsNativeWithAllParams(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Full column layout"}},
+	}}
+
+	// Create args with all parameters
+	args := NewArgs(syntax.Detached())
+	args.Push(Int(5), syntax.Detached())
+	args.PushNamed("gutter", LengthValue{Length: Length{Points: 15}}, syntax.Detached())
+	args.Push(body, syntax.Detached())
+
+	result, err := columnsNative(vm, args)
+	if err != nil {
+		t.Fatalf("columnsNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	columns := content.Content.Elements[0].(*ColumnsElement)
+
+	if columns.Count == nil || *columns.Count != 5 {
+		t.Errorf("Count = %v, want 5", columns.Count)
+	}
+	if columns.Gutter == nil || *columns.Gutter != 15 {
+		t.Errorf("Gutter = %v, want 15", columns.Gutter)
+	}
+	if len(columns.Body.Elements) != 1 {
+		t.Errorf("Body elements = %d, want 1", len(columns.Body.Elements))
+	}
+}
+
+func TestColumnsNativeMissingBody(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("gutter", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
+
+	_, err := columnsNative(vm, args)
+	if err == nil {
+		t.Error("expected error for missing body argument")
+	}
+}
+
+func TestColumnsNativeWrongBodyType(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	args := NewArgs(syntax.Detached())
+	args.Push(Str("not content"), syntax.Detached())
+
+	_, err := columnsNative(vm, args)
+	if err == nil {
+		t.Error("expected error for wrong body type")
+	}
+	if _, ok := err.(*TypeMismatchError); !ok {
+		t.Errorf("expected TypeMismatchError, got %T", err)
+	}
+}
+
+func TestColumnsNativeInvalidCount(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+
+	// Test with count < 1
+	args := NewArgs(syntax.Detached())
+	args.Push(Int(0), syntax.Detached())
+	args.Push(body, syntax.Detached())
+
+	_, err := columnsNative(vm, args)
+	if err == nil {
+		t.Error("expected error for invalid count (0)")
+	}
+}
+
+func TestColumnsNativeUnexpectedArg(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	body := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Content"}},
+	}}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(body, syntax.Detached())
+	args.PushNamed("unknown", Str("value"), syntax.Detached())
+
+	_, err := columnsNative(vm, args)
+	if err == nil {
+		t.Error("expected error for unexpected argument")
+	}
+	if _, ok := err.(*UnexpectedArgumentError); !ok {
+		t.Errorf("expected UnexpectedArgumentError, got %T", err)
+	}
+}
+
+func TestColumnsElement(t *testing.T) {
+	// Test ColumnsElement struct and ContentElement interface
+	count := 3
+	gutter := 12.0
+	elem := &ColumnsElement{
+		Count:  &count,
+		Gutter: &gutter,
+		Body: Content{
+			Elements: []ContentElement{&TextElement{Text: "Column text"}},
+		},
+	}
+
+	if *elem.Count != 3 {
+		t.Errorf("Count = %v, want 3", *elem.Count)
+	}
+	if *elem.Gutter != 12.0 {
+		t.Errorf("Gutter = %v, want 12.0", *elem.Gutter)
+	}
+	if len(elem.Body.Elements) != 1 {
+		t.Errorf("Body elements = %d, want 1", len(elem.Body.Elements))
+	}
+
+	// Verify it satisfies ContentElement interface
+	var _ ContentElement = elem
+}
+
+// ----------------------------------------------------------------------------
+// Registration Tests for Columns
+// ----------------------------------------------------------------------------
+
+func TestRegisterElementFunctionsIncludesColumns(t *testing.T) {
+	scope := NewScope()
+	RegisterElementFunctions(scope)
+
+	// Verify columns function is registered
+	columnsBinding := scope.Get("columns")
+	if columnsBinding == nil {
+		t.Fatal("expected 'columns' to be registered")
+	}
+
+	columnsFunc, ok := columnsBinding.Value.(FuncValue)
+	if !ok {
+		t.Fatalf("expected FuncValue for columns, got %T", columnsBinding.Value)
+	}
+	if columnsFunc.Func.Name == nil || *columnsFunc.Func.Name != "columns" {
+		t.Errorf("expected function name 'columns', got %v", columnsFunc.Func.Name)
+	}
+}
+
+func TestElementFunctionsIncludesColumns(t *testing.T) {
+	funcs := ElementFunctions()
+
+	if _, ok := funcs["columns"]; !ok {
+		t.Error("expected 'columns' in ElementFunctions()")
+	}
+}
