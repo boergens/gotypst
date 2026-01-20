@@ -1155,6 +1155,742 @@ func columnsNative(vm *Vm, args *Args) (Value, error) {
 }
 
 // ----------------------------------------------------------------------------
+// Table Element
+// ----------------------------------------------------------------------------
+
+// TableFunc creates the table element function.
+func TableFunc() *Func {
+	name := "table"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: tableNative,
+			Info: &FuncInfo{
+				Name: "table",
+				Params: []ParamInfo{
+					{Name: "columns", Type: TypeArray, Default: None, Named: true},
+					{Name: "rows", Type: TypeArray, Default: None, Named: true},
+					{Name: "gutter", Type: TypeLength, Default: None, Named: true},
+					{Name: "column-gutter", Type: TypeLength, Default: None, Named: true},
+					{Name: "row-gutter", Type: TypeLength, Default: None, Named: true},
+					{Name: "fill", Type: TypeColor, Default: None, Named: true},
+					{Name: "align", Type: TypeStr, Default: None, Named: true},
+					{Name: "stroke", Type: TypeLength, Default: None, Named: true},
+					{Name: "inset", Type: TypeLength, Default: None, Named: true},
+					{Name: "children", Type: TypeContent, Named: false, Variadic: true},
+				},
+			},
+		},
+	}
+}
+
+// tableNative implements the table() function.
+// Creates a TableElement with the given configuration and children.
+//
+// Arguments:
+//   - columns (named, array or int, default: none): Column sizing specification
+//   - rows (named, array or int, default: none): Row sizing specification
+//   - gutter (named, length, default: none): Gap between cells
+//   - column-gutter (named, length, default: none): Gap between columns
+//   - row-gutter (named, length, default: none): Gap between rows
+//   - fill (named, color, default: none): Default cell background
+//   - align (named, alignment, default: none): Default cell alignment
+//   - stroke (named, stroke, default: none): Default cell border
+//   - inset (named, length, default: none): Default cell padding
+//   - children (positional, variadic, content): Table cells and content
+func tableNative(vm *Vm, args *Args) (Value, error) {
+	elem := &TableElement{}
+
+	// Get optional columns argument
+	if columnsArg := args.Find("columns"); columnsArg != nil {
+		if !IsNone(columnsArg.V) && !IsAuto(columnsArg.V) {
+			columns, err := parseTableSizing(columnsArg.V, columnsArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Columns = columns
+		}
+	}
+
+	// Get optional rows argument
+	if rowsArg := args.Find("rows"); rowsArg != nil {
+		if !IsNone(rowsArg.V) && !IsAuto(rowsArg.V) {
+			rows, err := parseTableSizing(rowsArg.V, rowsArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Rows = rows
+		}
+	}
+
+	// Get optional gutter argument
+	if gutterArg := args.Find("gutter"); gutterArg != nil {
+		if !IsNone(gutterArg.V) && !IsAuto(gutterArg.V) {
+			if lv, ok := gutterArg.V.(LengthValue); ok {
+				g := lv.Length.Points
+				elem.Gutter = &g
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      gutterArg.V.Type().String(),
+					Span:     gutterArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional column-gutter argument
+	if colGutterArg := args.Find("column-gutter"); colGutterArg != nil {
+		if !IsNone(colGutterArg.V) && !IsAuto(colGutterArg.V) {
+			if lv, ok := colGutterArg.V.(LengthValue); ok {
+				cg := lv.Length.Points
+				elem.ColumnGutter = &cg
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      colGutterArg.V.Type().String(),
+					Span:     colGutterArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional row-gutter argument
+	if rowGutterArg := args.Find("row-gutter"); rowGutterArg != nil {
+		if !IsNone(rowGutterArg.V) && !IsAuto(rowGutterArg.V) {
+			if lv, ok := rowGutterArg.V.(LengthValue); ok {
+				rg := lv.Length.Points
+				elem.RowGutter = &rg
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      rowGutterArg.V.Type().String(),
+					Span:     rowGutterArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional fill argument
+	if fillArg := args.Find("fill"); fillArg != nil {
+		if !IsNone(fillArg.V) && !IsAuto(fillArg.V) {
+			if cv, ok := fillArg.V.(ColorValue); ok {
+				elem.Fill = cv.Color
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "color or none",
+					Got:      fillArg.V.Type().String(),
+					Span:     fillArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional align argument
+	if alignArg := args.Find("align"); alignArg != nil {
+		if !IsNone(alignArg.V) && !IsAuto(alignArg.V) {
+			alignment, err := parseAlignment(alignArg.V, alignArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Align = &alignment
+		}
+	}
+
+	// Get optional stroke argument
+	if strokeArg := args.Find("stroke"); strokeArg != nil {
+		if !IsNone(strokeArg.V) && !IsAuto(strokeArg.V) {
+			stroke, err := parseTableStroke(strokeArg.V, strokeArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Stroke = stroke
+		}
+	}
+
+	// Get optional inset argument
+	if insetArg := args.Find("inset"); insetArg != nil {
+		if !IsNone(insetArg.V) && !IsAuto(insetArg.V) {
+			if lv, ok := insetArg.V.(LengthValue); ok {
+				ins := lv.Length.Points
+				elem.Inset = &ins
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      insetArg.V.Type().String(),
+					Span:     insetArg.Span,
+				}
+			}
+		}
+	}
+
+	// Collect remaining positional arguments as children
+	for {
+		childArg := args.Eat()
+		if childArg == nil {
+			break
+		}
+
+		if cv, ok := childArg.V.(ContentValue); ok {
+			elem.Children = append(elem.Children, cv.Content)
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "content",
+				Got:      childArg.V.Type().String(),
+				Span:     childArg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the TableElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// parseTableSizing parses a sizing specification from a Value.
+// Can be an integer (column count), array of sizes, or auto.
+func parseTableSizing(v Value, span syntax.Span) ([]TableSizing, error) {
+	// Handle integer (column/row count)
+	if i, ok := AsInt(v); ok {
+		count := int(i)
+		if count < 1 {
+			return nil, &ConstructorError{
+				Message: "table column/row count must be at least 1",
+				Span:    span,
+			}
+		}
+		result := make([]TableSizing, count)
+		for j := range result {
+			result[j] = TableSizing{Auto: true}
+		}
+		return result, nil
+	}
+
+	// Handle array of sizes
+	if arr, ok := AsArray(v); ok {
+		result := make([]TableSizing, len(arr))
+		for i, elem := range arr {
+			sizing, err := parseSingleSizing(elem, span)
+			if err != nil {
+				return nil, err
+			}
+			result[i] = sizing
+		}
+		return result, nil
+	}
+
+	// Handle single sizing value
+	sizing, err := parseSingleSizing(v, span)
+	if err != nil {
+		return nil, err
+	}
+	return []TableSizing{sizing}, nil
+}
+
+// parseSingleSizing parses a single sizing value.
+func parseSingleSizing(v Value, span syntax.Span) (TableSizing, error) {
+	// Auto
+	if IsAuto(v) {
+		return TableSizing{Auto: true}, nil
+	}
+
+	// Length
+	if lv, ok := v.(LengthValue); ok {
+		pts := lv.Length.Points
+		return TableSizing{Length: &pts}, nil
+	}
+
+	// Ratio
+	if rv, ok := v.(RatioValue); ok {
+		r := rv.Ratio.Value
+		return TableSizing{Ratio: &r}, nil
+	}
+
+	// Fraction
+	if fv, ok := v.(FractionValue); ok {
+		f := fv.Fraction.Value
+		return TableSizing{Fraction: &f}, nil
+	}
+
+	// Relative (treat as length)
+	if rv, ok := v.(RelativeValue); ok {
+		pts := rv.Relative.Abs.Points
+		return TableSizing{Length: &pts}, nil
+	}
+
+	return TableSizing{}, &TypeMismatchError{
+		Expected: "auto, length, ratio, or fraction",
+		Got:      v.Type().String(),
+		Span:     span,
+	}
+}
+
+// parseTableStroke parses a stroke specification from a Value.
+func parseTableStroke(v Value, span syntax.Span) (*TableStroke, error) {
+	// Handle length (just thickness)
+	if lv, ok := v.(LengthValue); ok {
+		thickness := lv.Length.Points
+		return &TableStroke{Thickness: &thickness}, nil
+	}
+
+	// Handle color
+	if cv, ok := v.(ColorValue); ok {
+		return &TableStroke{Paint: &cv.Color}, nil
+	}
+
+	// Handle dictionary for full stroke specification
+	if d, ok := AsDict(v); ok {
+		stroke := &TableStroke{}
+
+		if paintVal, found := d.Get("paint"); found {
+			if cv, ok := paintVal.(ColorValue); ok {
+				stroke.Paint = &cv.Color
+			}
+		}
+
+		if thicknessVal, found := d.Get("thickness"); found {
+			if lv, ok := thicknessVal.(LengthValue); ok {
+				thickness := lv.Length.Points
+				stroke.Thickness = &thickness
+			}
+		}
+
+		return stroke, nil
+	}
+
+	return nil, &TypeMismatchError{
+		Expected: "stroke (length, color, or dictionary)",
+		Got:      v.Type().String(),
+		Span:     span,
+	}
+}
+
+// TableCellFunc creates the table.cell element function.
+func TableCellFunc() *Func {
+	name := "table.cell"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: tableCellNative,
+			Info: &FuncInfo{
+				Name: "table.cell",
+				Params: []ParamInfo{
+					{Name: "body", Type: TypeContent, Named: false},
+					{Name: "x", Type: TypeInt, Default: None, Named: true},
+					{Name: "y", Type: TypeInt, Default: None, Named: true},
+					{Name: "colspan", Type: TypeInt, Default: Int(1), Named: true},
+					{Name: "rowspan", Type: TypeInt, Default: Int(1), Named: true},
+					{Name: "fill", Type: TypeColor, Default: None, Named: true},
+					{Name: "align", Type: TypeStr, Default: None, Named: true},
+					{Name: "stroke", Type: TypeLength, Default: None, Named: true},
+					{Name: "inset", Type: TypeLength, Default: None, Named: true},
+					{Name: "breakable", Type: TypeBool, Default: Auto, Named: true},
+				},
+			},
+		},
+	}
+}
+
+// tableCellNative implements the table.cell() function.
+// Creates a TableCellElement with the given body and options.
+//
+// Arguments:
+//   - body (positional, content): The cell content
+//   - x (named, int, default: none): Column position
+//   - y (named, int, default: none): Row position
+//   - colspan (named, int, default: 1): Number of columns to span
+//   - rowspan (named, int, default: 1): Number of rows to span
+//   - fill (named, color, default: none): Cell background
+//   - align (named, alignment, default: none): Cell alignment
+//   - stroke (named, stroke, default: none): Cell border
+//   - inset (named, length, default: none): Cell padding
+//   - breakable (named, bool, default: auto): Whether cell can break across pages
+func tableCellNative(vm *Vm, args *Args) (Value, error) {
+	// Get required body argument (can be positional or named)
+	bodyArg := args.Find("body")
+	if bodyArg == nil {
+		bodyArgSpanned, err := args.Expect("body")
+		if err != nil {
+			return nil, err
+		}
+		bodyArg = &bodyArgSpanned
+	}
+
+	var body Content
+	if cv, ok := bodyArg.V.(ContentValue); ok {
+		body = cv.Content
+	} else {
+		return nil, &TypeMismatchError{
+			Expected: "content",
+			Got:      bodyArg.V.Type().String(),
+			Span:     bodyArg.Span,
+		}
+	}
+
+	elem := &TableCellElement{
+		Body: body,
+	}
+
+	// Get optional x argument
+	if xArg := args.Find("x"); xArg != nil {
+		if !IsNone(xArg.V) && !IsAuto(xArg.V) {
+			xVal, ok := AsInt(xArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "integer or none",
+					Got:      xArg.V.Type().String(),
+					Span:     xArg.Span,
+				}
+			}
+			x := int(xVal)
+			elem.X = &x
+		}
+	}
+
+	// Get optional y argument
+	if yArg := args.Find("y"); yArg != nil {
+		if !IsNone(yArg.V) && !IsAuto(yArg.V) {
+			yVal, ok := AsInt(yArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "integer or none",
+					Got:      yArg.V.Type().String(),
+					Span:     yArg.Span,
+				}
+			}
+			y := int(yVal)
+			elem.Y = &y
+		}
+	}
+
+	// Get optional colspan argument (default: 1)
+	if colspanArg := args.Find("colspan"); colspanArg != nil {
+		if !IsNone(colspanArg.V) && !IsAuto(colspanArg.V) {
+			colspanVal, ok := AsInt(colspanArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "integer",
+					Got:      colspanArg.V.Type().String(),
+					Span:     colspanArg.Span,
+				}
+			}
+			colspan := int(colspanVal)
+			if colspan < 1 {
+				return nil, &ConstructorError{
+					Message: "colspan must be at least 1",
+					Span:    colspanArg.Span,
+				}
+			}
+			if colspan > 1 {
+				elem.Colspan = &colspan
+			}
+		}
+	}
+
+	// Get optional rowspan argument (default: 1)
+	if rowspanArg := args.Find("rowspan"); rowspanArg != nil {
+		if !IsNone(rowspanArg.V) && !IsAuto(rowspanArg.V) {
+			rowspanVal, ok := AsInt(rowspanArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "integer",
+					Got:      rowspanArg.V.Type().String(),
+					Span:     rowspanArg.Span,
+				}
+			}
+			rowspan := int(rowspanVal)
+			if rowspan < 1 {
+				return nil, &ConstructorError{
+					Message: "rowspan must be at least 1",
+					Span:    rowspanArg.Span,
+				}
+			}
+			if rowspan > 1 {
+				elem.Rowspan = &rowspan
+			}
+		}
+	}
+
+	// Get optional fill argument
+	if fillArg := args.Find("fill"); fillArg != nil {
+		if !IsNone(fillArg.V) && !IsAuto(fillArg.V) {
+			if cv, ok := fillArg.V.(ColorValue); ok {
+				elem.Fill = cv.Color
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "color or none",
+					Got:      fillArg.V.Type().String(),
+					Span:     fillArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional align argument
+	if alignArg := args.Find("align"); alignArg != nil {
+		if !IsNone(alignArg.V) && !IsAuto(alignArg.V) {
+			alignment, err := parseAlignment(alignArg.V, alignArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Align = &alignment
+		}
+	}
+
+	// Get optional stroke argument
+	if strokeArg := args.Find("stroke"); strokeArg != nil {
+		if !IsNone(strokeArg.V) && !IsAuto(strokeArg.V) {
+			stroke, err := parseTableStroke(strokeArg.V, strokeArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Stroke = stroke
+		}
+	}
+
+	// Get optional inset argument
+	if insetArg := args.Find("inset"); insetArg != nil {
+		if !IsNone(insetArg.V) && !IsAuto(insetArg.V) {
+			if lv, ok := insetArg.V.(LengthValue); ok {
+				ins := lv.Length.Points
+				elem.Inset = &ins
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or none",
+					Got:      insetArg.V.Type().String(),
+					Span:     insetArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional breakable argument (default: auto)
+	if breakableArg := args.Find("breakable"); breakableArg != nil {
+		if !IsAuto(breakableArg.V) && !IsNone(breakableArg.V) {
+			breakableVal, ok := AsBool(breakableArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "bool or auto",
+					Got:      breakableArg.V.Type().String(),
+					Span:     breakableArg.Span,
+				}
+			}
+			elem.Breakable = &breakableVal
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the TableCellElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// TableHlineFunc creates the table.hline element function.
+func TableHlineFunc() *Func {
+	name := "table.hline"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: tableHlineNative,
+			Info: &FuncInfo{
+				Name: "table.hline",
+				Params: []ParamInfo{
+					{Name: "y", Type: TypeInt, Default: None, Named: true},
+					{Name: "start", Type: TypeInt, Default: Int(0), Named: true},
+					{Name: "end", Type: TypeInt, Default: None, Named: true},
+					{Name: "stroke", Type: TypeLength, Default: None, Named: true},
+				},
+			},
+		},
+	}
+}
+
+// tableHlineNative implements the table.hline() function.
+func tableHlineNative(vm *Vm, args *Args) (Value, error) {
+	elem := &TableHlineElement{}
+
+	// Get optional y argument
+	if yArg := args.Find("y"); yArg != nil {
+		if !IsNone(yArg.V) && !IsAuto(yArg.V) {
+			yVal, ok := AsInt(yArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "integer or none",
+					Got:      yArg.V.Type().String(),
+					Span:     yArg.Span,
+				}
+			}
+			y := int(yVal)
+			elem.Y = &y
+		}
+	}
+
+	// Get optional start argument (default: 0)
+	if startArg := args.Find("start"); startArg != nil {
+		if !IsNone(startArg.V) && !IsAuto(startArg.V) {
+			startVal, ok := AsInt(startArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "integer",
+					Got:      startArg.V.Type().String(),
+					Span:     startArg.Span,
+				}
+			}
+			start := int(startVal)
+			if start > 0 {
+				elem.Start = &start
+			}
+		}
+	}
+
+	// Get optional end argument
+	if endArg := args.Find("end"); endArg != nil {
+		if !IsNone(endArg.V) && !IsAuto(endArg.V) {
+			endVal, ok := AsInt(endArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "integer or none",
+					Got:      endArg.V.Type().String(),
+					Span:     endArg.Span,
+				}
+			}
+			end := int(endVal)
+			elem.End = &end
+		}
+	}
+
+	// Get optional stroke argument
+	if strokeArg := args.Find("stroke"); strokeArg != nil {
+		if !IsNone(strokeArg.V) && !IsAuto(strokeArg.V) {
+			stroke, err := parseTableStroke(strokeArg.V, strokeArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Stroke = stroke
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// TableVlineFunc creates the table.vline element function.
+func TableVlineFunc() *Func {
+	name := "table.vline"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: tableVlineNative,
+			Info: &FuncInfo{
+				Name: "table.vline",
+				Params: []ParamInfo{
+					{Name: "x", Type: TypeInt, Default: None, Named: true},
+					{Name: "start", Type: TypeInt, Default: Int(0), Named: true},
+					{Name: "end", Type: TypeInt, Default: None, Named: true},
+					{Name: "stroke", Type: TypeLength, Default: None, Named: true},
+				},
+			},
+		},
+	}
+}
+
+// tableVlineNative implements the table.vline() function.
+func tableVlineNative(vm *Vm, args *Args) (Value, error) {
+	elem := &TableVlineElement{}
+
+	// Get optional x argument
+	if xArg := args.Find("x"); xArg != nil {
+		if !IsNone(xArg.V) && !IsAuto(xArg.V) {
+			xVal, ok := AsInt(xArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "integer or none",
+					Got:      xArg.V.Type().String(),
+					Span:     xArg.Span,
+				}
+			}
+			x := int(xVal)
+			elem.X = &x
+		}
+	}
+
+	// Get optional start argument (default: 0)
+	if startArg := args.Find("start"); startArg != nil {
+		if !IsNone(startArg.V) && !IsAuto(startArg.V) {
+			startVal, ok := AsInt(startArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "integer",
+					Got:      startArg.V.Type().String(),
+					Span:     startArg.Span,
+				}
+			}
+			start := int(startVal)
+			if start > 0 {
+				elem.Start = &start
+			}
+		}
+	}
+
+	// Get optional end argument
+	if endArg := args.Find("end"); endArg != nil {
+		if !IsNone(endArg.V) && !IsAuto(endArg.V) {
+			endVal, ok := AsInt(endArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "integer or none",
+					Got:      endArg.V.Type().String(),
+					Span:     endArg.Span,
+				}
+			}
+			end := int(endVal)
+			elem.End = &end
+		}
+	}
+
+	// Get optional stroke argument
+	if strokeArg := args.Find("stroke"); strokeArg != nil {
+		if !IsNone(strokeArg.V) && !IsAuto(strokeArg.V) {
+			stroke, err := parseTableStroke(strokeArg.V, strokeArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Stroke = stroke
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// ----------------------------------------------------------------------------
 // Library Registration
 // ----------------------------------------------------------------------------
 
@@ -1179,20 +1915,32 @@ func RegisterElementFunctions(scope *Scope) {
 	scope.DefineFunc("enum", EnumFunc())
 	// Register columns element function
 	scope.DefineFunc("columns", ColumnsFunc())
+	// Register table element function
+	scope.DefineFunc("table", TableFunc())
+	// Register table.cell element function
+	scope.DefineFunc("table.cell", TableCellFunc())
+	// Register table.hline element function
+	scope.DefineFunc("table.hline", TableHlineFunc())
+	// Register table.vline element function
+	scope.DefineFunc("table.vline", TableVlineFunc())
 }
 
 // ElementFunctions returns a map of all element function names to their functions.
 // This is useful for introspection and testing.
 func ElementFunctions() map[string]*Func {
 	return map[string]*Func{
-		"raw":      RawFunc(),
-		"par":      ParFunc(),
-		"parbreak": ParbreakFunc(),
-		"stack":    StackFunc(),
-		"align":    AlignFunc(),
-		"heading":  HeadingFunc(),
-		"list":     ListFunc(),
-		"enum":     EnumFunc(),
-		"columns":  ColumnsFunc(),
+		"raw":         RawFunc(),
+		"par":         ParFunc(),
+		"parbreak":    ParbreakFunc(),
+		"stack":       StackFunc(),
+		"align":       AlignFunc(),
+		"heading":     HeadingFunc(),
+		"list":        ListFunc(),
+		"enum":        EnumFunc(),
+		"columns":     ColumnsFunc(),
+		"table":       TableFunc(),
+		"table.cell":  TableCellFunc(),
+		"table.hline": TableHlineFunc(),
+		"table.vline": TableVlineFunc(),
 	}
 }
