@@ -291,6 +291,356 @@ func parbreakNative(vm *Vm, args *Args) (Value, error) {
 	}}, nil
 }
 
+// BoxFunc creates the box (inline container) element function.
+func BoxFunc() *Func {
+	name := "box"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: boxNative,
+			Info: &FuncInfo{
+				Name: "box",
+				Params: []ParamInfo{
+					{Name: "body", Type: TypeContent, Default: None, Named: false},
+					{Name: "width", Type: TypeAuto, Default: Auto, Named: true},
+					{Name: "height", Type: TypeAuto, Default: Auto, Named: true},
+					{Name: "baseline", Type: TypeRatio, Default: None, Named: true},
+					{Name: "fill", Type: TypeNone, Default: None, Named: true},
+					{Name: "stroke", Type: TypeNone, Default: None, Named: true},
+					{Name: "radius", Type: TypeLength, Default: None, Named: true},
+					{Name: "inset", Type: TypeLength, Default: None, Named: true},
+					{Name: "outset", Type: TypeLength, Default: None, Named: true},
+					{Name: "clip", Type: TypeBool, Default: False, Named: true},
+				},
+			},
+		},
+	}
+}
+
+// boxNative implements the box() function.
+// Creates a BoxElement - an inline container with optional styling.
+//
+// Arguments:
+//   - body (positional, content, default: none): The contents of the box
+//   - width (named, auto | relative | fraction, default: auto): The width
+//   - height (named, auto | relative, default: auto): The height
+//   - baseline (named, ratio, default: 0%): Baseline position
+//   - fill (named, none | color | gradient | tiling, default: none): Background fill
+//   - stroke (named, none | stroke, default: none): Border stroke
+//   - radius (named, relative | dict, default: 0pt): Corner radius
+//   - inset (named, relative | dict, default: 0pt): Inner padding
+//   - outset (named, relative | dict, default: 0pt): Outer expansion
+//   - clip (named, bool, default: false): Whether to clip content
+func boxNative(vm *Vm, args *Args) (Value, error) {
+	elem := &BoxElement{}
+
+	// Get optional body argument (positional or named)
+	if bodyArg := args.Find("body"); bodyArg != nil {
+		if !IsNone(bodyArg.V) {
+			if cv, ok := bodyArg.V.(ContentValue); ok {
+				elem.Body = cv.Content
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or none",
+					Got:      bodyArg.V.Type().String(),
+					Span:     bodyArg.Span,
+				}
+			}
+		}
+	} else if bodyArg := args.Eat(); bodyArg != nil {
+		if !IsNone(bodyArg.V) {
+			if cv, ok := bodyArg.V.(ContentValue); ok {
+				elem.Body = cv.Content
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or none",
+					Got:      bodyArg.V.Type().String(),
+					Span:     bodyArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional width argument
+	if widthArg := args.Find("width"); widthArg != nil {
+		if !IsAuto(widthArg.V) {
+			elem.Width = widthArg.V
+		}
+	}
+
+	// Get optional height argument
+	if heightArg := args.Find("height"); heightArg != nil {
+		if !IsAuto(heightArg.V) {
+			elem.Height = heightArg.V
+		}
+	}
+
+	// Get optional baseline argument
+	if baselineArg := args.Find("baseline"); baselineArg != nil {
+		if !IsNone(baselineArg.V) {
+			if rv, ok := baselineArg.V.(RatioValue); ok {
+				baseline := rv.Ratio.Value
+				elem.Baseline = &baseline
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "ratio or none",
+					Got:      baselineArg.V.Type().String(),
+					Span:     baselineArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional fill argument
+	if fillArg := args.Find("fill"); fillArg != nil {
+		if !IsNone(fillArg.V) {
+			elem.Fill = fillArg.V
+		}
+	}
+
+	// Get optional stroke argument
+	if strokeArg := args.Find("stroke"); strokeArg != nil {
+		if !IsNone(strokeArg.V) {
+			elem.Stroke = strokeArg.V
+		}
+	}
+
+	// Get optional radius argument
+	if radiusArg := args.Find("radius"); radiusArg != nil {
+		if !IsNone(radiusArg.V) {
+			elem.Radius = radiusArg.V
+		}
+	}
+
+	// Get optional inset argument
+	if insetArg := args.Find("inset"); insetArg != nil {
+		if !IsNone(insetArg.V) {
+			elem.Inset = insetArg.V
+		}
+	}
+
+	// Get optional outset argument
+	if outsetArg := args.Find("outset"); outsetArg != nil {
+		if !IsNone(outsetArg.V) {
+			elem.Outset = outsetArg.V
+		}
+	}
+
+	// Get optional clip argument
+	if clipArg := args.Find("clip"); clipArg != nil {
+		if cv, ok := AsBool(clipArg.V); ok {
+			elem.Clip = &cv
+		} else if !IsNone(clipArg.V) {
+			return nil, &TypeMismatchError{
+				Expected: "bool",
+				Got:      clipArg.V.Type().String(),
+				Span:     clipArg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the BoxElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// BlockFunc creates the block (block-level container) element function.
+func BlockFunc() *Func {
+	name := "block"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: blockNative,
+			Info: &FuncInfo{
+				Name: "block",
+				Params: []ParamInfo{
+					{Name: "body", Type: TypeContent, Default: None, Named: false},
+					{Name: "width", Type: TypeAuto, Default: Auto, Named: true},
+					{Name: "height", Type: TypeAuto, Default: Auto, Named: true},
+					{Name: "breakable", Type: TypeBool, Default: True, Named: true},
+					{Name: "fill", Type: TypeNone, Default: None, Named: true},
+					{Name: "stroke", Type: TypeNone, Default: None, Named: true},
+					{Name: "radius", Type: TypeLength, Default: None, Named: true},
+					{Name: "inset", Type: TypeLength, Default: None, Named: true},
+					{Name: "outset", Type: TypeLength, Default: None, Named: true},
+					{Name: "clip", Type: TypeBool, Default: False, Named: true},
+					{Name: "above", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "below", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "sticky", Type: TypeBool, Default: False, Named: true},
+				},
+			},
+		},
+	}
+}
+
+// blockNative implements the block() function.
+// Creates a BlockElement - a block-level container with optional styling.
+//
+// Arguments:
+//   - body (positional, content, default: none): The contents of the block
+//   - width (named, auto | relative, default: auto): The width
+//   - height (named, auto | relative | fraction, default: auto): The height
+//   - breakable (named, bool, default: true): Whether the block can break across pages
+//   - fill (named, none | color | gradient | tiling, default: none): Background fill
+//   - stroke (named, none | stroke, default: none): Border stroke
+//   - radius (named, relative | dict, default: 0pt): Corner radius
+//   - inset (named, relative | dict, default: 0pt): Inner padding
+//   - outset (named, relative | dict, default: 0pt): Outer expansion
+//   - clip (named, bool, default: false): Whether to clip content
+//   - above (named, relative | fraction | none, default: 1.2em): Space above
+//   - below (named, relative | fraction | none, default: 1.2em): Space below
+//   - sticky (named, bool, default: false): Whether to stick to following content
+func blockNative(vm *Vm, args *Args) (Value, error) {
+	elem := &BlockElement{}
+
+	// Get optional body argument (positional or named)
+	if bodyArg := args.Find("body"); bodyArg != nil {
+		if !IsNone(bodyArg.V) {
+			if cv, ok := bodyArg.V.(ContentValue); ok {
+				elem.Body = cv.Content
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or none",
+					Got:      bodyArg.V.Type().String(),
+					Span:     bodyArg.Span,
+				}
+			}
+		}
+	} else if bodyArg := args.Eat(); bodyArg != nil {
+		if !IsNone(bodyArg.V) {
+			if cv, ok := bodyArg.V.(ContentValue); ok {
+				elem.Body = cv.Content
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "content or none",
+					Got:      bodyArg.V.Type().String(),
+					Span:     bodyArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional width argument
+	if widthArg := args.Find("width"); widthArg != nil {
+		if !IsAuto(widthArg.V) {
+			elem.Width = widthArg.V
+		}
+	}
+
+	// Get optional height argument
+	if heightArg := args.Find("height"); heightArg != nil {
+		if !IsAuto(heightArg.V) {
+			elem.Height = heightArg.V
+		}
+	}
+
+	// Get optional breakable argument
+	if breakableArg := args.Find("breakable"); breakableArg != nil {
+		if bv, ok := AsBool(breakableArg.V); ok {
+			elem.Breakable = &bv
+		} else if !IsNone(breakableArg.V) {
+			return nil, &TypeMismatchError{
+				Expected: "bool",
+				Got:      breakableArg.V.Type().String(),
+				Span:     breakableArg.Span,
+			}
+		}
+	}
+
+	// Get optional fill argument
+	if fillArg := args.Find("fill"); fillArg != nil {
+		if !IsNone(fillArg.V) {
+			elem.Fill = fillArg.V
+		}
+	}
+
+	// Get optional stroke argument
+	if strokeArg := args.Find("stroke"); strokeArg != nil {
+		if !IsNone(strokeArg.V) {
+			elem.Stroke = strokeArg.V
+		}
+	}
+
+	// Get optional radius argument
+	if radiusArg := args.Find("radius"); radiusArg != nil {
+		if !IsNone(radiusArg.V) {
+			elem.Radius = radiusArg.V
+		}
+	}
+
+	// Get optional inset argument
+	if insetArg := args.Find("inset"); insetArg != nil {
+		if !IsNone(insetArg.V) {
+			elem.Inset = insetArg.V
+		}
+	}
+
+	// Get optional outset argument
+	if outsetArg := args.Find("outset"); outsetArg != nil {
+		if !IsNone(outsetArg.V) {
+			elem.Outset = outsetArg.V
+		}
+	}
+
+	// Get optional clip argument
+	if clipArg := args.Find("clip"); clipArg != nil {
+		if cv, ok := AsBool(clipArg.V); ok {
+			elem.Clip = &cv
+		} else if !IsNone(clipArg.V) {
+			return nil, &TypeMismatchError{
+				Expected: "bool",
+				Got:      clipArg.V.Type().String(),
+				Span:     clipArg.Span,
+			}
+		}
+	}
+
+	// Get optional above argument
+	if aboveArg := args.Find("above"); aboveArg != nil {
+		if !IsAuto(aboveArg.V) && !IsNone(aboveArg.V) {
+			elem.Above = aboveArg.V
+		}
+	}
+
+	// Get optional below argument
+	if belowArg := args.Find("below"); belowArg != nil {
+		if !IsAuto(belowArg.V) && !IsNone(belowArg.V) {
+			elem.Below = belowArg.V
+		}
+	}
+
+	// Get optional sticky argument
+	if stickyArg := args.Find("sticky"); stickyArg != nil {
+		if sv, ok := AsBool(stickyArg.V); ok {
+			elem.Sticky = &sv
+		} else if !IsNone(stickyArg.V) {
+			return nil, &TypeMismatchError{
+				Expected: "bool",
+				Got:      stickyArg.V.Type().String(),
+				Span:     stickyArg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the BlockElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
 // ----------------------------------------------------------------------------
 // Library Registration
 // ----------------------------------------------------------------------------
@@ -304,6 +654,10 @@ func RegisterElementFunctions(scope *Scope) {
 	scope.DefineFunc("par", ParFunc())
 	// Register parbreak element function
 	scope.DefineFunc("parbreak", ParbreakFunc())
+	// Register box element function
+	scope.DefineFunc("box", BoxFunc())
+	// Register block element function
+	scope.DefineFunc("block", BlockFunc())
 }
 
 // ElementFunctions returns a map of all element function names to their functions.
@@ -313,5 +667,7 @@ func ElementFunctions() map[string]*Func {
 		"raw":      RawFunc(),
 		"par":      ParFunc(),
 		"parbreak": ParbreakFunc(),
+		"box":      BoxFunc(),
+		"block":    BlockFunc(),
 	}
 }

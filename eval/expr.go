@@ -1977,6 +1977,87 @@ type SmartQuoteElement struct {
 
 func (*SmartQuoteElement) isContentElement() {}
 
+// BoxElement represents an inline container element.
+// It wraps content in a box that can have dimensions, fill, stroke, etc.
+type BoxElement struct {
+	// Body is the content inside the box.
+	Body Content
+	// Width is the box width (auto, length, relative, or fraction).
+	// If nil, uses default (auto).
+	Width Value
+	// Height is the box height (auto, length, or relative).
+	// If nil, uses default (auto).
+	Height Value
+	// Baseline is the baseline position as a ratio of height.
+	// If nil, uses default (0%).
+	Baseline *float64
+	// Fill is the background fill (color, gradient, or tiling).
+	// If nil, uses default (none).
+	Fill Value
+	// Stroke is the border stroke specification.
+	// If nil, uses default (none).
+	Stroke Value
+	// Radius is the corner radius (length or dict for per-corner values).
+	// If nil, uses default (0pt).
+	Radius Value
+	// Inset is the inner padding (length or dict for per-side values).
+	// If nil, uses default (0pt).
+	Inset Value
+	// Outset is the outer expansion (length or dict for per-side values).
+	// If nil, uses default (0pt).
+	Outset Value
+	// Clip determines whether to clip content to the box bounds.
+	// If nil, uses default (false).
+	Clip *bool
+}
+
+func (*BoxElement) isContentElement() {}
+
+// BlockElement represents a block-level container element.
+// It creates a block that can break across pages and has spacing.
+type BlockElement struct {
+	// Body is the content inside the block.
+	Body Content
+	// Width is the block width (auto, length, or relative).
+	// If nil, uses default (auto).
+	Width Value
+	// Height is the block height (auto, length, relative, or fraction).
+	// If nil, uses default (auto).
+	Height Value
+	// Breakable determines whether the block can break across pages.
+	// If nil, uses default (true).
+	Breakable *bool
+	// Fill is the background fill (color, gradient, or tiling).
+	// If nil, uses default (none).
+	Fill Value
+	// Stroke is the border stroke specification.
+	// If nil, uses default (none).
+	Stroke Value
+	// Radius is the corner radius (length or dict for per-corner values).
+	// If nil, uses default (0pt).
+	Radius Value
+	// Inset is the inner padding (length or dict for per-side values).
+	// If nil, uses default (0pt).
+	Inset Value
+	// Outset is the outer expansion (length or dict for per-side values).
+	// If nil, uses default (0pt).
+	Outset Value
+	// Clip determines whether to clip content to the block bounds.
+	// If nil, uses default (false).
+	Clip *bool
+	// Above is the spacing above the block (length, relative, fraction, or none).
+	// If nil, uses default (1.2em).
+	Above Value
+	// Below is the spacing below the block (length, relative, fraction, or none).
+	// If nil, uses default (1.2em).
+	Below Value
+	// Sticky determines whether the block sticks to following content.
+	// If nil, uses default (false).
+	Sticky *bool
+}
+
+func (*BlockElement) isContentElement() {}
+
 // ----------------------------------------------------------------------------
 // Error Types
 // ----------------------------------------------------------------------------
