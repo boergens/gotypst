@@ -649,6 +649,25 @@ func (d *Distributor) finalize(
 		}
 	}
 
+	// Position placed floats from the composer.
+	for _, pf := range d.composer.PlacedFloats() {
+		x := pf.Placed.AlignX.Position(size.Width - pf.Frame.Width())
+		var y layout.Abs
+		if pf.Placed.AlignY != nil {
+			// Top/bottom positioned float.
+			y = pf.Placed.AlignY.Position(size.Height - pf.Frame.Height())
+		} else {
+			// Inline float - position relative to current flow offset.
+			y = offset + ruler.Position(free)
+		}
+		delta := RelAxesToPoint(pf.Placed.Delta, size)
+		pos := layout.Point{X: x + delta.X, Y: y + delta.Y}
+		output.PushFrame(pos, pf.Frame)
+	}
+
+	// Clear placed floats for next region.
+	d.composer.ClearPlacedFloats()
+
 	return output, nil
 }
 
