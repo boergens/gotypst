@@ -225,18 +225,6 @@ func (g *ParagraphGrouping) Finalize(elements []eval.ContentElement) eval.Conten
 	}
 }
 
-// isInlineElement returns true if the element is inline-level.
-func isInlineElement(elem eval.ContentElement) bool {
-	switch elem.(type) {
-	case *eval.TextElement, *eval.StrongElement, *eval.EmphElement,
-		*eval.RawElement, *eval.LinkElement, *eval.RefElement,
-		*eval.LinebreakElement, *eval.SmartQuoteElement:
-		return true
-	default:
-		return false
-	}
-}
-
 // isBlockElement returns true if the element is block-level.
 func isBlockElement(elem eval.ContentElement) bool {
 	switch elem.(type) {
