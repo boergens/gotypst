@@ -178,6 +178,12 @@ func (gl *GridLayouter) measureAutoColumns(autoCols []int) error {
 		return nil
 	}
 
+	// Build a set of auto columns for quick lookup.
+	autoColSet := make(map[int]bool, len(autoCols))
+	for _, col := range autoCols {
+		autoColSet[col] = true
+	}
+
 	// For each auto column, find the maximum width needed by any cell.
 	for _, col := range autoCols {
 		var maxWidth layout.Abs
@@ -188,8 +194,7 @@ func (gl *GridLayouter) measureAutoColumns(autoCols []int) error {
 				continue
 			}
 
-			// Skip cells that span multiple columns - they don't contribute
-			// directly to a single column's width.
+			// Skip cells that span multiple columns - they're handled separately.
 			if cell.Colspan > 1 {
 				continue
 			}
@@ -208,6 +213,62 @@ func (gl *GridLayouter) measureAutoColumns(autoCols []int) error {
 		gl.RCols[col] = maxWidth
 	}
 
+	// Handle colspan cells: distribute their width requirements across spanned columns.
+	if err := gl.distributeColspanWidths(autoColSet); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// distributeColspanWidths handles cells that span multiple columns.
+// If a colspan cell's minimum width exceeds the sum of its spanned columns,
+// the extra width is distributed among auto columns in the span.
+func (gl *GridLayouter) distributeColspanWidths(autoColSet map[int]bool) error {
+	for row := 0; row < gl.Grid.RowCount; row++ {
+		for col := 0; col < gl.Grid.ColCount; col++ {
+			cell := gl.Grid.CellAt(col, row)
+			if cell == nil || cell.Colspan <= 1 {
+				continue
+			}
+
+			// Only process the cell once (at its origin).
+			if cell.X != col || cell.Y != row {
+				continue
+			}
+
+			// Measure the cell's minimum width.
+			cellWidth, err := gl.measureCellWidth(cell)
+			if err != nil {
+				return err
+			}
+
+			// Calculate current total width of spanned columns.
+			var spannedWidth layout.Abs
+			var autoColsInSpan []int
+			for c := col; c < col+cell.Colspan && c < gl.Grid.ColCount; c++ {
+				spannedWidth += gl.RCols[c]
+				if autoColSet[c] {
+					autoColsInSpan = append(autoColsInSpan, c)
+				}
+			}
+
+			// If the cell needs more width than currently available, distribute the excess.
+			if cellWidth > spannedWidth && len(autoColsInSpan) > 0 {
+				excess := cellWidth - spannedWidth
+				perCol := excess / layout.Abs(len(autoColsInSpan))
+				remainder := excess - perCol*layout.Abs(len(autoColsInSpan))
+
+				for i, c := range autoColsInSpan {
+					gl.RCols[c] += perCol
+					// Give remainder to the first column.
+					if i == 0 {
+						gl.RCols[c] += remainder
+					}
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -417,12 +478,65 @@ func (gl *GridLayouter) measureRowHeight(y int) (layout.Abs, error) {
 		// Multi-row cells are handled by rowspan tracking.
 	}
 
+	// Check for rowspans that end at this row and need more height.
+	extraHeight := gl.checkRowspanHeightRequirements(y)
+	if extraHeight > 0 {
+		maxHeight += extraHeight
+	}
+
 	// Minimum row height.
 	if maxHeight < 10 {
 		maxHeight = 10
 	}
 
 	return maxHeight, nil
+}
+
+// checkRowspanHeightRequirements checks if any rowspans ending at this row
+// need additional height to accommodate their content.
+// Returns the extra height needed for this row.
+func (gl *GridLayouter) checkRowspanHeightRequirements(y int) layout.Abs {
+	var extraHeight layout.Abs
+
+	for i := range gl.Rowspans {
+		rs := &gl.Rowspans[i]
+		endRow := rs.Y + rs.RowspanCount - 1
+
+		// Skip rowspans that don't end at this row.
+		if endRow != y {
+			continue
+		}
+
+		// Get the cell to measure its required height.
+		cell := gl.Grid.CellAt(rs.X, rs.Y)
+		if cell == nil {
+			continue
+		}
+
+		// Measure the cell's natural height.
+		cellHeight, err := gl.measureCellHeight(cell, rs.X)
+		if err != nil {
+			continue
+		}
+
+		// Calculate the total height of all rows in the span.
+		var spannedHeight layout.Abs
+		for row := rs.Y; row < y; row++ {
+			if h, ok := gl.RRows[gl.Current.RegionIdx].Heights[row]; ok {
+				spannedHeight += h
+			}
+		}
+
+		// If the cell needs more height, the excess goes to this final row.
+		if cellHeight > spannedHeight {
+			excess := cellHeight - spannedHeight
+			if excess > extraHeight {
+				extraHeight = excess
+			}
+		}
+	}
+
+	return extraHeight
 }
 
 // measureCellHeight measures the natural height of a cell.

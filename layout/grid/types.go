@@ -107,7 +107,11 @@ func (g *Grid) EntryAt(x, y int) Entry {
 	if x < 0 || x >= g.ColCount || y < 0 || y >= g.RowCount {
 		return nil
 	}
-	return g.Entries[y*g.ColCount+x]
+	idx := y*g.ColCount + x
+	if idx >= len(g.Entries) {
+		return nil
+	}
+	return g.Entries[idx]
 }
 
 // CellAt returns the cell at (x, y), or nil if the slot is empty or merged.
@@ -117,6 +121,95 @@ func (g *Grid) CellAt(x, y int) *Cell {
 		return ec.Cell
 	}
 	return nil
+}
+
+// ParentCellAt returns the cell that owns the slot at (x, y).
+// For EntryCell, returns the cell directly.
+// For EntryMerged, returns the parent cell.
+// Returns nil if the slot is empty or out of bounds.
+func (g *Grid) ParentCellAt(x, y int) *Cell {
+	entry := g.EntryAt(x, y)
+	if entry == nil {
+		return nil
+	}
+	switch e := entry.(type) {
+	case EntryCell:
+		return e.Cell
+	case EntryMerged:
+		return e.Parent
+	}
+	return nil
+}
+
+// PopulateEntries fills the Entries array based on the provided cells.
+// Each cell is placed at its (X, Y) position, and EntryMerged entries
+// are created for all positions covered by colspan/rowspan.
+// The Grid's Entries slice must be pre-allocated with size ColCount * RowCount.
+func (g *Grid) PopulateEntries(cells []*Cell) error {
+	// Clear existing entries.
+	for i := range g.Entries {
+		g.Entries[i] = nil
+	}
+
+	// Place each cell and its merged entries.
+	for _, cell := range cells {
+		if cell == nil {
+			continue
+		}
+
+		// Validate bounds.
+		if cell.X < 0 || cell.X >= g.ColCount || cell.Y < 0 || cell.Y >= g.RowCount {
+			continue // Skip out-of-bounds cells.
+		}
+
+		// Clamp colspan and rowspan to grid bounds.
+		colspan := cell.Colspan
+		if colspan < 1 {
+			colspan = 1
+		}
+		if cell.X+colspan > g.ColCount {
+			colspan = g.ColCount - cell.X
+		}
+
+		rowspan := cell.Rowspan
+		if rowspan < 1 {
+			rowspan = 1
+		}
+		if cell.Y+rowspan > g.RowCount {
+			rowspan = g.RowCount - cell.Y
+		}
+
+		// Place the cell at its origin.
+		originIdx := cell.Y*g.ColCount + cell.X
+		g.Entries[originIdx] = EntryCell{Cell: cell}
+
+		// Fill merged entries for the rest of the span.
+		for dy := 0; dy < rowspan; dy++ {
+			for dx := 0; dx < colspan; dx++ {
+				if dx == 0 && dy == 0 {
+					continue // Skip the origin.
+				}
+				idx := (cell.Y+dy)*g.ColCount + (cell.X + dx)
+				g.Entries[idx] = EntryMerged{Parent: cell}
+			}
+		}
+	}
+
+	return nil
+}
+
+// NewGrid creates a new grid with the specified dimensions and cells.
+// This is a convenience constructor that handles entry population.
+func NewGrid(cols, rows int, colSizing, rowSizing []Sizing, cells []*Cell) *Grid {
+	g := &Grid{
+		Cols:     colSizing,
+		Rows:     rowSizing,
+		Entries:  make([]Entry, cols*rows),
+		ColCount: cols,
+		RowCount: rows,
+	}
+	g.PopulateEntries(cells)
+	return g
 }
 
 // EffectiveRowCount returns the number of rows excluding trailing gutter.

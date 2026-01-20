@@ -316,3 +316,180 @@ func TestGrid_EntryAt(t *testing.T) {
 		t.Error("expected nil for out of bounds y")
 	}
 }
+
+// Tests for colspan/rowspan handling
+
+func TestGrid_PopulateEntries_Colspan(t *testing.T) {
+	// Create a 3x2 grid with a cell spanning 2 columns.
+	cell := &Cell{X: 0, Y: 0, Colspan: 2, Rowspan: 1}
+	cell2 := &Cell{X: 2, Y: 0, Colspan: 1, Rowspan: 1}
+	cell3 := &Cell{X: 0, Y: 1, Colspan: 1, Rowspan: 1}
+
+	grid := NewGrid(3, 2,
+		[]Sizing{SizingAuto{}, SizingAuto{}, SizingAuto{}},
+		[]Sizing{SizingAuto{}, SizingAuto{}},
+		[]*Cell{cell, cell2, cell3},
+	)
+
+	// Check that (0,0) has the cell.
+	if grid.CellAt(0, 0) != cell {
+		t.Error("expected cell at (0,0)")
+	}
+
+	// Check that (1,0) is merged into cell.
+	entry := grid.EntryAt(1, 0)
+	merged, ok := entry.(EntryMerged)
+	if !ok {
+		t.Errorf("expected EntryMerged at (1,0), got %T", entry)
+	} else if merged.Parent != cell {
+		t.Error("expected merged entry to point to cell")
+	}
+
+	// Check ParentCellAt works for merged positions.
+	parent := grid.ParentCellAt(1, 0)
+	if parent != cell {
+		t.Error("expected ParentCellAt(1,0) to return the spanning cell")
+	}
+
+	// Check that (2,0) has cell2.
+	if grid.CellAt(2, 0) != cell2 {
+		t.Error("expected cell2 at (2,0)")
+	}
+}
+
+func TestGrid_PopulateEntries_Rowspan(t *testing.T) {
+	// Create a 2x3 grid with a cell spanning 2 rows.
+	cell := &Cell{X: 0, Y: 0, Colspan: 1, Rowspan: 2}
+	cell2 := &Cell{X: 1, Y: 0, Colspan: 1, Rowspan: 1}
+
+	grid := NewGrid(2, 3,
+		[]Sizing{SizingAuto{}, SizingAuto{}},
+		[]Sizing{SizingAuto{}, SizingAuto{}, SizingAuto{}},
+		[]*Cell{cell, cell2},
+	)
+
+	// Check that (0,0) has the cell.
+	if grid.CellAt(0, 0) != cell {
+		t.Error("expected cell at (0,0)")
+	}
+
+	// Check that (0,1) is merged into cell.
+	entry := grid.EntryAt(0, 1)
+	merged, ok := entry.(EntryMerged)
+	if !ok {
+		t.Errorf("expected EntryMerged at (0,1), got %T", entry)
+	} else if merged.Parent != cell {
+		t.Error("expected merged entry to point to cell")
+	}
+
+	// Check ParentCellAt works for merged positions.
+	parent := grid.ParentCellAt(0, 1)
+	if parent != cell {
+		t.Error("expected ParentCellAt(0,1) to return the spanning cell")
+	}
+}
+
+func TestGrid_PopulateEntries_ColspanRowspan(t *testing.T) {
+	// Create a 3x3 grid with a cell spanning 2x2.
+	cell := &Cell{X: 0, Y: 0, Colspan: 2, Rowspan: 2}
+
+	grid := NewGrid(3, 3,
+		[]Sizing{SizingAuto{}, SizingAuto{}, SizingAuto{}},
+		[]Sizing{SizingAuto{}, SizingAuto{}, SizingAuto{}},
+		[]*Cell{cell},
+	)
+
+	// Check all 4 positions in the 2x2 span.
+	positions := [][2]int{{0, 0}, {1, 0}, {0, 1}, {1, 1}}
+	for _, pos := range positions {
+		parent := grid.ParentCellAt(pos[0], pos[1])
+		if parent != cell {
+			t.Errorf("expected ParentCellAt(%d,%d) to return cell", pos[0], pos[1])
+		}
+	}
+
+	// Check that (2,0) is nil (empty).
+	if grid.EntryAt(2, 0) != nil {
+		t.Error("expected nil at (2,0)")
+	}
+}
+
+func TestLineGenerator_HorizontalLines_WithRowspan(t *testing.T) {
+	// Create a 2x3 grid with a cell spanning rows 0-1 in column 0.
+	cell := &Cell{X: 0, Y: 0, Colspan: 1, Rowspan: 2}
+	grid := NewGrid(2, 3,
+		[]Sizing{SizingAuto{}, SizingAuto{}},
+		[]Sizing{SizingAuto{}, SizingAuto{}, SizingAuto{}},
+		[]*Cell{cell},
+	)
+	grid.Stroke = &Stroke{Thickness: 1}
+
+	rcols := []layout.Abs{50, 50}
+	rowHeights := map[int]layout.Abs{
+		0: 30,
+		1: 30,
+		2: 30,
+	}
+
+	lg := NewLineGenerator(grid, rcols, rowHeights, false)
+	segments := lg.GenerateHorizontalLines()
+
+	// Top line (y=0) should be full width (100).
+	// Line between row 0 and 1 (y=30) should be interrupted by the rowspan.
+	// Line between row 1 and 2 (y=60) should be interrupted by the rowspan.
+	// Bottom line (y=90) should be full width.
+
+	// Count segments - we should have more than 4 due to interruptions.
+	// Top: 1 segment (full width)
+	// y=30: 1 segment (only column 1, width 50)
+	// y=60: 1 segment (full width - rowspan ends here)
+	// Bottom: 1 segment (full width)
+
+	foundY30Interrupted := false
+	for _, seg := range segments {
+		if seg.Offset == 30 && seg.Length == 50 {
+			foundY30Interrupted = true
+		}
+	}
+
+	if !foundY30Interrupted {
+		t.Errorf("expected line at y=30 to be interrupted (length 50), segments: %v", segments)
+	}
+}
+
+func TestLineGenerator_VerticalLines_WithColspan(t *testing.T) {
+	// Create a 3x2 grid with a cell spanning columns 0-1 in row 0.
+	cell := &Cell{X: 0, Y: 0, Colspan: 2, Rowspan: 1}
+	grid := NewGrid(3, 2,
+		[]Sizing{SizingAuto{}, SizingAuto{}, SizingAuto{}},
+		[]Sizing{SizingAuto{}, SizingAuto{}},
+		[]*Cell{cell},
+	)
+	grid.Stroke = &Stroke{Thickness: 1}
+
+	rcols := []layout.Abs{50, 50, 50}
+	rowHeights := map[int]layout.Abs{
+		0: 30,
+		1: 30,
+	}
+
+	lg := NewLineGenerator(grid, rcols, rowHeights, false)
+	segments := lg.GenerateVerticalLines()
+
+	// Left line (x=0) should be full height (60).
+	// Line between col 0 and 1 (x=50) should be interrupted by the colspan.
+	// Line between col 1 and 2 (x=100) should be full height (colspan ends before col 2).
+	// Right line (x=150) should be full height.
+
+	// Check that the line at x=50 is interrupted (has length < 60).
+	foundX50Interrupted := false
+	for _, seg := range segments {
+		if seg.Offset == 50 && seg.Length < 60 {
+			foundX50Interrupted = true
+		}
+	}
+
+	if !foundX50Interrupted {
+		t.Errorf("expected line at x=50 to be interrupted, segments: %v", segments)
+	}
+}

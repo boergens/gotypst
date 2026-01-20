@@ -77,6 +77,7 @@ func (lg *LineGenerator) GenerateVerticalLines() []LineSegment {
 }
 
 // generateHLine generates horizontal line segments at the given y position.
+// The row parameter indicates which row boundary this line is at (0 = top of row 0).
 func (lg *LineGenerator) generateHLine(y, maxLength layout.Abs) []LineSegment {
 	// Determine the stroke for this line.
 	stroke := lg.Grid.Stroke
@@ -84,20 +85,101 @@ func (lg *LineGenerator) generateHLine(y, maxLength layout.Abs) []LineSegment {
 		return nil
 	}
 
-	// For now, generate a single segment across the full width.
-	// TODO: Implement proper segment generation with:
-	// - Interruptions for merged cells (colspan/rowspan blocking)
-	// - Stroke changes from cell overrides
-	// - Priority handling
+	// Determine which row boundary we're at.
+	rowBoundary := lg.findRowBoundary(y)
 
-	return []LineSegment{
-		{
+	// Generate segments, interrupting for cells that span this boundary.
+	return lg.generateHLineWithInterruptions(y, maxLength, rowBoundary, stroke)
+}
+
+// findRowBoundary finds the row boundary index for a given y position.
+// Returns the row index where the line appears BEFORE that row.
+// For y=0, returns 0 (before row 0).
+// For the bottom of all rows, returns RowCount.
+func (lg *LineGenerator) findRowBoundary(y layout.Abs) int {
+	if y == 0 {
+		return 0
+	}
+
+	accumulated := layout.Abs(0)
+	for row := 0; row < lg.Grid.RowCount; row++ {
+		accumulated += lg.RowHeights[row]
+		if accumulated >= y {
+			return row + 1
+		}
+	}
+	return lg.Grid.RowCount
+}
+
+// generateHLineWithInterruptions generates horizontal line segments,
+// breaking where cells span across the row boundary.
+func (lg *LineGenerator) generateHLineWithInterruptions(y, maxLength layout.Abs, rowBoundary int, stroke *Stroke) []LineSegment {
+	// If this is the top (row 0) or bottom (after last row), no interruptions.
+	if rowBoundary == 0 || rowBoundary >= lg.Grid.RowCount {
+		return []LineSegment{
+			{
+				Stroke:   stroke,
+				Offset:   y,
+				Length:   maxLength,
+				Priority: GridStrokePriority,
+			},
+		}
+	}
+
+	// Find cells that span across this boundary.
+	// A cell at row r with rowspan > 1 blocks the line between r and r+1, r+1 and r+2, etc.
+	var segments []LineSegment
+	x := layout.Abs(0)
+	segmentStart := layout.Abs(0)
+
+	for col := 0; col < lg.Grid.ColCount; col++ {
+		colWidth := lg.RCols[col]
+		blocked := false
+
+		// Check if any cell above this boundary spans into or through it.
+		for checkRow := 0; checkRow < rowBoundary; checkRow++ {
+			cell := lg.Grid.CellAt(col, checkRow)
+			if cell == nil {
+				continue
+			}
+			// A cell at (cell.X, cell.Y) with rowspan r spans rows cell.Y to cell.Y+r-1.
+			// It blocks the boundary between rows if cell.Y < rowBoundary <= cell.Y + rowspan.
+			if cell.Y < rowBoundary && cell.Y+cell.Rowspan > rowBoundary {
+				// Check if this cell actually covers this column.
+				if cell.X <= col && cell.X+cell.Colspan > col {
+					blocked = true
+					break
+				}
+			}
+		}
+
+		if blocked {
+			// End current segment if we have one.
+			if x > segmentStart {
+				segments = append(segments, LineSegment{
+					Stroke:   stroke,
+					Offset:   y,
+					Length:   x - segmentStart,
+					Priority: GridStrokePriority,
+				})
+			}
+			segmentStart = x + colWidth
+		}
+
+		x += colWidth
+	}
+
+	// Add final segment if any.
+	if x > segmentStart {
+		segments = append(segments, LineSegment{
 			Stroke:   stroke,
 			Offset:   y,
-			Length:   maxLength,
+			Length:   x - segmentStart,
 			Priority: GridStrokePriority,
-		},
+		})
 	}
+
+	return segments
 }
 
 // generateVLine generates vertical line segments at the given x position.
@@ -107,23 +189,108 @@ func (lg *LineGenerator) generateVLine(x, maxLength layout.Abs) []LineSegment {
 		return nil
 	}
 
+	// Determine which column boundary we're at.
+	colBoundary := lg.findColBoundary(x)
+
 	// Adjust x for RTL layout.
+	adjustedX := x
 	if lg.IsRTL {
 		totalWidth := layout.Abs(0)
 		for _, w := range lg.RCols {
 			totalWidth += w
 		}
-		x = totalWidth - x
+		adjustedX = totalWidth - x
 	}
 
-	return []LineSegment{
-		{
+	// Generate segments, interrupting for cells that span this boundary.
+	return lg.generateVLineWithInterruptions(adjustedX, maxLength, colBoundary, stroke)
+}
+
+// findColBoundary finds the column boundary index for a given x position.
+// Returns the column index where the line appears BEFORE that column.
+func (lg *LineGenerator) findColBoundary(x layout.Abs) int {
+	if x == 0 {
+		return 0
+	}
+
+	accumulated := layout.Abs(0)
+	for col := 0; col < lg.Grid.ColCount; col++ {
+		accumulated += lg.RCols[col]
+		if accumulated >= x {
+			return col + 1
+		}
+	}
+	return lg.Grid.ColCount
+}
+
+// generateVLineWithInterruptions generates vertical line segments,
+// breaking where cells span across the column boundary.
+func (lg *LineGenerator) generateVLineWithInterruptions(x, maxLength layout.Abs, colBoundary int, stroke *Stroke) []LineSegment {
+	// If this is the left (col 0) or right (after last col), no interruptions.
+	if colBoundary == 0 || colBoundary >= lg.Grid.ColCount {
+		return []LineSegment{
+			{
+				Stroke:   stroke,
+				Offset:   x,
+				Length:   maxLength,
+				Priority: GridStrokePriority,
+			},
+		}
+	}
+
+	// Find cells that span across this boundary.
+	var segments []LineSegment
+	y := layout.Abs(0)
+	segmentStart := layout.Abs(0)
+
+	for row := 0; row < lg.Grid.RowCount; row++ {
+		rowHeight := lg.RowHeights[row]
+		blocked := false
+
+		// Check if any cell to the left of this boundary spans into or through it.
+		for checkCol := 0; checkCol < colBoundary; checkCol++ {
+			cell := lg.Grid.CellAt(checkCol, row)
+			if cell == nil {
+				continue
+			}
+			// A cell at (cell.X, cell.Y) with colspan c spans columns cell.X to cell.X+c-1.
+			// It blocks the boundary if cell.X < colBoundary <= cell.X + colspan.
+			if cell.X < colBoundary && cell.X+cell.Colspan > colBoundary {
+				// Check if this cell actually covers this row.
+				if cell.Y <= row && cell.Y+cell.Rowspan > row {
+					blocked = true
+					break
+				}
+			}
+		}
+
+		if blocked {
+			// End current segment if we have one.
+			if y > segmentStart {
+				segments = append(segments, LineSegment{
+					Stroke:   stroke,
+					Offset:   x,
+					Length:   y - segmentStart,
+					Priority: GridStrokePriority,
+				})
+			}
+			segmentStart = y + rowHeight
+		}
+
+		y += rowHeight
+	}
+
+	// Add final segment if any.
+	if y > segmentStart {
+		segments = append(segments, LineSegment{
 			Stroke:   stroke,
 			Offset:   x,
-			Length:   maxLength,
+			Length:   y - segmentStart,
 			Priority: GridStrokePriority,
-		},
+		})
 	}
+
+	return segments
 }
 
 // GenerateAllLines generates all grid lines (horizontal and vertical).
