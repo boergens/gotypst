@@ -508,11 +508,21 @@ type Config struct {
 	// TODO: Add more configuration fields as needed
 }
 
+// PlacedFloat represents a float that has been laid out and is ready for placement.
+type PlacedFloat struct {
+	Placed *PlacedChild
+	Frame  Frame
+}
+
 // Composer handles flow composition including floats and footnotes.
 type Composer struct {
 	Engine *Engine
 	Work   *Work
 	Config *Config
+
+	// placedFloats holds floats that have been laid out and will be positioned
+	// in the output frame. These are tracked separately from queued floats.
+	placedFloats []PlacedFloat
 }
 
 // Footnotes processes footnotes discovered in a frame.
@@ -528,18 +538,127 @@ func (c *Composer) Footnotes(
 }
 
 // Float processes a floating placed child.
+// It lays out the float and either places it immediately or queues it
+// for subsequent regions if it doesn't fit.
 func (c *Composer) Float(
 	placed *PlacedChild,
 	regions *Regions,
 	clearance bool,
 	migratable bool,
 ) error {
-	// TODO: Implement float handling
+	// Skip if this float has already been processed (e.g., during relayout).
+	if _, ok := c.Work.Skips[placed.Location()]; ok {
+		return nil
+	}
+
+	// First, process any queued floats that might now fit.
+	if err := c.processQueuedFloats(regions); err != nil {
+		return err
+	}
+
+	// Layout the float at the base size.
+	frame, err := placed.Layout(c.Engine, regions.Base())
+	if err != nil {
+		return err
+	}
+
+	// Check if the float fits in the current region.
+	// For clearance, we need space after existing content.
+	requiredHeight := frame.Height()
+	if clearance {
+		requiredHeight += placed.Clearance
+	}
+
+	// Check if the float fits.
+	if regions.Size.Height.Fits(requiredHeight) {
+		// Float fits - place it.
+		c.placedFloats = append(c.placedFloats, PlacedFloat{
+			Placed: placed,
+			Frame:  frame,
+		})
+		c.Work.Skips[placed.Location()] = struct{}{}
+
+		// Reduce available height for inline floats (AlignY == nil).
+		// Top/bottom floats don't consume flow space.
+		if placed.AlignY == nil {
+			regions.Size.Height -= requiredHeight
+		}
+	} else if migratable && regions.MayProgress() {
+		// Float doesn't fit but can be queued for subsequent regions.
+		c.Work.Floats = append(c.Work.Floats, placed)
+	} else {
+		// Float doesn't fit and cannot be queued - place it anyway.
+		// This can happen when there's no room but we must proceed.
+		c.placedFloats = append(c.placedFloats, PlacedFloat{
+			Placed: placed,
+			Frame:  frame,
+		})
+		c.Work.Skips[placed.Location()] = struct{}{}
+	}
+
 	return nil
 }
 
+// processQueuedFloats attempts to place any queued floats that might now fit.
+func (c *Composer) processQueuedFloats(regions *Regions) error {
+	if len(c.Work.Floats) == 0 {
+		return nil
+	}
+
+	// Try to place queued floats.
+	remaining := make([]*PlacedChild, 0, len(c.Work.Floats))
+	for _, queued := range c.Work.Floats {
+		// Skip if already processed.
+		if _, ok := c.Work.Skips[queued.Location()]; ok {
+			continue
+		}
+
+		// Layout the float.
+		frame, err := queued.Layout(c.Engine, regions.Base())
+		if err != nil {
+			return err
+		}
+
+		// Check if it fits.
+		if regions.Size.Height.Fits(frame.Height()) {
+			c.placedFloats = append(c.placedFloats, PlacedFloat{
+				Placed: queued,
+				Frame:  frame,
+			})
+			c.Work.Skips[queued.Location()] = struct{}{}
+
+			// Reduce available height for inline floats.
+			if queued.AlignY == nil {
+				regions.Size.Height -= frame.Height()
+			}
+		} else {
+			// Still doesn't fit - keep in queue.
+			remaining = append(remaining, queued)
+		}
+	}
+	c.Work.Floats = remaining
+
+	return nil
+}
+
+// PlacedFloats returns the floats that have been placed in this composition.
+func (c *Composer) PlacedFloats() []PlacedFloat {
+	return c.placedFloats
+}
+
+// ClearPlacedFloats clears the list of placed floats.
+func (c *Composer) ClearPlacedFloats() {
+	c.placedFloats = nil
+}
+
 // InsertionWidth returns the width occupied by insertions (floats/footnotes).
+// This is used to ensure the output frame is wide enough to accommodate floats.
 func (c *Composer) InsertionWidth() layout.Abs {
-	// TODO: Implement insertion width calculation
-	return 0
+	var maxWidth layout.Abs
+	for _, pf := range c.placedFloats {
+		if pf.Frame.Width() > maxWidth {
+			maxWidth = pf.Frame.Width()
+		}
+	}
+	return maxWidth
 }
