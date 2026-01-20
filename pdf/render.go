@@ -140,6 +140,75 @@ func (r *Renderer) renderInlineFrameItem(cs *ContentStream, item inline.FinalFra
 	switch it := item.(type) {
 	case inline.FinalTextItem:
 		r.renderShapedText(cs, it.Text, pos, baseline)
+	case inline.FinalMathScriptItem:
+		r.renderMathScript(cs, it, pos, baseline)
+	case inline.FinalMathLimitsItem:
+		r.renderMathLimits(cs, it, pos, baseline)
+	}
+}
+
+// renderMathScript renders a math script item (superscript/subscript).
+func (r *Renderer) renderMathScript(cs *ContentStream, item inline.FinalMathScriptItem, pos layout.Point, baseline layout.Abs) {
+	// Render base content
+	if item.BaseFrame != nil {
+		r.RenderInlineFrame(cs, item.BaseFrame, pos)
+	}
+
+	// Calculate script X position
+	scriptX := pos.X + item.ScriptXOffset
+
+	// Render superscript (positioned above baseline)
+	if item.SuperFrame != nil {
+		superPos := layout.Point{
+			X: scriptX,
+			Y: pos.Y + item.SuperOffset,
+		}
+		r.RenderInlineFrame(cs, item.SuperFrame, superPos)
+	}
+
+	// Render subscript (positioned below baseline)
+	if item.SubFrame != nil {
+		subPos := layout.Point{
+			X: scriptX,
+			Y: pos.Y + item.SubOffset,
+		}
+		r.RenderInlineFrame(cs, item.SubFrame, subPos)
+	}
+
+	// Render prime marks if present
+	if item.Primes > 0 {
+		// Prime marks are typically rendered as characters after the base
+		// For now, we rely on them being part of the base or super content
+	}
+}
+
+// renderMathLimits renders a math limits item (operator with limits above/below).
+func (r *Renderer) renderMathLimits(cs *ContentStream, item inline.FinalMathLimitsItem, pos layout.Point, baseline layout.Abs) {
+	// Render upper limit (centered above nucleus)
+	if item.UpperFrame != nil {
+		upperPos := layout.Point{
+			X: pos.X + item.CenterX - item.UpperFrame.Size.Width/2,
+			Y: pos.Y + item.UpperOffset,
+		}
+		r.RenderInlineFrame(cs, item.UpperFrame, upperPos)
+	}
+
+	// Render nucleus (main operator)
+	if item.NucleusFrame != nil {
+		nucleusPos := layout.Point{
+			X: pos.X + item.CenterX - item.NucleusFrame.Size.Width/2,
+			Y: pos.Y,
+		}
+		r.RenderInlineFrame(cs, item.NucleusFrame, nucleusPos)
+	}
+
+	// Render lower limit (centered below nucleus)
+	if item.LowerFrame != nil {
+		lowerPos := layout.Point{
+			X: pos.X + item.CenterX - item.LowerFrame.Size.Width/2,
+			Y: pos.Y + item.LowerOffset,
+		}
+		r.RenderInlineFrame(cs, item.LowerFrame, lowerPos)
 	}
 }
 
