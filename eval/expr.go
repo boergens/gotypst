@@ -849,7 +849,12 @@ func evalFieldAccess(vm *Vm, e *syntax.FieldAccessExpr) (Value, error) {
 
 // getBuiltinMethod returns a built-in method for a value, or nil if not found.
 func getBuiltinMethod(target Value, name string) Value {
-	// Return nil for now - built-in methods will be implemented later
+	switch t := target.(type) {
+	case DictValue:
+		return getDictMethod(&t, name, syntax.Detached())
+	case *DictValue:
+		return getDictMethod(t, name, syntax.Detached())
+	}
 	return nil
 }
 

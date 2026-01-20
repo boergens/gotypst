@@ -444,6 +444,40 @@ func (d *DictValue) Keys() []string {
 	return keys
 }
 
+// Values returns the values in insertion order.
+func (d *DictValue) Values() []Value {
+	values := make([]Value, len(d.entries))
+	for i, e := range d.entries {
+		values[i] = e.Value
+	}
+	return values
+}
+
+// Pairs returns all key-value pairs in insertion order.
+func (d *DictValue) Pairs() []dictEntry {
+	pairs := make([]dictEntry, len(d.entries))
+	copy(pairs, d.entries)
+	return pairs
+}
+
+// Remove removes a key from the dictionary and returns its value.
+// Returns the removed value and true if the key was found, nil and false otherwise.
+func (d *DictValue) Remove(key string) (Value, bool) {
+	for i, e := range d.entries {
+		if e.Key == key {
+			value := e.Value
+			d.entries = append(d.entries[:i], d.entries[i+1:]...)
+			return value, true
+		}
+	}
+	return nil, false
+}
+
+// Clear removes all entries from the dictionary.
+func (d *DictValue) Clear() {
+	d.entries = nil
+}
+
 // ----------------------------------------------------------------------------
 // Callable Values
 // ----------------------------------------------------------------------------
