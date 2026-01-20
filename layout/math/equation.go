@@ -8,9 +8,9 @@ import (
 // This is the main entry point for equation layout.
 func LayoutEquation(elem *eval.EquationElement, fontSize Abs) *MathFrame {
 	// Determine the math style based on whether it's a block equation
-	style := TextStyle
+	style := StyleText
 	if elem.Block {
-		style = DisplayStyle
+		style = StyleDisplay
 	}
 
 	ctx := &MathContext{

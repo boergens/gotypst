@@ -35,11 +35,12 @@ type Point struct {
 // FrameEntry is a positioned item in a frame.
 type FrameEntry struct {
 	Pos  Point
-	Item FrameItem
+	Item MathFrameItem
 }
 
-// FrameItem represents an item that can be placed in a frame.
-type FrameItem interface {
+// MathFrameItem represents an item that can be placed in a math frame.
+// This is distinct from fragment.FrameItem which is used in FrameFragment.
+type MathFrameItem interface {
 	isMathFrameItem()
 }
 
@@ -72,7 +73,7 @@ type ChildFrame struct {
 func (ChildFrame) isMathFrameItem() {}
 
 // Push adds an item to the frame at the given position.
-func (f *MathFrame) Push(pos Point, item FrameItem) {
+func (f *MathFrame) Push(pos Point, item MathFrameItem) {
 	f.Items = append(f.Items, FrameEntry{Pos: pos, Item: item})
 }
 
@@ -101,43 +102,17 @@ type MathContext struct {
 	Cramped bool
 }
 
-// MathStyle represents the size style for math layout.
-type MathStyle int
-
-const (
-	// DisplayStyle is for display (block) equations.
-	DisplayStyle MathStyle = iota
-	// TextStyle is for inline equations.
-	TextStyle
-	// ScriptStyle is for first-level subscripts/superscripts.
-	ScriptStyle
-	// ScriptScriptStyle is for nested subscripts/superscripts.
-	ScriptScriptStyle
-)
-
 // FontSizeForStyle returns the font size for a given math style.
 func (ctx *MathContext) FontSizeForStyle(style MathStyle) Abs {
 	switch style {
-	case DisplayStyle, TextStyle:
+	case StyleDisplay, StyleText:
 		return ctx.FontSize
-	case ScriptStyle:
+	case StyleScript:
 		return ctx.FontSize * 0.7 // 70% of base size
-	case ScriptScriptStyle:
+	case StyleScriptScript:
 		return ctx.FontSize * 0.5 // 50% of base size
 	default:
 		return ctx.FontSize
-	}
-}
-
-// ScriptStyle returns the style to use for subscripts/superscripts.
-func (style MathStyle) ScriptStyle() MathStyle {
-	switch style {
-	case DisplayStyle, TextStyle:
-		return ScriptStyle
-	case ScriptStyle:
-		return ScriptScriptStyle
-	default:
-		return ScriptScriptStyle
 	}
 }
 

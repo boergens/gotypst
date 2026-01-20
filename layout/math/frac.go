@@ -36,7 +36,7 @@ func LayoutFrac(elem *eval.MathFracElement, ctx *MathContext, constants MathCons
 
 	// Calculate vertical positioning based on math style
 	var numShift, denomShift Abs
-	if ctx.Style == DisplayStyle {
+	if ctx.Style == StyleDisplay {
 		// Display style: larger gaps
 		numShift = constants.FractionNumeratorShiftUp.At(fontSize)
 		denomShift = constants.FractionDenominatorShiftDown.At(fontSize)
@@ -416,7 +416,7 @@ func LayoutRoot(elem *eval.MathRootElement, ctx *MathContext, constants MathCons
 	if len(elem.Index.Elements) > 0 {
 		indexCtx := &MathContext{
 			FontSize: ctx.FontSize,
-			Style:    ScriptScriptStyle,
+			Style:    StyleScriptScript,
 			Cramped:  true,
 		}
 		indexFrame := LayoutContent(&elem.Index, indexCtx, constants)

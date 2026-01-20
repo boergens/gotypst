@@ -22,6 +22,18 @@ func (s MathStyle) IsCramped() bool {
 	return false // For now, all styles are non-cramped
 }
 
+// ScriptStyle returns the style to use for subscripts/superscripts.
+func (s MathStyle) ScriptStyle() MathStyle {
+	switch s {
+	case StyleDisplay, StyleText:
+		return StyleScript
+	case StyleScript:
+		return StyleScriptScript
+	default:
+		return StyleScriptScript
+	}
+}
+
 // ScaledSize returns the font size multiplier for this style.
 func (s MathStyle) ScaledSize() float64 {
 	switch s {

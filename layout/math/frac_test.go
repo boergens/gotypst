@@ -31,7 +31,7 @@ func TestLayoutFrac(t *testing.T) {
 
 	ctx := &MathContext{
 		FontSize: Abs(12),
-		Style:    DisplayStyle,
+		Style:    StyleDisplay,
 		Cramped:  false,
 	}
 	constants := DefaultMathConstants()
@@ -92,7 +92,7 @@ func TestLayoutFracNested(t *testing.T) {
 
 	ctx := &MathContext{
 		FontSize: Abs(12),
-		Style:    DisplayStyle,
+		Style:    StyleDisplay,
 		Cramped:  false,
 	}
 	constants := DefaultMathConstants()
@@ -143,7 +143,7 @@ func TestLayoutFracDisplayVsInline(t *testing.T) {
 	// Display style
 	displayCtx := &MathContext{
 		FontSize: Abs(12),
-		Style:    DisplayStyle,
+		Style:    StyleDisplay,
 		Cramped:  false,
 	}
 	displayFrame := LayoutFrac(frac, displayCtx, constants)
@@ -151,7 +151,7 @@ func TestLayoutFracDisplayVsInline(t *testing.T) {
 	// Text (inline) style
 	textCtx := &MathContext{
 		FontSize: Abs(12),
-		Style:    TextStyle,
+		Style:    StyleText,
 		Cramped:  false,
 	}
 	textFrame := LayoutFrac(frac, textCtx, constants)
@@ -184,7 +184,7 @@ func TestLayoutFracEmptyContent(t *testing.T) {
 
 	ctx := &MathContext{
 		FontSize: Abs(12),
-		Style:    DisplayStyle,
+		Style:    StyleDisplay,
 		Cramped:  false,
 	}
 	constants := DefaultMathConstants()
@@ -213,7 +213,7 @@ func TestLayoutText(t *testing.T) {
 	text := &eval.TextElement{Text: "xyz"}
 	ctx := &MathContext{
 		FontSize: Abs(12),
-		Style:    TextStyle,
+		Style:    StyleText,
 		Cramped:  false,
 	}
 
@@ -250,7 +250,7 @@ func TestLayoutSymbol(t *testing.T) {
 	symbol := &eval.MathSymbolElement{Symbol: "alpha"}
 	ctx := &MathContext{
 		FontSize: Abs(12),
-		Style:    TextStyle,
+		Style:    StyleText,
 		Cramped:  false,
 	}
 
@@ -275,7 +275,7 @@ func TestLayoutHorizontal(t *testing.T) {
 
 	ctx := &MathContext{
 		FontSize: Abs(12),
-		Style:    TextStyle,
+		Style:    StyleText,
 		Cramped:  false,
 	}
 	constants := DefaultMathConstants()
@@ -320,7 +320,7 @@ func TestLayoutAttach(t *testing.T) {
 
 	ctx := &MathContext{
 		FontSize: Abs(12),
-		Style:    TextStyle,
+		Style:    StyleText,
 		Cramped:  false,
 	}
 	constants := DefaultMathConstants()
@@ -356,7 +356,7 @@ func TestLayoutRoot(t *testing.T) {
 
 	ctx := &MathContext{
 		FontSize: Abs(12),
-		Style:    TextStyle,
+		Style:    StyleText,
 		Cramped:  false,
 	}
 	constants := DefaultMathConstants()
@@ -389,7 +389,7 @@ func TestLayoutDelimited(t *testing.T) {
 
 	ctx := &MathContext{
 		FontSize: Abs(12),
-		Style:    TextStyle,
+		Style:    StyleText,
 		Cramped:  false,
 	}
 	constants := DefaultMathConstants()
@@ -495,10 +495,10 @@ func TestMathStyleScriptStyle(t *testing.T) {
 		input    MathStyle
 		expected MathStyle
 	}{
-		{DisplayStyle, ScriptStyle},
-		{TextStyle, ScriptStyle},
-		{ScriptStyle, ScriptScriptStyle},
-		{ScriptScriptStyle, ScriptScriptStyle},
+		{StyleDisplay, StyleScript},
+		{StyleText, StyleScript},
+		{StyleScript, StyleScriptScript},
+		{StyleScriptScript, StyleScriptScript},
 	}
 
 	for _, tt := range tests {
@@ -512,28 +512,28 @@ func TestMathStyleScriptStyle(t *testing.T) {
 func TestMathContextFontSizeForStyle(t *testing.T) {
 	ctx := &MathContext{
 		FontSize: Abs(12),
-		Style:    DisplayStyle,
+		Style:    StyleDisplay,
 	}
 
 	// Display and text styles should return base font size
-	if size := ctx.FontSizeForStyle(DisplayStyle); size != 12 {
-		t.Errorf("DisplayStyle font size = %v, want 12", size)
+	if size := ctx.FontSizeForStyle(StyleDisplay); size != 12 {
+		t.Errorf("StyleDisplay font size = %v, want 12", size)
 	}
-	if size := ctx.FontSizeForStyle(TextStyle); size != 12 {
-		t.Errorf("TextStyle font size = %v, want 12", size)
+	if size := ctx.FontSizeForStyle(StyleText); size != 12 {
+		t.Errorf("StyleText font size = %v, want 12", size)
 	}
 
 	// Script style should be 70% of base (use approximate comparison for floats)
-	scriptSize := ctx.FontSizeForStyle(ScriptStyle)
+	scriptSize := ctx.FontSizeForStyle(StyleScript)
 	expectedScript := Abs(12 * 0.7)
 	if !approxEqual(scriptSize, expectedScript) {
-		t.Errorf("ScriptStyle font size = %v, want %v", scriptSize, expectedScript)
+		t.Errorf("StyleScript font size = %v, want %v", scriptSize, expectedScript)
 	}
 
 	// ScriptScript style should be 50% of base
-	scriptScriptSize := ctx.FontSizeForStyle(ScriptScriptStyle)
+	scriptScriptSize := ctx.FontSizeForStyle(StyleScriptScript)
 	expectedScriptScript := Abs(12 * 0.5)
 	if !approxEqual(scriptScriptSize, expectedScriptScript) {
-		t.Errorf("ScriptScriptStyle font size = %v, want %v", scriptScriptSize, expectedScriptScript)
+		t.Errorf("StyleScriptScript font size = %v, want %v", scriptScriptSize, expectedScriptScript)
 	}
 }

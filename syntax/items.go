@@ -19,6 +19,9 @@ func ArgFromNode(node *SyntaxNode) Arg {
 		return &SpreadArg{node: node}
 	case Named:
 		return &NamedArg{node: node}
+	// Skip tokens that are not valid arguments
+	case Space, Comma, LeftParen, RightParen, LeftBracket, RightBracket, LeftBrace, RightBrace, Hash:
+		return nil
 	default:
 		expr := ExprFromNode(node)
 		if expr != nil {
@@ -106,6 +109,9 @@ func ArrayItemFromNode(node *SyntaxNode) ArrayItem {
 	switch node.Kind() {
 	case Spread:
 		return &ArraySpreadItem{node: node}
+	// Skip tokens that are not valid array items
+	case Space, Comma, LeftParen, RightParen, LeftBracket, RightBracket, LeftBrace, RightBrace, Hash:
+		return nil
 	default:
 		expr := ExprFromNode(node)
 		if expr != nil {

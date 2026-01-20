@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/boergens/gotypst/eval"
 	"github.com/boergens/gotypst/syntax"
 )
 
@@ -246,6 +247,13 @@ func (r *TestRunner) RunTest(tc *TestCase) *TestResult {
 		result.Errors = append(result.Errors, err.Message)
 	}
 
+	// If there are no parse errors and we expect runtime errors,
+	// evaluate the code to capture runtime errors
+	if len(result.Errors) == 0 && len(tc.Errors) > 0 {
+		evalErrors := r.evaluateCode(root)
+		result.Errors = append(result.Errors, evalErrors...)
+	}
+
 	// Validate expected errors
 	if len(tc.Errors) > 0 {
 		// Check if we got the expected errors
@@ -276,6 +284,31 @@ func (r *TestRunner) RunTest(tc *TestCase) *TestResult {
 	}
 
 	return result
+}
+
+// evaluateCode evaluates the parsed syntax tree and returns any runtime errors.
+func (r *TestRunner) evaluateCode(root *syntax.SyntaxNode) []string {
+	var errors []string
+
+	// Create a minimal VM for evaluation
+	scopes := eval.NewScopes(nil)
+	vm := eval.NewVm(nil, eval.NewContext(), scopes, syntax.Detached())
+
+	// Convert to MarkupNode and get expressions
+	markup := syntax.MarkupNodeFromNode(root)
+	if markup == nil {
+		return errors
+	}
+
+	exprs := markup.Exprs()
+	for _, expr := range exprs {
+		_, err := eval.EvalExpr(vm, expr)
+		if err != nil {
+			errors = append(errors, err.Error())
+		}
+	}
+
+	return errors
 }
 
 // collectTokens recursively collects leaf tokens from a syntax tree.
