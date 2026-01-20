@@ -28,6 +28,9 @@ type World interface {
 	// Font returns font data by index.
 	Font(index int) (Font, error)
 
+	// FontCount returns the number of available fonts.
+	FontCount() int
+
 	// Today returns the current date.
 	Today(offset *int) Date
 }
@@ -61,8 +64,33 @@ type Source struct {
 // Library represents the standard library.
 type Library interface{}
 
-// Font represents font data.
-type Font interface{}
+// Font represents loaded font data that can be used for text shaping.
+//
+// Implementations should provide access to the underlying font face
+// for text shaping and metadata for font selection.
+type Font interface {
+	// Family returns the font family name.
+	Family() string
+
+	// Style returns the font style (normal, italic, oblique).
+	Style() FontStyle
+
+	// Weight returns the font weight (100-900).
+	Weight() int
+
+	// Face returns the underlying font face for text shaping.
+	// The returned value should be compatible with go-text/typesetting.
+	Face() interface{}
+}
+
+// FontStyle represents font style.
+type FontStyle uint8
+
+const (
+	FontStyleNormal  FontStyle = iota // Upright
+	FontStyleItalic                   // Italic
+	FontStyleOblique                  // Oblique (slanted)
+)
 
 // Date represents a date value.
 type Date struct {
