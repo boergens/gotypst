@@ -505,14 +505,16 @@ func (w *Work) Clone() Work {
 // Config holds shared flow configuration.
 type Config struct {
 	Mode FlowMode
-	// TODO: Add more configuration fields as needed
+	// Footnotes holds footnote configuration.
+	Footnotes FootnoteConfig
 }
 
 // Composer handles flow composition including floats and footnotes.
 type Composer struct {
-	Engine *Engine
-	Work   *Work
-	Config *Config
+	Engine         *Engine
+	Work           *Work
+	Config         *Config
+	FootnoteState  *FootnoteState
 }
 
 // Footnotes processes footnotes discovered in a frame.
@@ -523,8 +525,17 @@ func (c *Composer) Footnotes(
 	breakable bool,
 	migratable bool,
 ) error {
-	// TODO: Implement footnote handling
-	return nil
+	// Only handle footnotes in root mode
+	if c.Config == nil || c.Config.Mode != FlowModeRoot {
+		return nil
+	}
+
+	// Initialize footnote state if needed
+	if c.FootnoteState == nil {
+		c.FootnoteState = NewFootnoteState(c.Config.Footnotes)
+	}
+
+	return processFootnotes(c.FootnoteState, regions, frame, flowNeed, breakable, migratable)
 }
 
 // Float processes a floating placed child.
@@ -540,6 +551,42 @@ func (c *Composer) Float(
 
 // InsertionWidth returns the width occupied by insertions (floats/footnotes).
 func (c *Composer) InsertionWidth() layout.Abs {
-	// TODO: Implement insertion width calculation
-	return 0
+	var width layout.Abs
+	// Include footnote width if any
+	if c.FootnoteState != nil {
+		fnWidth := c.FootnoteState.Width()
+		if fnWidth > width {
+			width = fnWidth
+		}
+	}
+	return width
+}
+
+// FootnoteHeight returns the height needed for footnotes in the current region.
+func (c *Composer) FootnoteHeight() layout.Abs {
+	if c.FootnoteState == nil {
+		return 0
+	}
+	return c.FootnoteState.Height()
+}
+
+// FinalizeFootnotes produces a frame containing all footnotes for the current region.
+// Returns nil if there are no footnotes to place.
+func (c *Composer) FinalizeFootnotes(width layout.Abs) *Frame {
+	if c.FootnoteState == nil {
+		return nil
+	}
+	return c.FootnoteState.Finalize(width)
+}
+
+// HasPendingFootnotes returns true if there are footnotes waiting to be placed.
+func (c *Composer) HasPendingFootnotes() bool {
+	return c.FootnoteState != nil && len(c.FootnoteState.Pending) > 0
+}
+
+// ResetFootnotes clears footnote state for a new region while preserving pending footnotes.
+func (c *Composer) ResetFootnotes() {
+	if c.FootnoteState != nil {
+		c.FootnoteState.Reset()
+	}
 }

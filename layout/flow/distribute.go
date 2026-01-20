@@ -649,6 +649,18 @@ func (d *Distributor) finalize(
 		}
 	}
 
+	// Add footnotes at the bottom of the frame if in root mode
+	if d.composer.Config != nil && d.composer.Config.Mode == FlowModeRoot {
+		if fnFrame := d.composer.FinalizeFootnotes(size.Width); fnFrame != nil {
+			// Position footnotes at the bottom of the region
+			fnY := size.Height - fnFrame.Height()
+			output.PushFrame(layout.Point{X: 0, Y: fnY}, *fnFrame)
+
+			// Reset footnote state for the next region
+			d.composer.ResetFootnotes()
+		}
+	}
+
 	return output, nil
 }
 
