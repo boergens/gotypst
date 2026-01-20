@@ -126,6 +126,66 @@ func (s *SkipItem) Textual() string {
 	return s.Content
 }
 
+// MathScriptItem represents a base with superscript/subscript attachments.
+// This is used for math expressions like x^2, x_i, or x^2_i.
+type MathScriptItem struct {
+	// Base is the base content frame.
+	Base *FinalFrame
+	// Superscript is the superscript frame (may be nil).
+	Superscript *FinalFrame
+	// Subscript is the subscript frame (may be nil).
+	Subscript *FinalFrame
+	// Primes is the number of prime marks to render.
+	Primes int
+	// width is the computed total width.
+	width Abs
+	// height is the computed total height.
+	height Abs
+	// baseline is the distance from top to baseline.
+	baseline Abs
+}
+
+func (*MathScriptItem) isItem() {}
+
+// NaturalWidth returns the total width of the script item.
+func (m *MathScriptItem) NaturalWidth() Abs {
+	return m.width
+}
+
+// Textual returns a placeholder for script content.
+func (m *MathScriptItem) Textual() string {
+	return "\uFFFC" // Object replacement character
+}
+
+// MathLimitsItem represents an operator with limits above/below.
+// This is used for operators like ∑, ∏, ∫ with limits.
+type MathLimitsItem struct {
+	// Nucleus is the main operator frame.
+	Nucleus *FinalFrame
+	// Upper is the upper limit frame (may be nil).
+	Upper *FinalFrame
+	// Lower is the lower limit frame (may be nil).
+	Lower *FinalFrame
+	// width is the computed total width.
+	width Abs
+	// height is the computed total height.
+	height Abs
+	// baseline is the distance from top to baseline.
+	baseline Abs
+}
+
+func (*MathLimitsItem) isItem() {}
+
+// NaturalWidth returns the total width of the limits item.
+func (m *MathLimitsItem) NaturalWidth() Abs {
+	return m.width
+}
+
+// Textual returns a placeholder for limits content.
+func (m *MathLimitsItem) Textual() string {
+	return "\uFFFC" // Object replacement character
+}
+
 // Dash represents a dash at the end of a line.
 type Dash int
 

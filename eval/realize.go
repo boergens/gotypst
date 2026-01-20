@@ -73,6 +73,8 @@ func ElementName(elem ContentElement) string {
 		return "math.align-point"
 	case *MathSymbolElement:
 		return "math.symbol"
+	case *MathLimitsElement:
+		return "math.limits"
 
 	default:
 		return ""
@@ -610,6 +612,25 @@ func realizeChildren(elem ContentElement, styles *Styles, vm *Vm) (ContentElemen
 			return nil, err
 		}
 		return &MathDelimitedElement{Open: e.Open, Close: e.Close, Body: realized}, nil
+
+	case *MathLimitsElement:
+		nucleusRealized, err := RealizeWithOptions(e.Nucleus, styles, vm, RealizeOptions{Kind: RealizeMath})
+		if err != nil {
+			return nil, err
+		}
+		upperRealized, err := RealizeWithOptions(e.Upper, styles, vm, RealizeOptions{Kind: RealizeMath})
+		if err != nil {
+			return nil, err
+		}
+		lowerRealized, err := RealizeWithOptions(e.Lower, styles, vm, RealizeOptions{Kind: RealizeMath})
+		if err != nil {
+			return nil, err
+		}
+		return &MathLimitsElement{
+			Nucleus: nucleusRealized,
+			Upper:   upperRealized,
+			Lower:   lowerRealized,
+		}, nil
 
 	default:
 		// Element has no children to realize

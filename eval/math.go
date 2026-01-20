@@ -71,6 +71,19 @@ type MathAlignElement struct{}
 
 func (*MathAlignElement) IsContentElement() {}
 
+// MathLimitsElement represents an operator with limits above and below.
+// This is used for operators like ∑, ∏, ∫ with limits positioning.
+type MathLimitsElement struct {
+	// Nucleus is the main operator content.
+	Nucleus Content
+	// Upper is the upper limit content (may be empty).
+	Upper Content
+	// Lower is the lower limit content (may be empty).
+	Lower Content
+}
+
+func (*MathLimitsElement) IsContentElement() {}
+
 // MathSymbolElement represents a math symbol.
 type MathSymbolElement struct {
 	// Symbol is the symbol text.

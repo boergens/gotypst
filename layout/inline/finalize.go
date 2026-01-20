@@ -52,6 +52,44 @@ type FinalTextItem struct {
 
 func (FinalTextItem) isFinalFrameItem() {}
 
+// FinalMathScriptItem represents a math script (sub/superscript) in a frame.
+type FinalMathScriptItem struct {
+	// BaseFrame contains the base content.
+	BaseFrame *FinalFrame
+	// SuperFrame contains the superscript content (may be nil).
+	SuperFrame *FinalFrame
+	// SubFrame contains the subscript content (may be nil).
+	SubFrame *FinalFrame
+	// SuperOffset is the Y offset for the superscript (negative = up).
+	SuperOffset Abs
+	// SubOffset is the Y offset for the subscript (positive = down).
+	SubOffset Abs
+	// ScriptXOffset is the X offset where scripts start (after base).
+	ScriptXOffset Abs
+	// Primes is the number of prime marks.
+	Primes int
+}
+
+func (FinalMathScriptItem) isFinalFrameItem() {}
+
+// FinalMathLimitsItem represents a math operator with limits in a frame.
+type FinalMathLimitsItem struct {
+	// NucleusFrame contains the operator content.
+	NucleusFrame *FinalFrame
+	// UpperFrame contains the upper limit content (may be nil).
+	UpperFrame *FinalFrame
+	// LowerFrame contains the lower limit content (may be nil).
+	LowerFrame *FinalFrame
+	// UpperOffset is the Y position of the upper limit.
+	UpperOffset Abs
+	// LowerOffset is the Y position of the lower limit.
+	LowerOffset Abs
+	// CenterX is the X position to center limits.
+	CenterX Abs
+}
+
+func (FinalMathLimitsItem) isFinalFrameItem() {}
+
 // Push adds an item to the frame.
 func (f *FinalFrame) Push(pos FinalPoint, item FinalFrameItem) {
 	f.Items = append(f.Items, FinalFrameEntry{Pos: pos, Item: item})

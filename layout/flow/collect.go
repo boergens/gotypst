@@ -132,6 +132,18 @@ func (c *Collector) collectElement(elem eval.ContentElement) {
 	// Math elements
 	case *eval.EquationElement:
 		c.collectEquation(e)
+	case *eval.MathAttachElement:
+		c.collectMathAttach(e)
+	case *eval.MathFracElement:
+		c.collectMathFrac(e)
+	case *eval.MathRootElement:
+		c.collectMathRoot(e)
+	case *eval.MathDelimitedElement:
+		c.collectMathDelimited(e)
+	case *eval.MathLimitsElement:
+		c.collectMathLimits(e)
+	case *eval.MathSymbolElement:
+		c.collectMathSymbol(e)
 
 	// Smart quotes
 	case *eval.SmartQuoteElement:
@@ -322,6 +334,59 @@ func (c *Collector) collectEquation(elem *eval.EquationElement) {
 		})
 	}
 	// Inline math is handled as part of paragraph content.
+	// Collect the body content for inline equations.
+	c.collectContent(&elem.Body)
+	c.lastWasSpacing = false
+}
+
+// collectMathAttach handles subscript/superscript attachments.
+func (c *Collector) collectMathAttach(elem *eval.MathAttachElement) {
+	// Math attachments are inline elements.
+	// First collect the base content.
+	c.collectContent(&elem.Base)
+	// Then collect subscript and superscript content.
+	// These are positioned relative to the base during inline layout.
+	c.collectContent(&elem.Subscript)
+	c.collectContent(&elem.Superscript)
+	c.lastWasSpacing = false
+}
+
+// collectMathFrac handles fraction elements.
+func (c *Collector) collectMathFrac(elem *eval.MathFracElement) {
+	// Fractions are inline math elements.
+	c.collectContent(&elem.Num)
+	c.collectContent(&elem.Denom)
+	c.lastWasSpacing = false
+}
+
+// collectMathRoot handles root elements.
+func (c *Collector) collectMathRoot(elem *eval.MathRootElement) {
+	// Roots are inline math elements.
+	c.collectContent(&elem.Index)
+	c.collectContent(&elem.Radicand)
+	c.lastWasSpacing = false
+}
+
+// collectMathDelimited handles delimited math content.
+func (c *Collector) collectMathDelimited(elem *eval.MathDelimitedElement) {
+	// Delimited expressions are inline math elements.
+	c.collectContent(&elem.Body)
+	c.lastWasSpacing = false
+}
+
+// collectMathLimits handles operators with limits.
+func (c *Collector) collectMathLimits(elem *eval.MathLimitsElement) {
+	// Limits are inline math elements.
+	c.collectContent(&elem.Nucleus)
+	c.collectContent(&elem.Upper)
+	c.collectContent(&elem.Lower)
+	c.lastWasSpacing = false
+}
+
+// collectMathSymbol handles math symbol elements.
+func (c *Collector) collectMathSymbol(elem *eval.MathSymbolElement) {
+	// Math symbols are inline text elements.
+	// They contribute to paragraph content.
 	c.lastWasSpacing = false
 }
 
