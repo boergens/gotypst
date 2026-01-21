@@ -3,6 +3,7 @@ package pages
 import (
 	"testing"
 
+	"github.com/boergens/gotypst/eval"
 	"github.com/boergens/gotypst/layout"
 )
 
@@ -776,5 +777,244 @@ func TestCollectWithMixedTags(t *testing.T) {
 	}
 	if !hasRun {
 		t.Error("Expected at least one RunItem")
+	}
+}
+
+// TestFormatPageNumber tests page number formatting with different patterns.
+func TestFormatPageNumber(t *testing.T) {
+	tests := []struct {
+		pageNum  int
+		pattern  string
+		expected string
+	}{
+		// Arabic numerals (default)
+		{1, "", "1"},
+		{1, "1", "1"},
+		{42, "1", "42"},
+
+		// Roman numerals
+		{1, "I", "I"},
+		{4, "I", "IV"},
+		{9, "I", "IX"},
+		{42, "I", "XLII"},
+		{1, "i", "i"},
+		{4, "i", "iv"},
+
+		// Letters
+		{1, "A", "A"},
+		{26, "A", "Z"},
+		{27, "A", "AA"},
+		{1, "a", "a"},
+		{26, "a", "z"},
+
+		// Patterns with surrounding text
+		{5, "Page 1", "Page 5"},
+		{3, "- 1 -", "- 3 -"},
+	}
+
+	for _, tt := range tests {
+		result := formatPageNumber(tt.pageNum, tt.pattern)
+		if result != tt.expected {
+			t.Errorf("formatPageNumber(%d, %q) = %q, want %q",
+				tt.pageNum, tt.pattern, result, tt.expected)
+		}
+	}
+}
+
+// TestFinalizeWithNumbering tests that page numbers are added to the footer.
+func TestFinalizeWithNumbering(t *testing.T) {
+	engine := &Engine{}
+	counter := NewManualPageCounter()
+	tags := []Tag{}
+
+	layouted := LayoutedPage{
+		Inner:     Hard(layout.Size{Width: 500, Height: 700}),
+		Margin:    Sides[layout.Abs]{Left: 50, Top: 50, Right: 50, Bottom: 50},
+		Binding:   BindingLeft,
+		TwoSided:  false,
+		Numbering: &Numbering{Pattern: "1"},
+	}
+
+	page, err := Finalize(engine, counter, &tags, layouted)
+	if err != nil {
+		t.Fatalf("Finalize failed: %v", err)
+	}
+
+	if page == nil {
+		t.Fatal("Expected non-nil page")
+	}
+
+	// Should have items including the footer frame with page number
+	if len(page.Frame.Items) == 0 {
+		t.Error("Expected items in frame")
+	}
+
+	// Verify page number is 1
+	if page.Number != 1 {
+		t.Errorf("Page number = %d, want 1", page.Number)
+	}
+
+	// Check that there's a text item somewhere (the page number)
+	hasText := false
+	var checkFrame func(frame *Frame)
+	checkFrame = func(frame *Frame) {
+		for _, item := range frame.Items {
+			switch it := item.Item.(type) {
+			case TextItem:
+				if it.Text == "1" {
+					hasText = true
+				}
+			case GroupItem:
+				checkFrame(&it.Frame)
+			}
+		}
+	}
+	checkFrame(&page.Frame)
+
+	if !hasText {
+		t.Error("Expected page number '1' in frame")
+	}
+}
+
+// TestFinalizeWithRomanNumbering tests Roman numeral page numbers.
+func TestFinalizeWithRomanNumbering(t *testing.T) {
+	engine := &Engine{}
+	counter := NewManualPageCounter()
+	tags := []Tag{}
+
+	layouted := LayoutedPage{
+		Inner:     Hard(layout.Size{Width: 500, Height: 700}),
+		Margin:    Sides[layout.Abs]{Left: 50, Top: 50, Right: 50, Bottom: 50},
+		Binding:   BindingLeft,
+		TwoSided:  false,
+		Numbering: &Numbering{Pattern: "i"},
+	}
+
+	page, err := Finalize(engine, counter, &tags, layouted)
+	if err != nil {
+		t.Fatalf("Finalize failed: %v", err)
+	}
+
+	// Check that there's a text item with "i" (Roman numeral for 1)
+	hasRomanNumeral := false
+	var checkFrame func(frame *Frame)
+	checkFrame = func(frame *Frame) {
+		for _, item := range frame.Items {
+			switch it := item.Item.(type) {
+			case TextItem:
+				if it.Text == "i" {
+					hasRomanNumeral = true
+				}
+			case GroupItem:
+				checkFrame(&it.Frame)
+			}
+		}
+	}
+	checkFrame(&page.Frame)
+
+	if !hasRomanNumeral {
+		t.Error("Expected Roman numeral 'i' in frame")
+	}
+}
+
+// TestFinalizeWithExplicitFooter tests that explicit footer takes precedence.
+func TestFinalizeWithExplicitFooter(t *testing.T) {
+	engine := &Engine{}
+	counter := NewManualPageCounter()
+	tags := []Tag{}
+
+	// Create an explicit footer frame
+	footerFrame := Hard(layout.Size{Width: 500, Height: 30})
+	footerFrame.Push(layout.Point{X: 0, Y: 0}, TextItem{Text: "Custom Footer", FontSize: 10})
+
+	layouted := LayoutedPage{
+		Inner:     Hard(layout.Size{Width: 500, Height: 700}),
+		Margin:    Sides[layout.Abs]{Left: 50, Top: 50, Right: 50, Bottom: 50},
+		Binding:   BindingLeft,
+		TwoSided:  false,
+		Footer:    &footerFrame,
+		Numbering: &Numbering{Pattern: "1"}, // Should be ignored since we have explicit footer
+	}
+
+	page, err := Finalize(engine, counter, &tags, layouted)
+	if err != nil {
+		t.Fatalf("Finalize failed: %v", err)
+	}
+
+	// Check that the custom footer text is present
+	hasCustomFooter := false
+	var checkFrame func(frame *Frame)
+	checkFrame = func(frame *Frame) {
+		for _, item := range frame.Items {
+			switch it := item.Item.(type) {
+			case TextItem:
+				if it.Text == "Custom Footer" {
+					hasCustomFooter = true
+				}
+			case GroupItem:
+				checkFrame(&it.Frame)
+			}
+		}
+	}
+	checkFrame(&page.Frame)
+
+	if !hasCustomFooter {
+		t.Error("Expected custom footer text in frame")
+	}
+}
+
+// TestLayoutMarginal tests marginal layout with content.
+func TestLayoutMarginal(t *testing.T) {
+	engine := &Engine{}
+	locator := &Locator{Current: 0}
+	splitLocator := locator.Split()
+
+	content := &Content{
+		Elements: []eval.ContentElement{
+			&eval.TextElement{Text: "Header Text"},
+		},
+	}
+	area := layout.Size{Width: 500, Height: 30}
+
+	frame := layoutMarginal(engine, content, area, splitLocator)
+
+	if frame == nil {
+		t.Fatal("Expected non-nil frame")
+	}
+
+	if frame.Size.Width != 500 || frame.Size.Height != 30 {
+		t.Errorf("Frame size = %v, want {500, 30}", frame.Size)
+	}
+
+	// Should have at least one text item
+	hasText := false
+	for _, item := range frame.Items {
+		if _, ok := item.Item.(TextItem); ok {
+			hasText = true
+			break
+		}
+	}
+
+	if !hasText {
+		t.Error("Expected text item in marginal frame")
+	}
+}
+
+// TestLayoutMarginalNil tests that nil content returns nil frame.
+func TestLayoutMarginalNil(t *testing.T) {
+	engine := &Engine{}
+	locator := &Locator{Current: 0}
+	splitLocator := locator.Split()
+
+	area := layout.Size{Width: 500, Height: 30}
+
+	frame := layoutMarginal(engine, nil, area, splitLocator)
+	if frame != nil {
+		t.Error("Expected nil frame for nil content")
+	}
+
+	frame = layoutMarginal(engine, &Content{}, area, splitLocator)
+	if frame != nil {
+		t.Error("Expected nil frame for empty content")
 	}
 }

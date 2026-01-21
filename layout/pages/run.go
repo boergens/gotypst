@@ -285,18 +285,11 @@ func resolveHeaderFooter(styles StyleChain, numbering *Numbering) (*Content, *Co
 		footerContent = f
 	}
 
-	// If no explicit header/footer and numbering exists,
-	// place numbering based on number-align style
-	if numbering != nil {
-		numberAlign := styles.Get("page.number-align")
-		if numberAlign == "top" && headerContent == nil {
-			// Create numbering content for header
-			// TODO: Implement numbering content creation
-		} else if footerContent == nil {
-			// Create numbering content for footer (default)
-			// TODO: Implement numbering content creation
-		}
-	}
+	// Note: Page numbering is handled in Finalize when there's a Numbering
+	// pattern but no explicit footer. This is because the actual page number
+	// is only known at finalization time after all pages are laid out.
+	// The number-align style determines placement (top=header, bottom=footer).
+	// For now, we only support footer placement (default).
 
 	return headerContent, footerContent
 }
@@ -394,10 +387,28 @@ func extractTextFromContent(c *eval.Content) string {
 
 // layoutMarginal lays out a marginal (header, footer, etc.)
 func layoutMarginal(engine *Engine, content *Content, area layout.Size, locator *SplitLocator) *Frame {
-	if content == nil {
+	if content == nil || len(content.Elements) == 0 {
 		return nil
 	}
-	// TODO: Layout the marginal content
+
 	frame := Frame{Size: area}
+
+	// Simple layout: extract text and position it
+	// In a full implementation, this would use the flow layout system
+	var y layout.Abs = 0
+	fontSize := layout.Abs(10) // Default font size for marginals
+	lineHeight := fontSize * 1.4
+
+	for _, elem := range content.Elements {
+		text := extractText(elem)
+		if text != "" {
+			frame.Push(
+				layout.Point{X: 0, Y: y},
+				TextItem{Text: text, FontSize: fontSize},
+			)
+			y += lineHeight
+		}
+	}
+
 	return &frame
 }
