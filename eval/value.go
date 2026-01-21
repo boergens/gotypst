@@ -616,11 +616,18 @@ type Styles struct {
 }
 
 // StyleRule represents a single style rule.
+// This corresponds to Typst's Property type in styles.rs.
 type StyleRule struct {
 	// Func is the function this style applies to.
 	Func *Func
 	// Args are the style arguments.
 	Args *Args
+	// Span is the source location of the rule.
+	Span syntax.Span
+	// Liftable indicates whether this style can be lifted to page level.
+	// Set rules produce liftable styles, constructor calls do not.
+	// This affects whether styles propagate into page headers/footers.
+	Liftable bool
 }
 
 // VersionValue represents a semantic version.

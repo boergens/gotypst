@@ -265,14 +265,18 @@ func funcToElement(f *Func) *Element {
 }
 
 // applySetRule applies a set rule to an element, returning the resulting styles.
+// Set rules produce liftable styles that can propagate to page level.
 func applySetRule(engine *Engine, elem *Element, args *Args) (*Styles, error) {
 	// Create a style rule from the element and arguments
+	// Set rules are liftable - they can propagate into page headers/footers
 	rule := StyleRule{
 		Func: &Func{
 			Name: &elem.Name,
 			Span: args.Span,
 		},
-		Args: args,
+		Args:     args,
+		Span:     args.Span,
+		Liftable: true, // Set rules produce liftable styles
 	}
 
 	return &Styles{
@@ -280,10 +284,20 @@ func applySetRule(engine *Engine, elem *Element, args *Args) (*Styles, error) {
 	}, nil
 }
 
-// scopeStyles wraps styles with span information for error reporting.
+// scopeStyles marks styles with span information and ensures they are liftable.
+// In Typst, set rules produce styles that can "lift" to page level, meaning they
+// propagate into page headers/footers. This is distinct from constructor-applied
+// styles which do not lift.
 func scopeStyles(styles *Styles, span syntax.Span) *Styles {
-	// In the full implementation, this would mark the styles as "liftable"
-	// and associate them with the span for proper scoping.
+	if styles == nil {
+		return nil
+	}
+	// Apply span to all rules that don't have one
+	for i := range styles.Rules {
+		if styles.Rules[i].Span.IsDetached() {
+			styles.Rules[i].Span = span
+		}
+	}
 	return styles
 }
 
