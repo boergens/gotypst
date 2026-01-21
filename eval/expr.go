@@ -829,10 +829,12 @@ func evalFieldAccess(vm *Vm, e *syntax.FieldAccessExpr) (Value, error) {
 		return nil, &FieldNotFoundError{Field: fieldName, Type: target.Type(), Span: e.ToUntyped().Span()}
 
 	case FuncValue:
-		// Functions can have fields (their scope)
+		// Functions can have fields (their scope with associated methods)
 		if t.Func != nil && t.Func.Repr != nil {
-			if nf, ok := t.Func.Repr.(NativeFunc); ok && nf.Info != nil {
-				// Native functions might have metadata fields
+			if nf, ok := t.Func.Repr.(NativeFunc); ok && nf.Scope != nil {
+				if binding := nf.Scope.Get(fieldName); binding != nil {
+					return binding.Value, nil
+				}
 			}
 		}
 		return nil, &FieldNotFoundError{Field: fieldName, Type: target.Type(), Span: e.ToUntyped().Span()}

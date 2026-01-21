@@ -2818,20 +2818,21 @@ func TestTableNativeBasic(t *testing.T) {
 		t.Fatalf("expected TableElement, got %T", cv.Content.Elements[0])
 	}
 
-	if tableElem.Columns != 2 {
-		t.Errorf("expected 2 columns, got %d", tableElem.Columns)
+	// Columns should be Int(2)
+	if cols, ok := tableElem.Columns.(IntValue); !ok || int(cols) != 2 {
+		t.Errorf("expected 2 columns, got %v", tableElem.Columns)
 	}
 
-	if len(tableElem.Cells) != 4 {
-		t.Errorf("expected 4 cells, got %d", len(tableElem.Cells))
+	if len(tableElem.Children) != 4 {
+		t.Errorf("expected 4 children, got %d", len(tableElem.Children))
 	}
 }
 
-func TestTableNativeMissingColumns(t *testing.T) {
+func TestTableNativeWithoutColumns(t *testing.T) {
 	scopes := NewScopes(nil)
 	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
 
-	// Create args without columns
+	// Create args without columns (now valid - columns is optional)
 	args := NewArgs(syntax.Detached())
 	args.Push(ContentValue{Content: Content{
 		Elements: []ContentElement{&TextElement{Text: "cell"}},
@@ -2839,58 +2840,90 @@ func TestTableNativeMissingColumns(t *testing.T) {
 
 	// Call table native function
 	tableFunc := TableFunc()
-	_, err := tableFunc.Repr.(NativeFunc).Func(vm, args)
+	result, err := tableFunc.Repr.(NativeFunc).Func(vm, args)
 
-	if err == nil {
-		t.Fatal("expected error for missing columns argument")
+	if err != nil {
+		t.Fatalf("tableNative failed: %v", err)
 	}
 
-	if _, ok := err.(*MissingArgumentError); !ok {
-		t.Errorf("expected MissingArgumentError, got %T", err)
+	cv, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	tableElem, ok := cv.Content.Elements[0].(*TableElement)
+	if !ok {
+		t.Fatalf("expected TableElement, got %T", cv.Content.Elements[0])
+	}
+
+	// Columns should be nil (not specified)
+	if tableElem.Columns != nil {
+		t.Errorf("expected nil columns, got %v", tableElem.Columns)
+	}
+
+	if len(tableElem.Children) != 1 {
+		t.Errorf("expected 1 child, got %d", len(tableElem.Children))
 	}
 }
 
-func TestTableNativeInvalidColumns(t *testing.T) {
+func TestTableNativeWithArrayColumns(t *testing.T) {
 	scopes := NewScopes(nil)
 	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
 
-	// Create args with invalid columns (0)
+	// Create args with array columns (track sizing)
 	args := NewArgs(syntax.Detached())
-	args.PushNamed("columns", Int(0), syntax.Detached())
+	columnsArray := ArrayValue{Auto, FractionValue{Fraction: Fraction{Value: 1}}}
+	args.PushNamed("columns", columnsArray, syntax.Detached())
 
 	// Call table native function
 	tableFunc := TableFunc()
-	_, err := tableFunc.Repr.(NativeFunc).Func(vm, args)
+	result, err := tableFunc.Repr.(NativeFunc).Func(vm, args)
 
-	if err == nil {
-		t.Fatal("expected error for columns < 1")
+	if err != nil {
+		t.Fatalf("tableNative failed: %v", err)
 	}
 
-	if _, ok := err.(*InvalidArgumentError); !ok {
-		t.Errorf("expected InvalidArgumentError, got %T", err)
+	cv, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	tableElem, ok := cv.Content.Elements[0].(*TableElement)
+	if !ok {
+		t.Fatalf("expected TableElement, got %T", cv.Content.Elements[0])
+	}
+
+	// Columns should be the array
+	if _, ok := tableElem.Columns.(ArrayValue); !ok {
+		t.Errorf("expected ArrayValue columns, got %T", tableElem.Columns)
 	}
 }
 
 func TestTableElement(t *testing.T) {
 	// Test TableElement struct and ContentElement interface
+	cellA := Content{Elements: []ContentElement{&TextElement{Text: "A"}}}
+	cellB := Content{Elements: []ContentElement{&TextElement{Text: "B"}}}
+	cellC := Content{Elements: []ContentElement{&TextElement{Text: "C"}}}
+
 	elem := &TableElement{
-		Columns: 3,
-		Cells: []Content{
-			{Elements: []ContentElement{&TextElement{Text: "A"}}},
-			{Elements: []ContentElement{&TextElement{Text: "B"}}},
-			{Elements: []ContentElement{&TextElement{Text: "C"}}},
+		Columns: Int(3),
+		Children: []TableChild{
+			{Content: &cellA},
+			{Content: &cellB},
+			{Content: &cellC},
 		},
 	}
 
 	// Verify it satisfies ContentElement interface
 	var _ ContentElement = elem
 
-	if elem.Columns != 3 {
-		t.Errorf("expected 3 columns, got %d", elem.Columns)
+	// Columns should be Int(3)
+	if cols, ok := elem.Columns.(IntValue); !ok || int(cols) != 3 {
+		t.Errorf("expected 3 columns, got %v", elem.Columns)
 	}
 
-	if len(elem.Cells) != 3 {
-		t.Errorf("expected 3 cells, got %d", len(elem.Cells))
+	if len(elem.Children) != 3 {
+		t.Errorf("expected 3 children, got %d", len(elem.Children))
 	}
 }
 
@@ -2922,6 +2955,130 @@ func TestElementFunctionsIncludesTable(t *testing.T) {
 		t.Error("expected 'table' in ElementFunctions()")
 	}
 }
+
+func TestTableCellFunc(t *testing.T) {
+	// Get the table.cell function
+	cellFunc := TableCellFunc()
+
+	if cellFunc == nil {
+		t.Fatal("TableCellFunc() returned nil")
+	}
+
+	if cellFunc.Name == nil || *cellFunc.Name != "cell" {
+		t.Error("TableCellFunc name should be 'cell'")
+	}
+}
+
+func TestTableCellNativeBasic(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create args with body content
+	args := NewArgs(syntax.Detached())
+	args.Push(ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Cell content"}},
+	}}, syntax.Detached())
+
+	// Call table.cell native function
+	cellFunc := TableCellFunc()
+	result, err := cellFunc.Repr.(NativeFunc).Func(vm, args)
+
+	if err != nil {
+		t.Fatalf("tableCellNative failed: %v", err)
+	}
+
+	cv, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	cellElem, ok := cv.Content.Elements[0].(*TableCellElement)
+	if !ok {
+		t.Fatalf("expected TableCellElement, got %T", cv.Content.Elements[0])
+	}
+
+	// Default colspan/rowspan should be 1
+	if cellElem.Colspan != 1 {
+		t.Errorf("expected colspan 1, got %d", cellElem.Colspan)
+	}
+	if cellElem.Rowspan != 1 {
+		t.Errorf("expected rowspan 1, got %d", cellElem.Rowspan)
+	}
+}
+
+func TestTableCellNativeWithSpanning(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create args with body and spanning
+	args := NewArgs(syntax.Detached())
+	args.Push(ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Wide cell"}},
+	}}, syntax.Detached())
+	args.PushNamed("colspan", Int(2), syntax.Detached())
+	args.PushNamed("rowspan", Int(3), syntax.Detached())
+	args.PushNamed("x", Int(1), syntax.Detached())
+	args.PushNamed("y", Int(0), syntax.Detached())
+
+	// Call table.cell native function
+	cellFunc := TableCellFunc()
+	result, err := cellFunc.Repr.(NativeFunc).Func(vm, args)
+
+	if err != nil {
+		t.Fatalf("tableCellNative failed: %v", err)
+	}
+
+	cv, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	cellElem, ok := cv.Content.Elements[0].(*TableCellElement)
+	if !ok {
+		t.Fatalf("expected TableCellElement, got %T", cv.Content.Elements[0])
+	}
+
+	if cellElem.Colspan != 2 {
+		t.Errorf("expected colspan 2, got %d", cellElem.Colspan)
+	}
+	if cellElem.Rowspan != 3 {
+		t.Errorf("expected rowspan 3, got %d", cellElem.Rowspan)
+	}
+	if cellElem.X == nil || *cellElem.X != 1 {
+		t.Errorf("expected x=1, got %v", cellElem.X)
+	}
+	if cellElem.Y == nil || *cellElem.Y != 0 {
+		t.Errorf("expected y=0, got %v", cellElem.Y)
+	}
+}
+
+func TestTableDotCellAccess(t *testing.T) {
+	// Test that table.cell is accessible via field access
+	tableFunc := TableFunc()
+	nf, ok := tableFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Fatal("expected NativeFunc")
+	}
+
+	if nf.Scope == nil {
+		t.Fatal("expected Scope on table NativeFunc")
+	}
+
+	cellBinding := nf.Scope.Get("cell")
+	if cellBinding == nil {
+		t.Fatal("expected 'cell' in table scope")
+	}
+
+	cellFv, ok := cellBinding.Value.(FuncValue)
+	if !ok {
+		t.Fatalf("expected FuncValue for cell, got %T", cellBinding.Value)
+	}
+
+	if cellFv.Func.Name == nil || *cellFv.Func.Name != "cell" {
+		t.Error("cell function name mismatch")
+	}
+}
+
 // ----------------------------------------------------------------------------
 // Link Element Tests
 // ----------------------------------------------------------------------------
