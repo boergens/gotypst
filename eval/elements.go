@@ -1947,6 +1947,11 @@ func linkNative(vm *Vm, args *Args) (Value, error) {
 // TableFunc creates the table element function.
 func TableFunc() *Func {
 	name := "table"
+
+	// Create scope with table.cell method
+	tableScope := NewScope()
+	tableScope.DefineFunc("cell", TableCellFunc())
+
 	return &Func{
 		Name: &name,
 		Span: syntax.Detached(),
@@ -1955,10 +1960,19 @@ func TableFunc() *Func {
 			Info: &FuncInfo{
 				Name: "table",
 				Params: []ParamInfo{
-					{Name: "columns", Type: TypeInt, Named: true},
+					{Name: "columns", Type: TypeDyn, Default: None, Named: true},
+					{Name: "rows", Type: TypeDyn, Default: None, Named: true},
+					{Name: "gutter", Type: TypeDyn, Default: None, Named: true},
+					{Name: "column-gutter", Type: TypeDyn, Default: None, Named: true},
+					{Name: "row-gutter", Type: TypeDyn, Default: None, Named: true},
+					{Name: "inset", Type: TypeDyn, Default: None, Named: true},
+					{Name: "align", Type: TypeDyn, Default: None, Named: true},
+					{Name: "fill", Type: TypeDyn, Default: None, Named: true},
+					{Name: "stroke", Type: TypeDyn, Default: None, Named: true},
 					{Name: "children", Type: TypeContent, Variadic: true},
 				},
 			},
+			Scope: tableScope,
 		},
 	}
 }
@@ -1967,40 +1981,79 @@ func TableFunc() *Func {
 // Creates a TableElement with cells arranged in a grid.
 //
 // Arguments:
-//   - columns (named, int): The number of columns in the table
-//   - children (positional, variadic, content): The table cells
+//   - columns (named): Column sizing (int for count, or array of track sizes)
+//   - rows (named): Row sizing (same format as columns)
+//   - gutter (named): Shorthand for column-gutter and row-gutter
+//   - column-gutter (named): Gaps between columns
+//   - row-gutter (named): Gaps between rows
+//   - inset (named): Cell padding (default: 5pt)
+//   - align (named): Cell content alignment
+//   - fill (named): Cell background fill
+//   - stroke (named): Cell border stroke (default: 1pt + black)
+//   - children (positional, variadic): Table cells
 func tableNative(vm *Vm, args *Args) (Value, error) {
-	// Get required columns argument
-	columnsArg := args.Find("columns")
-	if columnsArg == nil {
-		return nil, &MissingArgumentError{
-			What: "columns",
-			Span: args.Span,
-		}
+	elem := &TableElement{}
+
+	// Get columns argument (required for determining grid structure)
+	if columnsArg := args.Find("columns"); columnsArg != nil && !IsNone(columnsArg.V) {
+		elem.Columns = columnsArg.V
 	}
 
-	columns, ok := AsInt(columnsArg.V)
-	if !ok {
-		return nil, &TypeMismatchError{
-			Expected: "int",
-			Got:      columnsArg.V.Type().String(),
-			Span:     columnsArg.Span,
-		}
+	// Get rows argument
+	if rowsArg := args.Find("rows"); rowsArg != nil && !IsNone(rowsArg.V) {
+		elem.Rows = rowsArg.V
 	}
 
-	if columns < 1 {
-		return nil, &InvalidArgumentError{
-			Message: "columns must be at least 1",
-			Span:    columnsArg.Span,
-		}
+	// Get gutter argument
+	if gutterArg := args.Find("gutter"); gutterArg != nil && !IsNone(gutterArg.V) {
+		elem.Gutter = gutterArg.V
+	}
+
+	// Get column-gutter argument
+	if colGutterArg := args.Find("column-gutter"); colGutterArg != nil && !IsNone(colGutterArg.V) {
+		elem.ColumnGutter = colGutterArg.V
+	}
+
+	// Get row-gutter argument
+	if rowGutterArg := args.Find("row-gutter"); rowGutterArg != nil && !IsNone(rowGutterArg.V) {
+		elem.RowGutter = rowGutterArg.V
+	}
+
+	// Get inset argument
+	if insetArg := args.Find("inset"); insetArg != nil && !IsNone(insetArg.V) {
+		elem.Inset = insetArg.V
+	}
+
+	// Get align argument
+	if alignArg := args.Find("align"); alignArg != nil && !IsNone(alignArg.V) {
+		elem.Align = alignArg.V
+	}
+
+	// Get fill argument
+	if fillArg := args.Find("fill"); fillArg != nil && !IsNone(fillArg.V) {
+		elem.Fill = fillArg.V
+	}
+
+	// Get stroke argument
+	if strokeArg := args.Find("stroke"); strokeArg != nil && !IsNone(strokeArg.V) {
+		elem.Stroke = strokeArg.V
 	}
 
 	// Collect cell children (variadic positional arguments)
-	var cells []Content
 	for {
 		child := args.Eat()
 		if child == nil {
 			break
+		}
+
+		// Check if it's a TableCellElement
+		if cv, ok := child.V.(ContentValue); ok {
+			if len(cv.Content.Elements) == 1 {
+				if cell, ok := cv.Content.Elements[0].(*TableCellElement); ok {
+					elem.Children = append(elem.Children, TableChild{Cell: cell})
+					continue
+				}
+			}
 		}
 
 		// Convert child to content
@@ -2014,7 +2067,7 @@ func tableNative(vm *Vm, args *Args) (Value, error) {
 			// Try to display other values as text
 			content = Content{Elements: []ContentElement{&TextElement{Text: v.Display().String()}}}
 		}
-		cells = append(cells, content)
+		elem.Children = append(elem.Children, TableChild{Content: &content})
 	}
 
 	// Check for unexpected arguments
@@ -2024,10 +2077,175 @@ func tableNative(vm *Vm, args *Args) (Value, error) {
 
 	// Create the TableElement wrapped in ContentValue
 	return ContentValue{Content: Content{
-		Elements: []ContentElement{&TableElement{
-			Columns: int(columns),
-			Cells:   cells,
-		}},
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// TableCellFunc creates the table.cell element function.
+func TableCellFunc() *Func {
+	name := "cell"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: tableCellNative,
+			Info: &FuncInfo{
+				Name: "table.cell",
+				Params: []ParamInfo{
+					{Name: "body", Type: TypeContent, Named: false},
+					{Name: "x", Type: TypeInt, Default: Auto, Named: true},
+					{Name: "y", Type: TypeInt, Default: Auto, Named: true},
+					{Name: "colspan", Type: TypeInt, Default: Int(1), Named: true},
+					{Name: "rowspan", Type: TypeInt, Default: Int(1), Named: true},
+					{Name: "inset", Type: TypeDyn, Default: None, Named: true},
+					{Name: "align", Type: TypeDyn, Default: None, Named: true},
+					{Name: "fill", Type: TypeDyn, Default: None, Named: true},
+					{Name: "stroke", Type: TypeDyn, Default: None, Named: true},
+					{Name: "breakable", Type: TypeBool, Default: Auto, Named: true},
+				},
+			},
+		},
+	}
+}
+
+// tableCellNative implements the table.cell() function.
+// Creates a TableCellElement with optional position/span overrides.
+//
+// Arguments:
+//   - body (positional, content): The cell's content
+//   - x (named, int): Column position (0-indexed, auto by default)
+//   - y (named, int): Row position (0-indexed, auto by default)
+//   - colspan (named, int): Number of columns to span (default: 1)
+//   - rowspan (named, int): Number of rows to span (default: 1)
+//   - inset (named): Cell padding override
+//   - align (named): Cell alignment override
+//   - fill (named): Cell background override
+//   - stroke (named): Cell border override
+//   - breakable (named, bool): Whether rows can break across pages
+func tableCellNative(vm *Vm, args *Args) (Value, error) {
+	elem := &TableCellElement{
+		Colspan: 1,
+		Rowspan: 1,
+	}
+
+	// Get required body argument (positional or named)
+	bodyArg := args.Find("body")
+	if bodyArg == nil {
+		bodyArg2 := args.Eat()
+		if bodyArg2 != nil {
+			bodyArg = bodyArg2
+		}
+	}
+	if bodyArg != nil {
+		switch v := bodyArg.V.(type) {
+		case ContentValue:
+			elem.Body = v.Content
+		case StrValue:
+			elem.Body = Content{Elements: []ContentElement{&TextElement{Text: string(v)}}}
+		default:
+			elem.Body = Content{Elements: []ContentElement{&TextElement{Text: v.Display().String()}}}
+		}
+	}
+
+	// Get optional x argument
+	if xArg := args.Find("x"); xArg != nil && !IsAuto(xArg.V) && !IsNone(xArg.V) {
+		if x, ok := AsInt(xArg.V); ok {
+			xInt := int(x)
+			elem.X = &xInt
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "int or auto",
+				Got:      xArg.V.Type().String(),
+				Span:     xArg.Span,
+			}
+		}
+	}
+
+	// Get optional y argument
+	if yArg := args.Find("y"); yArg != nil && !IsAuto(yArg.V) && !IsNone(yArg.V) {
+		if y, ok := AsInt(yArg.V); ok {
+			yInt := int(y)
+			elem.Y = &yInt
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "int or auto",
+				Got:      yArg.V.Type().String(),
+				Span:     yArg.Span,
+			}
+		}
+	}
+
+	// Get optional colspan argument
+	if colspanArg := args.Find("colspan"); colspanArg != nil && !IsNone(colspanArg.V) {
+		if colspan, ok := AsInt(colspanArg.V); ok {
+			if colspan < 1 {
+				return nil, &InvalidArgumentError{
+					Message: "colspan must be at least 1",
+					Span:    colspanArg.Span,
+				}
+			}
+			elem.Colspan = int(colspan)
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "int",
+				Got:      colspanArg.V.Type().String(),
+				Span:     colspanArg.Span,
+			}
+		}
+	}
+
+	// Get optional rowspan argument
+	if rowspanArg := args.Find("rowspan"); rowspanArg != nil && !IsNone(rowspanArg.V) {
+		if rowspan, ok := AsInt(rowspanArg.V); ok {
+			if rowspan < 1 {
+				return nil, &InvalidArgumentError{
+					Message: "rowspan must be at least 1",
+					Span:    rowspanArg.Span,
+				}
+			}
+			elem.Rowspan = int(rowspan)
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "int",
+				Got:      rowspanArg.V.Type().String(),
+				Span:     rowspanArg.Span,
+			}
+		}
+	}
+
+	// Get optional inset argument
+	if insetArg := args.Find("inset"); insetArg != nil && !IsNone(insetArg.V) {
+		elem.Inset = insetArg.V
+	}
+
+	// Get optional align argument
+	if alignArg := args.Find("align"); alignArg != nil && !IsNone(alignArg.V) {
+		elem.Align = alignArg.V
+	}
+
+	// Get optional fill argument
+	if fillArg := args.Find("fill"); fillArg != nil && !IsNone(fillArg.V) {
+		elem.Fill = fillArg.V
+	}
+
+	// Get optional stroke argument
+	if strokeArg := args.Find("stroke"); strokeArg != nil && !IsNone(strokeArg.V) {
+		elem.Stroke = strokeArg.V
+	}
+
+	// Get optional breakable argument
+	if breakableArg := args.Find("breakable"); breakableArg != nil && !IsAuto(breakableArg.V) && !IsNone(breakableArg.V) {
+		elem.Breakable = breakableArg.V
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the TableCellElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
 	}}, nil
 }
 

@@ -481,6 +481,8 @@ type NativeFunc struct {
 	Func func(vm *Vm, args *Args) (Value, error)
 	// Info contains function metadata.
 	Info *FuncInfo
+	// Scope contains associated methods (e.g., table.cell).
+	Scope *Scope
 }
 
 func (NativeFunc) isFuncRepr() {}
