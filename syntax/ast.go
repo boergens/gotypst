@@ -1744,9 +1744,10 @@ func (e *SetRuleExpr) isExpr()               {}
 
 // Target returns the function to configure.
 func (e *SetRuleExpr) Target() Expr {
-	// Skip the 'set' keyword
+	// Skip the 'set' keyword and trivia (spaces, comments)
 	for _, child := range e.node.Children() {
-		if child.Kind() != Set {
+		kind := child.Kind()
+		if kind != Set && !kind.IsTrivia() {
 			return ExprFromNode(child)
 		}
 	}
@@ -1761,6 +1762,15 @@ func (e *SetRuleExpr) Condition() Expr {
 		if child.Kind() == If && i+1 < len(children) {
 			return ExprFromNode(children[i+1])
 		}
+	}
+	return nil
+}
+
+// Args returns the arguments for the set rule.
+func (e *SetRuleExpr) Args() *ArgsNode {
+	child := e.node.CastFirst(Args)
+	if child != nil {
+		return &ArgsNode{node: child}
 	}
 	return nil
 }
