@@ -652,7 +652,20 @@ type OperatorMismatchError struct {
 }
 
 func (e *OperatorMismatchError) Error() string {
-	return "cannot apply operator " + e.Op + " to " + e.Lhs.String() + " and " + e.Rhs.String()
+	lhs := e.Lhs.String()
+	rhs := e.Rhs.String()
+	switch e.Op {
+	case "+":
+		return "cannot add " + lhs + " and " + rhs
+	case "-":
+		return "cannot subtract " + rhs + " from " + lhs
+	case "*":
+		return "cannot multiply " + lhs + " with " + rhs
+	case "/":
+		return "cannot divide " + lhs + " by " + rhs
+	default:
+		return "cannot apply operator " + e.Op + " to " + lhs + " and " + rhs
+	}
 }
 
 // DivisionByZeroError is returned when dividing by zero.
@@ -661,5 +674,5 @@ type DivisionByZeroError struct {
 }
 
 func (e *DivisionByZeroError) Error() string {
-	return "division by zero"
+	return "cannot divide by zero"
 }

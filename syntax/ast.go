@@ -1430,8 +1430,11 @@ func (e *BinaryExpr) isExpr()               {}
 // Lhs returns the left-hand side.
 func (e *BinaryExpr) Lhs() Expr {
 	children := e.node.Children()
-	if len(children) > 0 {
-		return ExprFromNode(children[0])
+	// Find the first significant expression (skip whitespace)
+	for _, child := range children {
+		if isSignificantExprKind(child.Kind()) && !isBinaryOp(child.Kind()) {
+			return ExprFromNode(child)
+		}
 	}
 	return nil
 }
@@ -1484,10 +1487,30 @@ func (e *BinaryExpr) Op() BinOp {
 // Rhs returns the right-hand side.
 func (e *BinaryExpr) Rhs() Expr {
 	children := e.node.Children()
-	if len(children) >= 3 {
-		return ExprFromNode(children[2])
+	// Find the operator, then return the next significant expression
+	foundOp := false
+	for _, child := range children {
+		if isBinaryOp(child.Kind()) {
+			foundOp = true
+			continue
+		}
+		if foundOp && isSignificantExprKind(child.Kind()) {
+			return ExprFromNode(child)
+		}
 	}
 	return nil
+}
+
+// isBinaryOp returns true if the kind is a binary operator.
+func isBinaryOp(kind SyntaxKind) bool {
+	switch kind {
+	case Plus, Minus, Star, Slash, And, Or,
+		EqEq, ExclEq, Lt, LtEq, Gt, GtEq,
+		Eq, In, Not, PlusEq, HyphEq, StarEq, SlashEq:
+		return true
+	default:
+		return false
+	}
 }
 
 // BinaryExprFromNode casts a syntax node to a BinaryExpr.
@@ -1877,9 +1900,15 @@ func (e *ConditionalExpr) isExpr()               {}
 // Condition returns the condition expression.
 func (e *ConditionalExpr) Condition() Expr {
 	children := e.node.Children()
-	for i, child := range children {
-		if child.Kind() == If && i+1 < len(children) {
-			return ExprFromNode(children[i+1])
+	foundIf := false
+	for _, child := range children {
+		if child.Kind() == If {
+			foundIf = true
+			continue
+		}
+		// Skip whitespace and other non-expression nodes after 'if'
+		if foundIf && isSignificantExprKind(child.Kind()) {
+			return ExprFromNode(child)
 		}
 	}
 	return nil
@@ -1909,7 +1938,8 @@ func (e *ConditionalExpr) ElseBody() Expr {
 			foundElse = true
 			continue
 		}
-		if foundElse {
+		// Skip whitespace after 'else', return the actual body expression
+		if foundElse && isSignificantExprKind(child.Kind()) {
 			return ExprFromNode(child)
 		}
 	}
@@ -1990,11 +2020,25 @@ func (e *ForLoopExpr) Iter() Expr {
 			foundIn = true
 			continue
 		}
-		if foundIn && child.Kind() != CodeBlock && child.Kind() != ContentBlock {
+		// Skip whitespace and other non-expression nodes after 'in'
+		if foundIn && isSignificantExprKind(child.Kind()) {
 			return ExprFromNode(child)
 		}
 	}
 	return nil
+}
+
+// isSignificantExprKind returns true if the kind is a significant expression
+// (not whitespace, comments, or punctuation).
+func isSignificantExprKind(kind SyntaxKind) bool {
+	switch kind {
+	case Space, Linebreak, Parbreak, Hash,
+		LeftBrace, RightBrace, LeftBracket, RightBracket, LeftParen, RightParen,
+		Comma, Semicolon, Colon, CodeBlock, ContentBlock:
+		return false
+	default:
+		return true
+	}
 }
 
 // Body returns the loop body.

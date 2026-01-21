@@ -692,9 +692,9 @@ func (t Type) String() string {
 	case TypeAuto:
 		return "auto"
 	case TypeBool:
-		return "bool"
+		return "boolean"
 	case TypeInt:
-		return "int"
+		return "integer"
 	case TypeFloat:
 		return "float"
 	case TypeLength:
@@ -708,7 +708,7 @@ func (t Type) String() string {
 	case TypeFraction:
 		return "fraction"
 	case TypeStr:
-		return "str"
+		return "string"
 	case TypeBytes:
 		return "bytes"
 	case TypeLabel:

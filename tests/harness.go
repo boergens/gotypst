@@ -130,11 +130,14 @@ func (r *TestRunner) LoadFixtures(categories ...string) ([]*TestCase, error) {
 // delimiterPattern matches test case delimiters: --- name attr1 attr2 ---
 var delimiterPattern = regexp.MustCompile(`^---\s+([a-zA-Z0-9_-]+(?:\s+[a-zA-Z0-9_-]+)*)\s*---\s*$`)
 
-// errorPattern matches error annotations: // Error: line-col message
-var errorPattern = regexp.MustCompile(`^//\s*Error:\s*(\d+)(?:-(\d+))?\s+(.+)$`)
+// errorPattern matches error annotations: // Error: col-col message or // Error: col-line:col message
+// Format: start_col-end_col or start_col-end_line:end_col
+// Note: allows leading whitespace for indented code blocks
+var errorPattern = regexp.MustCompile(`^\s*//\s*Error:\s*(\d+)(?:-(\d+)(?::(\d+))?)?\s+(.+)$`)
 
-// hintPattern matches hint annotations: // Hint: line-col message
-var hintPattern = regexp.MustCompile(`^//\s*Hint:\s*(\d+)(?:-(\d+))?\s+(.+)$`)
+// hintPattern matches hint annotations: // Hint: col-col message or // Hint: col-line:col message
+// Note: allows leading whitespace for indented code blocks
+var hintPattern = regexp.MustCompile(`^\s*//\s*Hint:\s*(\d+)(?:-(\d+)(?::(\d+))?)?\s+(.+)$`)
 
 // ParseFixtureFile parses a fixture file and extracts test cases.
 func ParseFixtureFile(path string) ([]*TestCase, error) {
@@ -178,32 +181,35 @@ func ParseFixtureFile(path string) ([]*TestCase, error) {
 		}
 
 		// Check for error annotations
+		// Format: // Error: col-col message or // Error: col-line:col message
+		// Groups: [1]=start_col, [2]=end_col or end_line, [3]=end_col if multiline, [4]=message
 		if matches := errorPattern.FindStringSubmatch(line); matches != nil {
-			lineNo := parseInt(matches[1])
+			colFrom := parseInt(matches[1])
 			colTo := 0
 			if matches[2] != "" {
 				colTo = parseInt(matches[2])
 			}
+			// matches[3] is end_col for multiline spans (ignored for now)
 			current.Errors = append(current.Errors, ExpectedError{
-				Line:    lineNo,
-				ColFrom: lineNo, // First number is often col start
+				Line:    0,
+				ColFrom: colFrom,
 				ColTo:   colTo,
-				Message: strings.TrimSpace(matches[3]),
+				Message: strings.TrimSpace(matches[4]),
 			})
 		}
 
 		// Check for hint annotations
 		if matches := hintPattern.FindStringSubmatch(line); matches != nil {
-			lineNo := parseInt(matches[1])
+			colFrom := parseInt(matches[1])
 			colTo := 0
 			if matches[2] != "" {
 				colTo = parseInt(matches[2])
 			}
 			current.Hints = append(current.Hints, ExpectedHint{
-				Line:    lineNo,
-				ColFrom: lineNo,
+				Line:    0,
+				ColFrom: colFrom,
 				ColTo:   colTo,
-				Message: strings.TrimSpace(matches[3]),
+				Message: strings.TrimSpace(matches[4]),
 			})
 		}
 
@@ -254,23 +260,36 @@ func (r *TestRunner) RunTest(tc *TestCase) *TestResult {
 		result.Errors = append(result.Errors, evalErrors...)
 	}
 
-	// Validate expected errors
+	// Validate expected errors by matching content (like Rust's test framework).
+	// Errors may be produced in any order, so we match by message content rather than position.
 	if len(tc.Errors) > 0 {
-		// Check if we got the expected errors
-		if len(result.Errors) < len(tc.Errors) {
-			result.Passed = false
-			result.Details = fmt.Sprintf("expected %d errors, got %d",
-				len(tc.Errors), len(result.Errors))
-		} else {
-			// Check error messages match
-			for i, expected := range tc.Errors {
-				if i >= len(result.Errors) {
+		// Track which actual errors have been matched
+		matched := make([]bool, len(result.Errors))
+
+		// For each expected error, try to find a matching actual error
+		for _, expected := range tc.Errors {
+			found := false
+			for i, actual := range result.Errors {
+				if !matched[i] && strings.Contains(actual, expected.Message) {
+					matched[i] = true
+					found = true
 					break
 				}
-				if !strings.Contains(result.Errors[i], expected.Message) {
+			}
+			if !found {
+				result.Passed = false
+				result.Details = fmt.Sprintf("missing expected error: %q (got: %v)",
+					expected.Message, result.Errors)
+				break
+			}
+		}
+
+		// Check for unexpected errors (actual errors that weren't matched)
+		if result.Passed {
+			for i, actual := range result.Errors {
+				if !matched[i] {
 					result.Passed = false
-					result.Details = fmt.Sprintf("error mismatch: expected %q, got %q",
-						expected.Message, result.Errors[i])
+					result.Details = fmt.Sprintf("unexpected error: %q", actual)
 					break
 				}
 			}

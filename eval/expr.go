@@ -2024,7 +2024,7 @@ type TypeError struct {
 }
 
 func (e *TypeError) Error() string {
-	return fmt.Sprintf("expected %s, got %s", e.Expected, e.Got)
+	return fmt.Sprintf("expected %s, found %s", e.Expected, e.Got)
 }
 
 // IterationError is returned when a loop iteration fails.

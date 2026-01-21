@@ -282,13 +282,18 @@ func letBinding(p *Parser) {
 		other = true
 	}
 
+	// The condition for parsing an initializer expression:
+	// - If closure or other (destructuring pattern), we REQUIRE an '='
+	// - Otherwise (simple identifier), we OPTIONALLY consume '='
+	// Only parse the expression if '=' was found
+	var hasEq bool
 	if closure || other {
-		p.expect(Eq)
+		hasEq = p.expect(Eq)
 	} else {
-		p.eatIf(Eq)
+		hasEq = p.eatIf(Eq)
 	}
 
-	if p.atSet(CodeExprSet) || closure || other {
+	if hasEq {
 		codeExpr(p)
 	}
 

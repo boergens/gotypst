@@ -986,11 +986,13 @@ func (l *Lexer) number(start int, firstC rune) SyntaxKind {
 	}
 
 	// Read the initial digits
+	// For hex, read all alphanumerics (Rust behavior) so that invalid digits
+	// like 'z' in '0x123z' are included in the number, not treated as suffix.
 	if base == 16 {
 		l.s.EatWhile(func(r rune) bool {
 			return (r >= '0' && r <= '9') ||
-				(r >= 'a' && r <= 'f') ||
-				(r >= 'A' && r <= 'F')
+				(r >= 'a' && r <= 'z') ||
+				(r >= 'A' && r <= 'Z')
 		})
 	} else {
 		l.s.EatWhile(func(r rune) bool { return r >= '0' && r <= '9' })
