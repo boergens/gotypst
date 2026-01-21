@@ -2980,8 +2980,19 @@ func TestLinkNativeBasic(t *testing.T) {
 	if link.URL != "https://example.com" {
 		t.Errorf("URL = %q, want %q", link.URL, "https://example.com")
 	}
-	if link.Body != nil {
-		t.Errorf("Body = %v, want nil", link.Body)
+	// Body should default to URL text when not provided (matches Typst behavior)
+	if link.Body == nil {
+		t.Fatal("Body = nil, want default body with URL text")
+	}
+	if len(link.Body.Elements) != 1 {
+		t.Fatalf("expected 1 body element, got %d", len(link.Body.Elements))
+	}
+	textElem, ok := link.Body.Elements[0].(*TextElement)
+	if !ok {
+		t.Fatalf("expected *TextElement in body, got %T", link.Body.Elements[0])
+	}
+	if textElem.Text != "https://example.com" {
+		t.Errorf("body text = %q, want %q", textElem.Text, "https://example.com")
 	}
 }
 
@@ -3036,6 +3047,122 @@ func TestLinkNativeMissingDest(t *testing.T) {
 	_, err := linkNative(vm, args)
 	if err == nil {
 		t.Error("expected error for missing dest argument")
+	}
+}
+
+func TestLinkNativeMailtoSchemeStripping(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create args with mailto URL (no body)
+	args := NewArgs(syntax.Detached())
+	args.Push(Str("mailto:hello@example.com"), syntax.Detached())
+
+	result, err := linkNative(vm, args)
+	if err != nil {
+		t.Fatalf("linkNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	link := content.Content.Elements[0].(*LinkElement)
+
+	// URL should be preserved
+	if link.URL != "mailto:hello@example.com" {
+		t.Errorf("URL = %q, want %q", link.URL, "mailto:hello@example.com")
+	}
+	// Body should have mailto: stripped (matches Typst behavior)
+	if link.Body == nil {
+		t.Fatal("Body = nil, want body with stripped email")
+	}
+	textElem := link.Body.Elements[0].(*TextElement)
+	if textElem.Text != "hello@example.com" {
+		t.Errorf("body text = %q, want %q (mailto: stripped)", textElem.Text, "hello@example.com")
+	}
+}
+
+func TestLinkNativeTelSchemeStripping(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create args with tel URL (no body)
+	args := NewArgs(syntax.Detached())
+	args.Push(Str("tel:+1234567890"), syntax.Detached())
+
+	result, err := linkNative(vm, args)
+	if err != nil {
+		t.Fatalf("linkNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	link := content.Content.Elements[0].(*LinkElement)
+
+	// URL should be preserved
+	if link.URL != "tel:+1234567890" {
+		t.Errorf("URL = %q, want %q", link.URL, "tel:+1234567890")
+	}
+	// Body should have tel: stripped (matches Typst behavior)
+	if link.Body == nil {
+		t.Fatal("Body = nil, want body with stripped phone number")
+	}
+	textElem := link.Body.Elements[0].(*TextElement)
+	if textElem.Text != "+1234567890" {
+		t.Errorf("body text = %q, want %q (tel: stripped)", textElem.Text, "+1234567890")
+	}
+}
+
+func TestLinkNativeEmptyURLError(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create args with empty URL
+	args := NewArgs(syntax.Detached())
+	args.Push(Str(""), syntax.Detached())
+
+	// Call should fail due to empty URL
+	_, err := linkNative(vm, args)
+	if err == nil {
+		t.Error("expected error for empty URL")
+	}
+}
+
+func TestLinkNativeURLTooLongError(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create a URL longer than 8000 characters
+	longURL := "https://example.com/"
+	for len(longURL) <= 8000 {
+		longURL += "a"
+	}
+
+	args := NewArgs(syntax.Detached())
+	args.Push(Str(longURL), syntax.Detached())
+
+	// Call should fail due to URL too long
+	_, err := linkNative(vm, args)
+	if err == nil {
+		t.Error("expected error for URL too long")
+	}
+}
+
+func TestStripURLContactScheme(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"mailto:hello@example.com", "hello@example.com"},
+		{"tel:+1234567890", "+1234567890"},
+		{"https://example.com", "https://example.com"},
+		{"http://example.com", "http://example.com"},
+		{"mailto:", ""}, // Edge case: empty after scheme
+		{"tel:", ""},    // Edge case: empty after scheme
+	}
+
+	for _, tt := range tests {
+		result := stripURLContactScheme(tt.input)
+		if result != tt.expected {
+			t.Errorf("stripURLContactScheme(%q) = %q, want %q", tt.input, result, tt.expected)
+		}
 	}
 }
 

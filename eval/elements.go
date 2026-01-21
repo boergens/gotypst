@@ -1884,6 +1884,27 @@ func LinkFunc() *Func {
 	}
 }
 
+// stripURLContactScheme strips mailto: or tel: prefix from a URL for display.
+// Returns the stripped string if a scheme was found, otherwise returns the original.
+func stripURLContactScheme(url string) string {
+	if len(url) >= 7 && url[:7] == "mailto:" {
+		return url[7:]
+	}
+	if len(url) >= 4 && url[:4] == "tel:" {
+		return url[4:]
+	}
+	return url
+}
+
+// bodyFromURL creates default body content from a URL.
+// For mailto: and tel: URLs, the scheme is stripped from the display text.
+func bodyFromURL(url string) Content {
+	displayText := stripURLContactScheme(url)
+	return Content{
+		Elements: []ContentElement{&TextElement{Text: displayText}},
+	}
+}
+
 // linkNative implements the link() function.
 // Creates a LinkElement for hyperlinks.
 //
@@ -1910,6 +1931,20 @@ func linkNative(vm *Vm, args *Args) (Value, error) {
 		}
 	}
 
+	// Validate URL (matches Typst: non-empty, max 8000 chars)
+	if dest == "" {
+		return nil, &InvalidArgumentError{
+			Message: "URL must not be empty",
+			Span:    destArg.Span,
+		}
+	}
+	if len(dest) > 8000 {
+		return nil, &InvalidArgumentError{
+			Message: "URL is too long",
+			Span:    destArg.Span,
+		}
+	}
+
 	elem := &LinkElement{URL: dest}
 
 	// Get optional body argument (positional or named)
@@ -1927,6 +1962,10 @@ func linkNative(vm *Vm, args *Args) (Value, error) {
 				Span:     bodyArg.Span,
 			}
 		}
+	} else {
+		// Default body to URL text with scheme stripping (matches Typst behavior)
+		body := bodyFromURL(dest)
+		elem.Body = &body
 	}
 
 	// Check for unexpected arguments
