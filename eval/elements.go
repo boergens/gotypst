@@ -1859,6 +1859,81 @@ func padNative(vm *Vm, args *Args) (Value, error) {
 	}}, nil
 }
 
+// LinkFunc creates the link element function.
+func LinkFunc() *Func {
+	name := "link"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: linkNative,
+			Info: &FuncInfo{
+				Name: "link",
+				Params: []ParamInfo{
+					{Name: "dest", Type: TypeStr, Named: false},
+					{Name: "body", Type: TypeContent, Default: None, Named: false},
+				},
+			},
+		},
+	}
+}
+
+// linkNative implements the link() function.
+// Creates a LinkElement for hyperlinks.
+//
+// Arguments:
+//   - dest (positional, str): The destination URL or label
+//   - body (positional, content, default: none): The content to display (defaults to the URL)
+func linkNative(vm *Vm, args *Args) (Value, error) {
+	// Get required dest argument (positional)
+	destArg := args.Find("dest")
+	if destArg == nil {
+		destArgSpanned, err := args.Expect("dest")
+		if err != nil {
+			return nil, err
+		}
+		destArg = &destArgSpanned
+	}
+
+	dest, ok := AsStr(destArg.V)
+	if !ok {
+		return nil, &TypeMismatchError{
+			Expected: "string",
+			Got:      destArg.V.Type().String(),
+			Span:     destArg.Span,
+		}
+	}
+
+	elem := &LinkElement{URL: dest}
+
+	// Get optional body argument (positional or named)
+	bodyArg := args.Find("body")
+	if bodyArg == nil {
+		bodyArg = args.Eat()
+	}
+	if bodyArg != nil && !IsNone(bodyArg.V) {
+		if cv, ok := bodyArg.V.(ContentValue); ok {
+			elem.Body = &cv.Content
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "content or none",
+				Got:      bodyArg.V.Type().String(),
+				Span:     bodyArg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the LinkElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
 // ----------------------------------------------------------------------------
 // Table Element
 // ----------------------------------------------------------------------------
@@ -1983,6 +2058,8 @@ func RegisterElementFunctions(scope *Scope) {
 	scope.DefineFunc("pad", PadFunc())
 	// Register table element function
 	scope.DefineFunc("table", TableFunc())
+	// Register link element function
+	scope.DefineFunc("link", LinkFunc())
 }
 
 // ElementFunctions returns a map of all element function names to their functions.
@@ -2002,5 +2079,6 @@ func ElementFunctions() map[string]*Func {
 		"block":    BlockFunc(),
 		"pad":      PadFunc(),
 		"table":    TableFunc(),
+		"link":     LinkFunc(),
 	}
 }
