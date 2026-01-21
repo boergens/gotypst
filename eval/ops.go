@@ -4,6 +4,34 @@ import (
 	"github.com/boergens/gotypst/syntax"
 )
 
+// OverflowError is returned when an integer operation overflows.
+type OverflowError struct {
+	Large bool // true for "too large", false for "too small"
+	Span  syntax.Span
+}
+
+func (e *OverflowError) Error() string {
+	if e.Large {
+		return "value is too large"
+	}
+	return "value is too small"
+}
+
+// checkAddOverflow checks if adding two int64s would overflow.
+// Returns the result and an error if overflow would occur.
+func checkAddOverflow(a, b int64, span syntax.Span) (int64, error) {
+	result := a + b
+	// Overflow: positive + positive = negative, or negative + negative = positive
+	if (b > 0 && result < a) || (b < 0 && result > a) {
+		if b > 0 {
+			return 0, &OverflowError{Large: true, Span: span}
+		}
+		return 0, &OverflowError{Large: false, Span: span}
+	}
+	return result, nil
+}
+
+
 // ----------------------------------------------------------------------------
 // Arithmetic Operators
 // ----------------------------------------------------------------------------
@@ -14,7 +42,11 @@ func Add(lhs, rhs Value, span syntax.Span) (Value, error) {
 	case IntValue:
 		switch r := rhs.(type) {
 		case IntValue:
-			return Int(int64(l) + int64(r)), nil
+			result, err := checkAddOverflow(int64(l), int64(r), span)
+			if err != nil {
+				return nil, err
+			}
+			return Int(result), nil
 		case FloatValue:
 			return Float(float64(l) + float64(r)), nil
 		}
