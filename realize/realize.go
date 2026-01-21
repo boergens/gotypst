@@ -592,6 +592,8 @@ func getElementName(elem eval.ContentElement) string {
 		return "smartquote"
 	case *eval.EquationElement:
 		return "equation"
+	case *eval.ImageElement:
+		return "image"
 	default:
 		return ""
 	}
