@@ -185,18 +185,7 @@ func compile(inputPath, outputPath, projectRoot string, fontPaths []string) erro
 
 // buildStandardLibrary constructs the standard library scope.
 func buildStandardLibrary() *eval.Scope {
-	lib := eval.NewScope()
-
-	// Register element functions
-	eval.RegisterElementFunctions(lib)
-
-	// TODO: Register additional standard library functions
-	// - text styling (text, emph, strong)
-	// - layout (page, stack, grid)
-	// - math functions
-	// - etc.
-
-	return lib
+	return eval.Library()
 }
 
 // mustRebuildWorldWithLibrary creates a new FileWorld with the given library.
