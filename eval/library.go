@@ -2,6 +2,7 @@ package eval
 
 import (
 	"math"
+	"strings"
 
 	"github.com/boergens/gotypst/syntax"
 )
@@ -36,6 +37,9 @@ func Library() *Scope {
 
 	// Register math accent functions
 	registerMathAccentFunctions(scope)
+
+	// Register text utility functions
+	registerTextFunctions(scope)
 
 	return scope
 }
@@ -1438,6 +1442,88 @@ func mathAccentFunc(name string, kind AccentKind) *Func {
 			Info: &FuncInfo{
 				Name:   name,
 				Params: []ParamInfo{{Name: "base", Type: TypeContent}},
+			},
+		},
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Text Utility Functions
+// ----------------------------------------------------------------------------
+
+// registerTextFunctions adds text utility functions to the scope.
+func registerTextFunctions(scope *Scope) {
+	scope.DefineFunc("lorem", loremFunc())
+}
+
+// loremWords contains the standard Lorem Ipsum text split into words.
+var loremWords = []string{
+	"Lorem", "ipsum", "dolor", "sit", "amet,", "consectetur", "adipiscing", "elit,",
+	"sed", "do", "eiusmod", "tempor", "incididunt", "ut", "labore", "et", "dolore",
+	"magna", "aliqua.", "Ut", "enim", "ad", "minim", "veniam,", "quis", "nostrud",
+	"exercitation", "ullamco", "laboris", "nisi", "ut", "aliquip", "ex", "ea",
+	"commodo", "consequat.", "Duis", "aute", "irure", "dolor", "in", "reprehenderit",
+	"in", "voluptate", "velit", "esse", "cillum", "dolore", "eu", "fugiat", "nulla",
+	"pariatur.", "Excepteur", "sint", "occaecat", "cupidatat", "non", "proident,",
+	"sunt", "in", "culpa", "qui", "officia", "deserunt", "mollit", "anim", "id",
+	"est", "laborum.", "Sed", "ut", "perspiciatis", "unde", "omnis", "iste", "natus",
+	"error", "sit", "voluptatem", "accusantium", "doloremque", "laudantium,", "totam",
+	"rem", "aperiam,", "eaque", "ipsa", "quae", "ab", "illo", "inventore", "veritatis",
+	"et", "quasi", "architecto", "beatae", "vitae", "dicta", "sunt", "explicabo.",
+	"Nemo", "enim", "ipsam", "voluptatem", "quia", "voluptas", "sit", "aspernatur",
+	"aut", "odit", "aut", "fugit,", "sed", "quia", "consequuntur", "magni", "dolores",
+	"eos", "qui", "ratione", "voluptatem", "sequi", "nesciunt.", "Neque", "porro",
+	"quisquam", "est,", "qui", "dolorem", "ipsum", "quia", "dolor", "sit", "amet,",
+	"consectetur,", "adipisci", "velit,", "sed", "quia", "non", "numquam", "eius",
+	"modi", "tempora", "incidunt", "ut", "labore", "et", "dolore", "magnam", "aliquam",
+	"quaerat", "voluptatem.",
+}
+
+// loremFunc creates the lorem function for generating placeholder text.
+func loremFunc() *Func {
+	name := "lorem"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: func(vm *Vm, args *Args) (Value, error) {
+				// Get required words argument
+				wordsArg, err := args.Expect("words")
+				if err != nil {
+					return nil, err
+				}
+				if err := args.Finish(); err != nil {
+					return nil, err
+				}
+
+				// Convert to integer
+				n, ok := AsInt(wordsArg.V)
+				if !ok {
+					return nil, &TypeMismatchError{
+						Expected: "integer",
+						Got:      wordsArg.V.Type().String(),
+						Span:     wordsArg.Span,
+					}
+				}
+
+				if n <= 0 {
+					return StrValue(""), nil
+				}
+
+				// Generate n words of Lorem Ipsum text
+				wordCount := int(n)
+				result := make([]string, wordCount)
+				loremLen := len(loremWords)
+
+				for i := 0; i < wordCount; i++ {
+					result[i] = loremWords[i%loremLen]
+				}
+
+				return StrValue(strings.Join(result, " ")), nil
+			},
+			Info: &FuncInfo{
+				Name:   "lorem",
+				Params: []ParamInfo{{Name: "words", Type: TypeInt}},
 			},
 		},
 	}

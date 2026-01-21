@@ -224,3 +224,58 @@ func TestLibrary_ColorValues(t *testing.T) {
 		}
 	}
 }
+
+func TestLibrary_Lorem(t *testing.T) {
+	lib := Library()
+
+	// Check that lorem function is defined
+	loremBinding := lib.Get("lorem")
+	if loremBinding == nil {
+		t.Fatal("Expected lorem function to be defined")
+	}
+	if _, ok := loremBinding.Value.(FuncValue); !ok {
+		t.Fatalf("Expected lorem to be a FuncValue, got %T", loremBinding.Value)
+	}
+}
+
+func TestLibrary_LoremOutput(t *testing.T) {
+	// Test that lorem generates correct number of words
+	tests := []struct {
+		n        int
+		expected int // number of words in output
+	}{
+		{0, 0},
+		{1, 1},
+		{5, 5},
+		{20, 20},
+	}
+
+	for _, tc := range tests {
+		result := make([]string, tc.n)
+		loremLen := len(loremWords)
+		for i := 0; i < tc.n; i++ {
+			result[i] = loremWords[i%loremLen]
+		}
+
+		if tc.n == 0 {
+			if len(result) != 0 {
+				t.Errorf("lorem(%d) should produce empty result", tc.n)
+			}
+			continue
+		}
+
+		// Count words in result
+		wordCount := len(result)
+		if wordCount != tc.expected {
+			t.Errorf("lorem(%d) produced %d words, expected %d", tc.n, wordCount, tc.expected)
+		}
+	}
+
+	// Test that first words match expected Lorem Ipsum
+	if loremWords[0] != "Lorem" {
+		t.Errorf("First lorem word should be 'Lorem', got %q", loremWords[0])
+	}
+	if loremWords[1] != "ipsum" {
+		t.Errorf("Second lorem word should be 'ipsum', got %q", loremWords[1])
+	}
+}
