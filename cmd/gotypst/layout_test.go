@@ -91,7 +91,7 @@ func TestLayoutWithRealization(t *testing.T) {
 		content := &eval.Content{
 			Elements: []eval.ContentElement{
 				&eval.HeadingElement{
-					Level:   1,
+					Depth:   1,
 					Content: eval.Content{Elements: []eval.ContentElement{&eval.TextElement{Text: "Title"}}},
 				},
 				&eval.TextElement{Text: "Some body text."},

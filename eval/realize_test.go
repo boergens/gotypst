@@ -23,7 +23,7 @@ func TestElementName(t *testing.T) {
 		{"RawElement", &RawElement{}, "raw"},
 		{"LinkElement", &LinkElement{}, "link"},
 		{"RefElement", &RefElement{}, "ref"},
-		{"HeadingElement", &HeadingElement{Level: 1}, "heading"},
+		{"HeadingElement", &HeadingElement{Depth: 1}, "heading"},
 		{"ListItemElement", &ListItemElement{}, "list.item"},
 		{"EnumItemElement", &EnumItemElement{}, "enum.item"},
 		{"TermItemElement", &TermItemElement{}, "terms.item"},
@@ -58,7 +58,7 @@ func TestMatchElemSelector(t *testing.T) {
 	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
 
 	// Create a heading element
-	heading := &HeadingElement{Level: 1, Content: Content{}}
+	heading := &HeadingElement{Depth: 1, Content: Content{}}
 
 	// Selector that matches heading
 	sel := ElemSelector{Element: Element{Name: "heading"}}
@@ -136,7 +136,7 @@ func TestMatchOrSelector(t *testing.T) {
 	scopes := NewScopes(nil)
 	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
 
-	heading := &HeadingElement{Level: 1}
+	heading := &HeadingElement{Depth: 1}
 
 	// Or selector with heading or text
 	sel := OrSelector{
@@ -159,7 +159,7 @@ func TestMatchAndSelector(t *testing.T) {
 	scopes := NewScopes(nil)
 	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
 
-	heading := &HeadingElement{Level: 1}
+	heading := &HeadingElement{Depth: 1}
 
 	// And selector (both must match - impossible for different element types)
 	sel := AndSelector{
@@ -335,7 +335,7 @@ func TestRealizeWithNoneTransform(t *testing.T) {
 	content := Content{
 		Elements: []ContentElement{
 			&TextElement{Text: "hello"},
-			&HeadingElement{Level: 1, Content: Content{Elements: []ContentElement{&TextElement{Text: "Title"}}}},
+			&HeadingElement{Depth: 1, Content: Content{Elements: []ContentElement{&TextElement{Text: "Title"}}}},
 			&TextElement{Text: "world"},
 		},
 	}
@@ -373,7 +373,7 @@ func TestRealizeWithContentReplacement(t *testing.T) {
 
 	content := Content{
 		Elements: []ContentElement{
-			&HeadingElement{Level: 1, Content: Content{Elements: []ContentElement{&TextElement{Text: "Title"}}}},
+			&HeadingElement{Depth: 1, Content: Content{Elements: []ContentElement{&TextElement{Text: "Title"}}}},
 		},
 	}
 
@@ -421,7 +421,7 @@ func TestRealizeRecursiveChildren(t *testing.T) {
 				Content: Content{
 					Elements: []ContentElement{
 						&HeadingElement{
-							Level: 1,
+							Depth: 1,
 							Content: Content{
 								Elements: []ContentElement{
 									&TextElement{Text: "Nested Title"},

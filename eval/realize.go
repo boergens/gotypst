@@ -606,7 +606,17 @@ func realizeChildren(elem ContentElement, styles *Styles, vm *Vm) (ContentElemen
 		if err != nil {
 			return nil, err
 		}
-		return &HeadingElement{Level: e.Level, Content: realized}, nil
+		return &HeadingElement{
+			Level:         e.Level,
+			Depth:         e.Depth,
+			Offset:        e.Offset,
+			Content:       realized,
+			Numbering:     e.Numbering,
+			Supplement:    e.Supplement,
+			Outlined:      e.Outlined,
+			Bookmarked:    e.Bookmarked,
+			HangingIndent: e.HangingIndent,
+		}, nil
 
 	case *ListItemElement:
 		realized, err := RealizeWithOptions(e.Content, styles, vm, RealizeOptions{})
@@ -765,7 +775,17 @@ func realizeChildrenWithChain(elem ContentElement, chain *StyleChain, vm *Vm) (C
 		if err != nil {
 			return nil, err
 		}
-		return &HeadingElement{Level: e.Level, Content: realized}, nil
+		return &HeadingElement{
+			Level:         e.Level,
+			Depth:         e.Depth,
+			Offset:        e.Offset,
+			Content:       realized,
+			Numbering:     e.Numbering,
+			Supplement:    e.Supplement,
+			Outlined:      e.Outlined,
+			Bookmarked:    e.Bookmarked,
+			HangingIndent: e.HangingIndent,
+		}, nil
 
 	case *ListItemElement:
 		realized, err := RealizeWithChain(e.Content, chain, vm, RealizeOptions{})

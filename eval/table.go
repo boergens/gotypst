@@ -2,6 +2,7 @@ package eval
 
 // ----------------------------------------------------------------------------
 // Table Element
+// Matches Rust: typst-library/src/model/table.rs
 // ----------------------------------------------------------------------------
 
 // TableElement represents a table with cells arranged in a grid.
@@ -37,15 +38,25 @@ type TableElement struct {
 func (*TableElement) IsContentElement() {}
 
 // TableChild represents an item in the table's children.
-// It can be either plain content or an explicit table.cell().
+// Can be content, cell, header, footer, hline, or vline.
+// Matches Rust's TableChild enum.
 type TableChild struct {
 	// Content is set for plain content children.
 	Content *Content
 	// Cell is set for explicit table.cell() children.
 	Cell *TableCellElement
+	// Header is set for table.header() children.
+	Header *TableHeaderElement
+	// Footer is set for table.footer() children.
+	Footer *TableFooterElement
+	// HLine is set for table.hline() children.
+	HLine *TableHLineElement
+	// VLine is set for table.vline() children.
+	VLine *TableVLineElement
 }
 
 // TableCellElement represents an explicit table cell with position/span overrides.
+// Matches Rust's TableCell struct.
 type TableCellElement struct {
 	// Body is the cell's content.
 	Body Content
@@ -70,3 +81,69 @@ type TableCellElement struct {
 }
 
 func (*TableCellElement) IsContentElement() {}
+
+// TableHeaderElement represents a repeatable table header.
+// Matches Rust's TableHeader struct.
+type TableHeaderElement struct {
+	// Repeat indicates whether this header should repeat across pages (default: true).
+	Repeat bool
+	// Level is the header level (must be at least 1, default: 1).
+	Level int
+	// Children contains the cells and lines within the header.
+	Children []TableItem
+}
+
+func (*TableHeaderElement) IsContentElement() {}
+
+// TableFooterElement represents a repeatable table footer.
+// Matches Rust's TableFooter struct.
+type TableFooterElement struct {
+	// Repeat indicates whether this footer should repeat across pages (default: true).
+	Repeat bool
+	// Children contains the cells and lines within the footer.
+	Children []TableItem
+}
+
+func (*TableFooterElement) IsContentElement() {}
+
+// TableHLineElement represents a horizontal line in the table.
+// Matches Rust's TableHLine struct.
+type TableHLineElement struct {
+	// Y is the row above which the line is placed (0-indexed). Nil means auto.
+	Y *int
+	// Start is the column at which the line starts (0-indexed, inclusive).
+	Start int
+	// End is the column before which the line ends (0-indexed, exclusive). Nil means to end of table.
+	End *int
+	// Stroke is the line's stroke. Nil means use default stroke.
+	Stroke Value
+	// Position is where the line is placed: "top" or "bottom" relative to the row.
+	Position string
+}
+
+func (*TableHLineElement) IsContentElement() {}
+
+// TableVLineElement represents a vertical line in the table.
+// Matches Rust's TableVLine struct.
+type TableVLineElement struct {
+	// X is the column before which the line is placed (0-indexed). Nil means auto.
+	X *int
+	// Start is the row at which the line starts (0-indexed, inclusive).
+	Start int
+	// End is the row on top of which the line ends (0-indexed, exclusive). Nil means to end of table.
+	End *int
+	// Stroke is the line's stroke. Nil means use default stroke.
+	Stroke Value
+	// Position is where the line is placed: "start" or "end" relative to the column.
+	Position string
+}
+
+func (*TableVLineElement) IsContentElement() {}
+
+// TableItem represents a cell or line within a header or footer.
+// Matches Rust's TableItem enum.
+type TableItem struct {
+	Cell  *TableCellElement
+	HLine *TableHLineElement
+	VLine *TableVLineElement
+}

@@ -17,7 +17,7 @@ func TestGetSpaceState(t *testing.T) {
 
 		// Destructive elements
 		{"ParbreakElement", &ParbreakElement{}, Destructive},
-		{"HeadingElement", &HeadingElement{Level: 1}, Destructive},
+		{"HeadingElement", &HeadingElement{Depth: 1}, Destructive},
 		{"ListItemElement", &ListItemElement{}, Destructive},
 		{"EnumItemElement", &EnumItemElement{}, Destructive},
 		{"TermItemElement", &TermItemElement{}, Destructive},
@@ -188,7 +188,7 @@ func TestCollapseSpaces_SpacesAfterDestructive(t *testing.T) {
 func TestCollapseSpaces_MultipleDestructive(t *testing.T) {
 	// Multiple destructive elements with spaces between
 	elements := []ContentElement{
-		&HeadingElement{Level: 1},
+		&HeadingElement{Depth: 1},
 		&SpaceElement{},
 		&SpaceElement{},
 		&ParbreakElement{},
@@ -318,7 +318,7 @@ func TestCollapseSpaces_HeadingWithSpaces(t *testing.T) {
 	// Heading with spaces around it
 	elements := []ContentElement{
 		&SpaceElement{},
-		&HeadingElement{Level: 1, Content: Content{Elements: []ContentElement{&TextElement{Text: "Title"}}}},
+		&HeadingElement{Depth: 1, Content: Content{Elements: []ContentElement{&TextElement{Text: "Title"}}}},
 		&SpaceElement{},
 		&TextElement{Text: "Body text"},
 	}

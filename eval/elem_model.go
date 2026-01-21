@@ -214,6 +214,7 @@ func parbreakNative(vm *Vm, args *Args) (Value, error) {
 // ----------------------------------------------------------------------------
 
 // HeadingFunc creates the heading element function.
+// Matches Rust: typst-library/src/model/heading.rs
 func HeadingFunc() *Func {
 	name := "heading"
 	return &Func{
@@ -225,13 +226,14 @@ func HeadingFunc() *Func {
 				Name: "heading",
 				Params: []ParamInfo{
 					{Name: "body", Type: TypeContent, Named: false},
-					{Name: "level", Type: TypeInt, Default: Int(1), Named: true},
-					{Name: "depth", Type: TypeInt, Default: None, Named: true},
+					{Name: "level", Type: TypeInt, Default: Auto, Named: true},
+					{Name: "depth", Type: TypeInt, Default: Int(1), Named: true},
 					{Name: "offset", Type: TypeInt, Default: Int(0), Named: true},
 					{Name: "numbering", Type: TypeStr, Default: None, Named: true},
 					{Name: "supplement", Type: TypeContent, Default: Auto, Named: true},
 					{Name: "outlined", Type: TypeBool, Default: True, Named: true},
 					{Name: "bookmarked", Type: TypeBool, Default: Auto, Named: true},
+					{Name: "hanging-indent", Type: TypeLength, Default: Auto, Named: true},
 				},
 			},
 		},
@@ -240,16 +242,18 @@ func HeadingFunc() *Func {
 
 // headingNative implements the heading() function.
 // Creates a HeadingElement from the given content with optional level and numbering.
+// Matches Rust's HeadingElem struct.
 //
 // Arguments:
-//   - body (positional, content): The heading content
-//   - level (named, int, default: 1): The heading level (1-6)
-//   - depth (named, int, default: none): Depth for numbering inheritance
-//   - offset (named, int, default: 0): Numbering offset
-//   - numbering (named, str or none, default: none): Numbering pattern (e.g., "1.", "1.1", "I.")
-//   - supplement (named, content or auto, default: auto): Supplement content for references
+//   - body (positional, content): The heading's title
+//   - level (named, int or auto, default: auto): Absolute nesting depth (computed from offset+depth if auto)
+//   - depth (named, int, default: 1): Relative nesting depth
+//   - offset (named, int, default: 0): Starting offset for level computation
+//   - numbering (named, str or none, default: none): Numbering pattern (e.g., "1.", "1.a)")
+//   - supplement (named, content or auto, default: auto): Supplement for references
 //   - outlined (named, bool, default: true): Whether to show in outline
 //   - bookmarked (named, bool or auto, default: auto): Whether to bookmark in PDF
+//   - hanging-indent (named, length or auto, default: auto): Indent for multi-line headings
 func headingNative(vm *Vm, args *Args) (Value, error) {
 	// Get required body argument (can be positional or named)
 	bodyArg := args.Find("body")
@@ -272,22 +276,63 @@ func headingNative(vm *Vm, args *Args) (Value, error) {
 		}
 	}
 
-	// Get optional level argument (default: 1)
-	level := 1
-	if levelArg := args.Find("level"); levelArg != nil {
+	// Get optional level argument (default: auto, computed from offset + depth)
+	var level *int
+	if levelArg := args.Find("level"); levelArg != nil && !IsAuto(levelArg.V) {
 		levelVal, ok := AsInt(levelArg.V)
 		if !ok {
 			return nil, &TypeMismatchError{
-				Expected: "integer",
+				Expected: "integer or auto",
 				Got:      levelArg.V.Type().String(),
 				Span:     levelArg.Span,
 			}
 		}
-		level = int(levelVal)
-		if level < 1 || level > 6 {
+		l := int(levelVal)
+		if l < 1 {
 			return nil, &ConstructorError{
-				Message: "heading level must be between 1 and 6",
+				Message: "heading level must be at least 1",
 				Span:    levelArg.Span,
+			}
+		}
+		level = &l
+	}
+
+	// Get optional depth argument (default: 1)
+	depth := 1
+	if depthArg := args.Find("depth"); depthArg != nil && !IsAuto(depthArg.V) && !IsNone(depthArg.V) {
+		depthVal, ok := AsInt(depthArg.V)
+		if !ok {
+			return nil, &TypeMismatchError{
+				Expected: "integer",
+				Got:      depthArg.V.Type().String(),
+				Span:     depthArg.Span,
+			}
+		}
+		depth = int(depthVal)
+		if depth < 1 {
+			return nil, &ConstructorError{
+				Message: "heading depth must be at least 1",
+				Span:    depthArg.Span,
+			}
+		}
+	}
+
+	// Get optional offset argument (default: 0)
+	offset := 0
+	if offsetArg := args.Find("offset"); offsetArg != nil && !IsAuto(offsetArg.V) && !IsNone(offsetArg.V) {
+		offsetVal, ok := AsInt(offsetArg.V)
+		if !ok {
+			return nil, &TypeMismatchError{
+				Expected: "integer",
+				Got:      offsetArg.V.Type().String(),
+				Span:     offsetArg.Span,
+			}
+		}
+		offset = int(offsetVal)
+		if offset < 0 {
+			return nil, &ConstructorError{
+				Message: "heading offset must be non-negative",
+				Span:    offsetArg.Span,
 			}
 		}
 	}
@@ -354,6 +399,23 @@ func headingNative(vm *Vm, args *Args) (Value, error) {
 		}
 	}
 
+	// Get optional hanging-indent argument (default: auto)
+	var hangingIndent *float64
+	if hiArg := args.Find("hanging-indent"); hiArg != nil {
+		if !IsAuto(hiArg.V) && !IsNone(hiArg.V) {
+			if lv, ok := hiArg.V.(LengthValue); ok {
+				hi := lv.Length.Points
+				hangingIndent = &hi
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      hiArg.V.Type().String(),
+					Span:     hiArg.Span,
+				}
+			}
+		}
+	}
+
 	// Check for unexpected arguments
 	if err := args.Finish(); err != nil {
 		return nil, err
@@ -362,12 +424,15 @@ func headingNative(vm *Vm, args *Args) (Value, error) {
 	// Create the HeadingElement wrapped in ContentValue
 	return ContentValue{Content: Content{
 		Elements: []ContentElement{&HeadingElement{
-			Level:      level,
-			Content:    body,
-			Numbering:  numbering,
-			Supplement: supplement,
-			Outlined:   outlined,
-			Bookmarked: bookmarked,
+			Level:         level,
+			Depth:         depth,
+			Offset:        offset,
+			Content:       body,
+			Numbering:     numbering,
+			Supplement:    supplement,
+			Outlined:      outlined,
+			Bookmarked:    bookmarked,
+			HangingIndent: hangingIndent,
 		}},
 	}}, nil
 }
@@ -377,8 +442,14 @@ func headingNative(vm *Vm, args *Args) (Value, error) {
 // ----------------------------------------------------------------------------
 
 // ListFunc creates the list element function.
+// Matches Rust: typst-library/src/model/list.rs
 func ListFunc() *Func {
 	name := "list"
+
+	// Create scope with list.item method
+	listScope := NewScope()
+	listScope.DefineFunc("item", ListItemFunc())
+
 	return &Func{
 		Name: &name,
 		Span: syntax.Detached(),
@@ -389,23 +460,32 @@ func ListFunc() *Func {
 				Params: []ParamInfo{
 					{Name: "tight", Type: TypeBool, Default: True, Named: true},
 					{Name: "marker", Type: TypeContent, Default: None, Named: true},
+					{Name: "indent", Type: TypeLength, Default: None, Named: true},
+					{Name: "body-indent", Type: TypeLength, Default: None, Named: true},
+					{Name: "spacing", Type: TypeLength, Default: Auto, Named: true},
 					{Name: "children", Type: TypeContent, Named: false, Variadic: true},
 				},
 			},
+			Scope: listScope,
 		},
 	}
 }
 
 // listNative implements the list() function.
 // Creates a ListElement containing the given items.
+// Matches Rust's ListElem struct.
 //
 // Arguments:
 //   - tight (named, bool, default: true): Whether items have tight spacing
 //   - marker (named, content, default: none): Custom marker content
+//   - indent (named, length, default: none): Indentation of each item
+//   - body-indent (named, length, default: 0.5em): Spacing between marker and body
+//   - spacing (named, length or auto, default: auto): Spacing between items
 //   - children (positional, variadic, content): The list items
 func listNative(vm *Vm, args *Args) (Value, error) {
+	elem := &ListElement{}
+
 	// Get optional tight argument (default: true)
-	var tight *bool
 	if tightArg := args.Find("tight"); tightArg != nil {
 		if !IsAuto(tightArg.V) && !IsNone(tightArg.V) {
 			tightVal, ok := AsBool(tightArg.V)
@@ -416,21 +496,19 @@ func listNative(vm *Vm, args *Args) (Value, error) {
 					Span:     tightArg.Span,
 				}
 			}
-			tight = &tightVal
+			elem.Tight = &tightVal
 		}
 	}
 
 	// Get optional marker argument
-	var marker *Content
 	if markerArg := args.Find("marker"); markerArg != nil {
 		if !IsNone(markerArg.V) && !IsAuto(markerArg.V) {
 			if cv, ok := markerArg.V.(ContentValue); ok {
-				marker = &cv.Content
+				elem.Marker = &cv.Content
 			} else if s, ok := AsStr(markerArg.V); ok {
 				// Allow string markers for convenience
-				marker = &Content{
-					Elements: []ContentElement{&TextElement{Text: s}},
-				}
+				c := Content{Elements: []ContentElement{&TextElement{Text: s}}}
+				elem.Marker = &c
 			} else {
 				return nil, &TypeMismatchError{
 					Expected: "content or string",
@@ -441,8 +519,52 @@ func listNative(vm *Vm, args *Args) (Value, error) {
 		}
 	}
 
+	// Get optional indent argument
+	if indentArg := args.Find("indent"); indentArg != nil {
+		if !IsAuto(indentArg.V) && !IsNone(indentArg.V) {
+			if lv, ok := indentArg.V.(LengthValue); ok {
+				elem.Indent = &lv.Length.Points
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length",
+					Got:      indentArg.V.Type().String(),
+					Span:     indentArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional body-indent argument
+	if biArg := args.Find("body-indent"); biArg != nil {
+		if !IsAuto(biArg.V) && !IsNone(biArg.V) {
+			if lv, ok := biArg.V.(LengthValue); ok {
+				elem.BodyIndent = &lv.Length.Points
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length",
+					Got:      biArg.V.Type().String(),
+					Span:     biArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional spacing argument
+	if spacingArg := args.Find("spacing"); spacingArg != nil {
+		if !IsAuto(spacingArg.V) && !IsNone(spacingArg.V) {
+			if lv, ok := spacingArg.V.(LengthValue); ok {
+				elem.Spacing = &lv.Length.Points
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      spacingArg.V.Type().String(),
+					Span:     spacingArg.Span,
+				}
+			}
+		}
+	}
+
 	// Collect remaining positional arguments as list items
-	var items []*ListItemElement
 	for {
 		childArg := args.Eat()
 		if childArg == nil {
@@ -452,15 +574,15 @@ func listNative(vm *Vm, args *Args) (Value, error) {
 		if cv, ok := childArg.V.(ContentValue); ok {
 			// Check if the content contains ListItemElements, otherwise wrap as item
 			hasListItems := false
-			for _, elem := range cv.Content.Elements {
-				if item, ok := elem.(*ListItemElement); ok {
-					items = append(items, item)
+			for _, e := range cv.Content.Elements {
+				if item, ok := e.(*ListItemElement); ok {
+					elem.Items = append(elem.Items, item)
 					hasListItems = true
 				}
 			}
 			// If no list items found, treat the entire content as a single item
 			if !hasListItems && len(cv.Content.Elements) > 0 {
-				items = append(items, &ListItemElement{Content: cv.Content})
+				elem.Items = append(elem.Items, &ListItemElement{Content: cv.Content})
 			}
 		} else {
 			return nil, &TypeMismatchError{
@@ -478,11 +600,58 @@ func listNative(vm *Vm, args *Args) (Value, error) {
 
 	// Create the ListElement wrapped in ContentValue
 	return ContentValue{Content: Content{
-		Elements: []ContentElement{&ListElement{
-			Items:  items,
-			Tight:  tight,
-			Marker: marker,
-		}},
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// ListItemFunc creates the list.item element function.
+func ListItemFunc() *Func {
+	name := "item"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: listItemNative,
+			Info: &FuncInfo{
+				Name: "list.item",
+				Params: []ParamInfo{
+					{Name: "body", Type: TypeContent, Named: false},
+				},
+			},
+		},
+	}
+}
+
+// listItemNative implements the list.item() function.
+func listItemNative(vm *Vm, args *Args) (Value, error) {
+	// Get required body argument
+	bodyArg := args.Find("body")
+	if bodyArg == nil {
+		bodyArgSpanned, err := args.Expect("body")
+		if err != nil {
+			return nil, err
+		}
+		bodyArg = &bodyArgSpanned
+	}
+
+	var body Content
+	if cv, ok := bodyArg.V.(ContentValue); ok {
+		body = cv.Content
+	} else {
+		return nil, &TypeMismatchError{
+			Expected: "content",
+			Got:      bodyArg.V.Type().String(),
+			Span:     bodyArg.Span,
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{&ListItemElement{Content: body}},
 	}}, nil
 }
 
@@ -491,8 +660,14 @@ func listNative(vm *Vm, args *Args) (Value, error) {
 // ----------------------------------------------------------------------------
 
 // EnumFunc creates the enum element function.
+// Matches Rust: typst-library/src/model/enum.rs
 func EnumFunc() *Func {
 	name := "enum"
+
+	// Create scope with enum.item method
+	enumScope := NewScope()
+	enumScope.DefineFunc("item", EnumItemFunc())
+
 	return &Func{
 		Name: &name,
 		Span: syntax.Detached(),
@@ -503,27 +678,40 @@ func EnumFunc() *Func {
 				Params: []ParamInfo{
 					{Name: "tight", Type: TypeBool, Default: True, Named: true},
 					{Name: "numbering", Type: TypeStr, Default: None, Named: true},
-					{Name: "start", Type: TypeInt, Default: Int(1), Named: true},
+					{Name: "start", Type: TypeInt, Default: Auto, Named: true},
 					{Name: "full", Type: TypeBool, Default: False, Named: true},
+					{Name: "reversed", Type: TypeBool, Default: False, Named: true},
+					{Name: "indent", Type: TypeLength, Default: None, Named: true},
+					{Name: "body-indent", Type: TypeLength, Default: None, Named: true},
+					{Name: "spacing", Type: TypeLength, Default: Auto, Named: true},
+					{Name: "number-align", Type: TypeStr, Default: None, Named: true},
 					{Name: "children", Type: TypeContent, Named: false, Variadic: true},
 				},
 			},
+			Scope: enumScope,
 		},
 	}
 }
 
 // enumNative implements the enum() function.
 // Creates an EnumElement containing the given items.
+// Matches Rust's EnumElem struct.
 //
 // Arguments:
 //   - tight (named, bool, default: true): Whether items have tight spacing
-//   - numbering (named, str, default: none): Numbering pattern (e.g., "1.", "a)", "I.")
-//   - start (named, int, default: 1): Starting number
+//   - numbering (named, str, default: "1."): Numbering pattern
+//   - start (named, int or auto, default: auto): Starting number
 //   - full (named, bool, default: false): Whether to display full numbering
+//   - reversed (named, bool, default: false): Whether to reverse numbering
+//   - indent (named, length, default: none): Indentation of each item
+//   - body-indent (named, length, default: 0.5em): Spacing between number and body
+//   - spacing (named, length or auto, default: auto): Spacing between items
+//   - number-align (named, str, default: "end + top"): Alignment of numbers
 //   - children (positional, variadic, content): The enum items
 func enumNative(vm *Vm, args *Args) (Value, error) {
+	elem := &EnumElement{}
+
 	// Get optional tight argument (default: true)
-	var tight *bool
 	if tightArg := args.Find("tight"); tightArg != nil {
 		if !IsAuto(tightArg.V) && !IsNone(tightArg.V) {
 			tightVal, ok := AsBool(tightArg.V)
@@ -534,12 +722,11 @@ func enumNative(vm *Vm, args *Args) (Value, error) {
 					Span:     tightArg.Span,
 				}
 			}
-			tight = &tightVal
+			elem.Tight = &tightVal
 		}
 	}
 
 	// Get optional numbering argument
-	var numbering *string
 	if numberingArg := args.Find("numbering"); numberingArg != nil {
 		if !IsNone(numberingArg.V) && !IsAuto(numberingArg.V) {
 			numStr, ok := AsStr(numberingArg.V)
@@ -550,29 +737,27 @@ func enumNative(vm *Vm, args *Args) (Value, error) {
 					Span:     numberingArg.Span,
 				}
 			}
-			numbering = &numStr
+			elem.Numbering = &numStr
 		}
 	}
 
-	// Get optional start argument (default: 1)
-	var start *int
+	// Get optional start argument
 	if startArg := args.Find("start"); startArg != nil {
 		if !IsAuto(startArg.V) && !IsNone(startArg.V) {
 			startVal, ok := AsInt(startArg.V)
 			if !ok {
 				return nil, &TypeMismatchError{
-					Expected: "integer",
+					Expected: "integer or auto",
 					Got:      startArg.V.Type().String(),
 					Span:     startArg.Span,
 				}
 			}
 			s := int(startVal)
-			start = &s
+			elem.Start = &s
 		}
 	}
 
 	// Get optional full argument (default: false)
-	var full *bool
 	if fullArg := args.Find("full"); fullArg != nil {
 		if !IsAuto(fullArg.V) && !IsNone(fullArg.V) {
 			fullVal, ok := AsBool(fullArg.V)
@@ -583,15 +768,89 @@ func enumNative(vm *Vm, args *Args) (Value, error) {
 					Span:     fullArg.Span,
 				}
 			}
-			full = &fullVal
+			elem.Full = &fullVal
+		}
+	}
+
+	// Get optional reversed argument (default: false)
+	if reversedArg := args.Find("reversed"); reversedArg != nil {
+		if !IsAuto(reversedArg.V) && !IsNone(reversedArg.V) {
+			reversedVal, ok := AsBool(reversedArg.V)
+			if !ok {
+				return nil, &TypeMismatchError{
+					Expected: "bool",
+					Got:      reversedArg.V.Type().String(),
+					Span:     reversedArg.Span,
+				}
+			}
+			elem.Reversed = &reversedVal
+		}
+	}
+
+	// Get optional indent argument
+	if indentArg := args.Find("indent"); indentArg != nil {
+		if !IsAuto(indentArg.V) && !IsNone(indentArg.V) {
+			if lv, ok := indentArg.V.(LengthValue); ok {
+				elem.Indent = &lv.Length.Points
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length",
+					Got:      indentArg.V.Type().String(),
+					Span:     indentArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional body-indent argument
+	if biArg := args.Find("body-indent"); biArg != nil {
+		if !IsAuto(biArg.V) && !IsNone(biArg.V) {
+			if lv, ok := biArg.V.(LengthValue); ok {
+				elem.BodyIndent = &lv.Length.Points
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length",
+					Got:      biArg.V.Type().String(),
+					Span:     biArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional spacing argument
+	if spacingArg := args.Find("spacing"); spacingArg != nil {
+		if !IsAuto(spacingArg.V) && !IsNone(spacingArg.V) {
+			if lv, ok := spacingArg.V.(LengthValue); ok {
+				elem.Spacing = &lv.Length.Points
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "length or auto",
+					Got:      spacingArg.V.Type().String(),
+					Span:     spacingArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional number-align argument
+	if naArg := args.Find("number-align"); naArg != nil {
+		if !IsAuto(naArg.V) && !IsNone(naArg.V) {
+			if alignStr, ok := AsStr(naArg.V); ok {
+				elem.NumberAlign = &alignStr
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "alignment string",
+					Got:      naArg.V.Type().String(),
+					Span:     naArg.Span,
+				}
+			}
 		}
 	}
 
 	// Collect remaining positional arguments as enum items
-	var items []*EnumItemElement
 	itemNum := 1
-	if start != nil {
-		itemNum = *start
+	if elem.Start != nil {
+		itemNum = *elem.Start
 	}
 
 	for {
@@ -603,20 +862,20 @@ func enumNative(vm *Vm, args *Args) (Value, error) {
 		if cv, ok := childArg.V.(ContentValue); ok {
 			// Check if the content contains EnumItemElements, otherwise wrap as item
 			hasEnumItems := false
-			for _, elem := range cv.Content.Elements {
-				if item, ok := elem.(*EnumItemElement); ok {
+			for _, e := range cv.Content.Elements {
+				if item, ok := e.(*EnumItemElement); ok {
 					// Preserve existing item numbers if set, otherwise auto-number
 					if item.Number == 0 {
 						item.Number = itemNum
 						itemNum++
 					}
-					items = append(items, item)
+					elem.Items = append(elem.Items, item)
 					hasEnumItems = true
 				}
 			}
 			// If no enum items found, treat the entire content as a single item
 			if !hasEnumItems && len(cv.Content.Elements) > 0 {
-				items = append(items, &EnumItemElement{
+				elem.Items = append(elem.Items, &EnumItemElement{
 					Number:  itemNum,
 					Content: cv.Content,
 				})
@@ -638,13 +897,83 @@ func enumNative(vm *Vm, args *Args) (Value, error) {
 
 	// Create the EnumElement wrapped in ContentValue
 	return ContentValue{Content: Content{
-		Elements: []ContentElement{&EnumElement{
-			Items:     items,
-			Tight:     tight,
-			Numbering: numbering,
-			Start:     start,
-			Full:      full,
-		}},
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// EnumItemFunc creates the enum.item element function.
+func EnumItemFunc() *Func {
+	name := "item"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: enumItemNative,
+			Info: &FuncInfo{
+				Name: "enum.item",
+				Params: []ParamInfo{
+					{Name: "number", Type: TypeInt, Default: Auto, Named: false},
+					{Name: "body", Type: TypeContent, Named: false},
+				},
+			},
+		},
+	}
+}
+
+// enumItemNative implements the enum.item() function.
+func enumItemNative(vm *Vm, args *Args) (Value, error) {
+	elem := &EnumItemElement{}
+
+	// Get optional number argument (first positional)
+	numberArg := args.Eat()
+	if numberArg != nil {
+		if !IsAuto(numberArg.V) && !IsNone(numberArg.V) {
+			if numVal, ok := AsInt(numberArg.V); ok {
+				elem.Number = int(numVal)
+			} else if cv, ok := numberArg.V.(ContentValue); ok {
+				// It's actually the body, not a number
+				elem.Content = cv.Content
+				// Check for unexpected arguments
+				if err := args.Finish(); err != nil {
+					return nil, err
+				}
+				return ContentValue{Content: Content{
+					Elements: []ContentElement{elem},
+				}}, nil
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "integer or content",
+					Got:      numberArg.V.Type().String(),
+					Span:     numberArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get required body argument (second positional)
+	bodyArg := args.Find("body")
+	if bodyArg == nil {
+		bodyArg = args.Eat()
+	}
+	if bodyArg != nil {
+		if cv, ok := bodyArg.V.(ContentValue); ok {
+			elem.Content = cv.Content
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "content",
+				Got:      bodyArg.V.Type().String(),
+				Span:     bodyArg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
 	}}, nil
 }
 
@@ -771,12 +1100,17 @@ func linkNative(vm *Vm, args *Args) (Value, error) {
 // ----------------------------------------------------------------------------
 
 // TableFunc creates the table element function.
+// Matches Rust: typst-library/src/model/table.rs
 func TableFunc() *Func {
 	name := "table"
 
-	// Create scope with table.cell method
+	// Create scope with table sub-element methods
 	tableScope := NewScope()
 	tableScope.DefineFunc("cell", TableCellFunc())
+	tableScope.DefineFunc("header", TableHeaderFunc())
+	tableScope.DefineFunc("footer", TableFooterFunc())
+	tableScope.DefineFunc("hline", TableHLineFunc())
+	tableScope.DefineFunc("vline", TableVLineFunc())
 
 	return &Func{
 		Name: &name,
@@ -872,11 +1206,24 @@ func tableNative(vm *Vm, args *Args) (Value, error) {
 			break
 		}
 
-		// Check if it's a TableCellElement
+		// Check if it's a table sub-element
 		if cv, ok := child.V.(ContentValue); ok {
 			if len(cv.Content.Elements) == 1 {
-				if cell, ok := cv.Content.Elements[0].(*TableCellElement); ok {
-					elem.Children = append(elem.Children, TableChild{Cell: cell})
+				switch e := cv.Content.Elements[0].(type) {
+				case *TableCellElement:
+					elem.Children = append(elem.Children, TableChild{Cell: e})
+					continue
+				case *TableHeaderElement:
+					elem.Children = append(elem.Children, TableChild{Header: e})
+					continue
+				case *TableFooterElement:
+					elem.Children = append(elem.Children, TableChild{Footer: e})
+					continue
+				case *TableHLineElement:
+					elem.Children = append(elem.Children, TableChild{HLine: e})
+					continue
+				case *TableVLineElement:
+					elem.Children = append(elem.Children, TableChild{VLine: e})
 					continue
 				}
 			}
@@ -1070,6 +1417,387 @@ func tableCellNative(vm *Vm, args *Args) (Value, error) {
 	}
 
 	// Create the TableCellElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// TableHeaderFunc creates the table.header element function.
+// Matches Rust: typst-library/src/model/table.rs TableHeader
+func TableHeaderFunc() *Func {
+	name := "header"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: tableHeaderNative,
+			Info: &FuncInfo{
+				Name: "table.header",
+				Params: []ParamInfo{
+					{Name: "repeat", Type: TypeBool, Default: True, Named: true},
+					{Name: "level", Type: TypeInt, Default: Int(1), Named: true},
+					{Name: "children", Type: TypeContent, Variadic: true},
+				},
+			},
+		},
+	}
+}
+
+// tableHeaderNative implements the table.header() function.
+func tableHeaderNative(vm *Vm, args *Args) (Value, error) {
+	elem := &TableHeaderElement{
+		Repeat: true,
+		Level:  1,
+	}
+
+	// Get optional repeat argument (default: true)
+	if repeatArg := args.Find("repeat"); repeatArg != nil {
+		if !IsAuto(repeatArg.V) && !IsNone(repeatArg.V) {
+			if repeatVal, ok := AsBool(repeatArg.V); ok {
+				elem.Repeat = repeatVal
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "bool",
+					Got:      repeatArg.V.Type().String(),
+					Span:     repeatArg.Span,
+				}
+			}
+		}
+	}
+
+	// Get optional level argument (default: 1)
+	if levelArg := args.Find("level"); levelArg != nil {
+		if !IsAuto(levelArg.V) && !IsNone(levelArg.V) {
+			if levelVal, ok := AsInt(levelArg.V); ok {
+				if levelVal < 1 {
+					return nil, &InvalidArgumentError{
+						Message: "header level must be at least 1",
+						Span:    levelArg.Span,
+					}
+				}
+				elem.Level = int(levelVal)
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "integer",
+					Got:      levelArg.V.Type().String(),
+					Span:     levelArg.Span,
+				}
+			}
+		}
+	}
+
+	// Collect children (cells and lines)
+	for {
+		child := args.Eat()
+		if child == nil {
+			break
+		}
+
+		if cv, ok := child.V.(ContentValue); ok {
+			if len(cv.Content.Elements) == 1 {
+				switch e := cv.Content.Elements[0].(type) {
+				case *TableCellElement:
+					elem.Children = append(elem.Children, TableItem{Cell: e})
+					continue
+				case *TableHLineElement:
+					elem.Children = append(elem.Children, TableItem{HLine: e})
+					continue
+				case *TableVLineElement:
+					elem.Children = append(elem.Children, TableItem{VLine: e})
+					continue
+				}
+			}
+			// Wrap content in a cell
+			elem.Children = append(elem.Children, TableItem{Cell: &TableCellElement{Body: cv.Content, Colspan: 1, Rowspan: 1}})
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// TableFooterFunc creates the table.footer element function.
+// Matches Rust: typst-library/src/model/table.rs TableFooter
+func TableFooterFunc() *Func {
+	name := "footer"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: tableFooterNative,
+			Info: &FuncInfo{
+				Name: "table.footer",
+				Params: []ParamInfo{
+					{Name: "repeat", Type: TypeBool, Default: True, Named: true},
+					{Name: "children", Type: TypeContent, Variadic: true},
+				},
+			},
+		},
+	}
+}
+
+// tableFooterNative implements the table.footer() function.
+func tableFooterNative(vm *Vm, args *Args) (Value, error) {
+	elem := &TableFooterElement{
+		Repeat: true,
+	}
+
+	// Get optional repeat argument (default: true)
+	if repeatArg := args.Find("repeat"); repeatArg != nil {
+		if !IsAuto(repeatArg.V) && !IsNone(repeatArg.V) {
+			if repeatVal, ok := AsBool(repeatArg.V); ok {
+				elem.Repeat = repeatVal
+			} else {
+				return nil, &TypeMismatchError{
+					Expected: "bool",
+					Got:      repeatArg.V.Type().String(),
+					Span:     repeatArg.Span,
+				}
+			}
+		}
+	}
+
+	// Collect children (cells and lines)
+	for {
+		child := args.Eat()
+		if child == nil {
+			break
+		}
+
+		if cv, ok := child.V.(ContentValue); ok {
+			if len(cv.Content.Elements) == 1 {
+				switch e := cv.Content.Elements[0].(type) {
+				case *TableCellElement:
+					elem.Children = append(elem.Children, TableItem{Cell: e})
+					continue
+				case *TableHLineElement:
+					elem.Children = append(elem.Children, TableItem{HLine: e})
+					continue
+				case *TableVLineElement:
+					elem.Children = append(elem.Children, TableItem{VLine: e})
+					continue
+				}
+			}
+			// Wrap content in a cell
+			elem.Children = append(elem.Children, TableItem{Cell: &TableCellElement{Body: cv.Content, Colspan: 1, Rowspan: 1}})
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// TableHLineFunc creates the table.hline element function.
+// Matches Rust: typst-library/src/model/table.rs TableHLine
+func TableHLineFunc() *Func {
+	name := "hline"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: tableHLineNative,
+			Info: &FuncInfo{
+				Name: "table.hline",
+				Params: []ParamInfo{
+					{Name: "y", Type: TypeInt, Default: Auto, Named: true},
+					{Name: "start", Type: TypeInt, Default: Int(0), Named: true},
+					{Name: "end", Type: TypeInt, Default: None, Named: true},
+					{Name: "stroke", Type: TypeDyn, Default: None, Named: true},
+					{Name: "position", Type: TypeStr, Default: None, Named: true},
+				},
+			},
+		},
+	}
+}
+
+// tableHLineNative implements the table.hline() function.
+func tableHLineNative(vm *Vm, args *Args) (Value, error) {
+	elem := &TableHLineElement{}
+
+	// Get optional y argument
+	if yArg := args.Find("y"); yArg != nil && !IsAuto(yArg.V) && !IsNone(yArg.V) {
+		if yVal, ok := AsInt(yArg.V); ok {
+			y := int(yVal)
+			elem.Y = &y
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "integer or auto",
+				Got:      yArg.V.Type().String(),
+				Span:     yArg.Span,
+			}
+		}
+	}
+
+	// Get optional start argument (default: 0)
+	if startArg := args.Find("start"); startArg != nil && !IsAuto(startArg.V) && !IsNone(startArg.V) {
+		if startVal, ok := AsInt(startArg.V); ok {
+			elem.Start = int(startVal)
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "integer",
+				Got:      startArg.V.Type().String(),
+				Span:     startArg.Span,
+			}
+		}
+	}
+
+	// Get optional end argument
+	if endArg := args.Find("end"); endArg != nil && !IsAuto(endArg.V) && !IsNone(endArg.V) {
+		if endVal, ok := AsInt(endArg.V); ok {
+			e := int(endVal)
+			elem.End = &e
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "integer or none",
+				Got:      endArg.V.Type().String(),
+				Span:     endArg.Span,
+			}
+		}
+	}
+
+	// Get optional stroke argument
+	if strokeArg := args.Find("stroke"); strokeArg != nil && !IsNone(strokeArg.V) {
+		elem.Stroke = strokeArg.V
+	}
+
+	// Get optional position argument
+	if posArg := args.Find("position"); posArg != nil && !IsAuto(posArg.V) && !IsNone(posArg.V) {
+		if posVal, ok := AsStr(posArg.V); ok {
+			if posVal != "top" && posVal != "bottom" {
+				return nil, &InvalidArgumentError{
+					Message: "position must be \"top\" or \"bottom\"",
+					Span:    posArg.Span,
+				}
+			}
+			elem.Position = posVal
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "string",
+				Got:      posArg.V.Type().String(),
+				Span:     posArg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{elem},
+	}}, nil
+}
+
+// TableVLineFunc creates the table.vline element function.
+// Matches Rust: typst-library/src/model/table.rs TableVLine
+func TableVLineFunc() *Func {
+	name := "vline"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: tableVLineNative,
+			Info: &FuncInfo{
+				Name: "table.vline",
+				Params: []ParamInfo{
+					{Name: "x", Type: TypeInt, Default: Auto, Named: true},
+					{Name: "start", Type: TypeInt, Default: Int(0), Named: true},
+					{Name: "end", Type: TypeInt, Default: None, Named: true},
+					{Name: "stroke", Type: TypeDyn, Default: None, Named: true},
+					{Name: "position", Type: TypeStr, Default: None, Named: true},
+				},
+			},
+		},
+	}
+}
+
+// tableVLineNative implements the table.vline() function.
+func tableVLineNative(vm *Vm, args *Args) (Value, error) {
+	elem := &TableVLineElement{}
+
+	// Get optional x argument
+	if xArg := args.Find("x"); xArg != nil && !IsAuto(xArg.V) && !IsNone(xArg.V) {
+		if xVal, ok := AsInt(xArg.V); ok {
+			x := int(xVal)
+			elem.X = &x
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "integer or auto",
+				Got:      xArg.V.Type().String(),
+				Span:     xArg.Span,
+			}
+		}
+	}
+
+	// Get optional start argument (default: 0)
+	if startArg := args.Find("start"); startArg != nil && !IsAuto(startArg.V) && !IsNone(startArg.V) {
+		if startVal, ok := AsInt(startArg.V); ok {
+			elem.Start = int(startVal)
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "integer",
+				Got:      startArg.V.Type().String(),
+				Span:     startArg.Span,
+			}
+		}
+	}
+
+	// Get optional end argument
+	if endArg := args.Find("end"); endArg != nil && !IsAuto(endArg.V) && !IsNone(endArg.V) {
+		if endVal, ok := AsInt(endArg.V); ok {
+			e := int(endVal)
+			elem.End = &e
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "integer or none",
+				Got:      endArg.V.Type().String(),
+				Span:     endArg.Span,
+			}
+		}
+	}
+
+	// Get optional stroke argument
+	if strokeArg := args.Find("stroke"); strokeArg != nil && !IsNone(strokeArg.V) {
+		elem.Stroke = strokeArg.V
+	}
+
+	// Get optional position argument
+	if posArg := args.Find("position"); posArg != nil && !IsAuto(posArg.V) && !IsNone(posArg.V) {
+		if posVal, ok := AsStr(posArg.V); ok {
+			if posVal != "start" && posVal != "end" {
+				return nil, &InvalidArgumentError{
+					Message: "position must be \"start\" or \"end\"",
+					Span:    posArg.Span,
+				}
+			}
+			elem.Position = posVal
+		} else {
+			return nil, &TypeMismatchError{
+				Expected: "string",
+				Got:      posArg.V.Type().String(),
+				Span:     posArg.Span,
+			}
+		}
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
 	return ContentValue{Content: Content{
 		Elements: []ContentElement{elem},
 	}}, nil

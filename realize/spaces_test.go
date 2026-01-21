@@ -17,7 +17,7 @@ func TestGetSpaceState(t *testing.T) {
 		{"whitespace text", &eval.TextElement{Text: "   "}, StateSpace},
 		{"parbreak", &eval.ParbreakElement{}, StateDestructive},
 		{"linebreak", &eval.LinebreakElement{}, StateDestructive},
-		{"heading", &eval.HeadingElement{Level: 1}, StateDestructive},
+		{"heading", &eval.HeadingElement{Depth: 1}, StateDestructive},
 		{"paragraph", &eval.ParagraphElement{}, StateDestructive},
 		{"strong", &eval.StrongElement{}, StateSupportive},
 		{"emph", &eval.EmphElement{}, StateSupportive},

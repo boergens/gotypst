@@ -1819,9 +1819,12 @@ func evalHeading(vm *Vm, e *syntax.HeadingExpr) (Value, error) {
 		return nil, err
 	}
 	if c, ok := content.(ContentValue); ok {
+		// The syntax sets depth (number of = signs), not the absolute level.
+		// Level is computed as offset + depth at resolution time.
 		return ContentValue{Content: Content{
 			Elements: []ContentElement{&HeadingElement{
-				Level:    e.Level(),
+				Depth:    e.Level(), // Syntax level becomes depth
+				Offset:   0,         // Default offset
 				Content:  c.Content,
 				Outlined: true, // Default: show in outline
 			}},
@@ -1830,16 +1833,55 @@ func evalHeading(vm *Vm, e *syntax.HeadingExpr) (Value, error) {
 	return content, nil
 }
 
+// HeadingElement represents a section heading.
+// Matches Rust: typst-library/src/model/heading.rs
 type HeadingElement struct {
-	Level      int
-	Content    Content
-	Numbering  *string // Optional numbering pattern (e.g., "1.", "1.1", "I.")
+	// Level is the absolute nesting depth (1-based). If nil, computed from Offset + Depth.
+	// Corresponds to Rust's `level: Smart<NonZeroUsize>`.
+	Level *int
+	// Depth is the relative nesting depth (1-based, default: 1).
+	// Set by heading syntax (e.g., `== Heading` has depth 2).
+	// Corresponds to Rust's `depth: NonZeroUsize`.
+	Depth int
+	// Offset is the starting offset added to Depth to compute Level (default: 0).
+	// Corresponds to Rust's `offset: usize`.
+	Offset int
+	// Content is the heading's body/title.
+	// Corresponds to Rust's `body: Content`.
+	Content Content
+	// Numbering is the numbering pattern (e.g., "1.", "1.1", "I.").
+	// Corresponds to Rust's `numbering: Option<Numbering>`.
+	Numbering *string
+	// Supplement is additional content for references.
+	// Corresponds to Rust's `supplement: Smart<Option<Supplement>>`.
 	Supplement *Content
-	Outlined   bool
+	// Outlined indicates whether to show in outline (default: true).
+	// Corresponds to Rust's `outlined: bool`.
+	Outlined bool
+	// Bookmarked indicates whether to bookmark in PDF. Nil means auto (follows Outlined).
+	// Corresponds to Rust's `bookmarked: Smart<bool>`.
 	Bookmarked *bool
+	// HangingIndent is the indent for all but the first line. Nil means auto.
+	// Corresponds to Rust's `hanging_indent: Smart<Length>`.
+	HangingIndent *float64
 }
 
 func (*HeadingElement) IsContentElement() {}
+
+// ResolveLevel returns the absolute heading level.
+// If Level is explicitly set, returns it; otherwise computes from Offset + Depth.
+// Matches Rust's HeadingElem::resolve_level method.
+func (h *HeadingElement) ResolveLevel() int {
+	if h.Level != nil {
+		return *h.Level
+	}
+	// Default depth is 1 if not set
+	depth := h.Depth
+	if depth < 1 {
+		depth = 1
+	}
+	return h.Offset + depth
+}
 
 func evalListItem(vm *Vm, e *syntax.ListItemExpr) (Value, error) {
 	body := e.Body()

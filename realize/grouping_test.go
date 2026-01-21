@@ -26,7 +26,7 @@ func TestParagraphGroupingRule_Trigger(t *testing.T) {
 		{"LinebreakElement triggers", &eval.LinebreakElement{}, true},
 		{"Inline RawElement triggers", &eval.RawElement{Text: "code", Block: false}, true},
 		{"Block RawElement does not trigger", &eval.RawElement{Text: "code", Block: true}, false},
-		{"HeadingElement does not trigger", &eval.HeadingElement{Level: 1}, false},
+		{"HeadingElement does not trigger", &eval.HeadingElement{Depth: 1}, false},
 		{"ListItemElement does not trigger", &eval.ListItemElement{}, false},
 		{"ParbreakElement does not trigger", &eval.ParbreakElement{}, false},
 	}
@@ -50,7 +50,7 @@ func TestParagraphGroupingRule_Interrupt(t *testing.T) {
 		expected bool
 	}{
 		{"ParbreakElement interrupts", &eval.ParbreakElement{}, true},
-		{"HeadingElement interrupts", &eval.HeadingElement{Level: 1}, true},
+		{"HeadingElement interrupts", &eval.HeadingElement{Depth: 1}, true},
 		{"ListItemElement interrupts", &eval.ListItemElement{}, true},
 		{"EnumItemElement interrupts", &eval.EnumItemElement{}, true},
 		{"TermItemElement interrupts", &eval.TermItemElement{}, true},
@@ -177,7 +177,7 @@ func TestBulletListGroupingRule_Interrupt(t *testing.T) {
 		{"ListItemElement does not interrupt", &eval.ListItemElement{}, false},
 		{"EnumItemElement interrupts", &eval.EnumItemElement{}, true},
 		{"TermItemElement interrupts", &eval.TermItemElement{}, true},
-		{"HeadingElement interrupts", &eval.HeadingElement{Level: 1}, true},
+		{"HeadingElement interrupts", &eval.HeadingElement{Depth: 1}, true},
 		{"ParagraphElement interrupts", &eval.ParagraphElement{}, true},
 		{"ParbreakElement interrupts", &eval.ParbreakElement{}, true},
 		{"TextElement interrupts", &eval.TextElement{Text: "hello"}, true},
@@ -476,7 +476,7 @@ func TestGrouper_ProcessHeading(t *testing.T) {
 	// Headings should not be grouped into paragraphs
 	elements := []eval.ContentElement{
 		&eval.TextElement{Text: "Before"},
-		&eval.HeadingElement{Level: 1, Content: eval.Content{
+		&eval.HeadingElement{Depth: 1, Content: eval.Content{
 			Elements: []eval.ContentElement{&eval.TextElement{Text: "Title"}},
 		}},
 		&eval.TextElement{Text: "After"},

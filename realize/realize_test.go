@@ -95,7 +95,7 @@ func TestRealizeMultipleTextElements(t *testing.T) {
 func TestRealizeBlockElement(t *testing.T) {
 	content := &eval.Content{
 		Elements: []eval.ContentElement{
-			&eval.HeadingElement{Level: 1, Content: eval.Content{
+			&eval.HeadingElement{Depth: 1, Content: eval.Content{
 				Elements: []eval.ContentElement{
 					&eval.TextElement{Text: "Title"},
 				},
@@ -172,7 +172,7 @@ func TestFragmentKindDetection(t *testing.T) {
 		{
 			name: "block only",
 			elements: []eval.ContentElement{
-				&eval.HeadingElement{Level: 1},
+				&eval.HeadingElement{Depth: 1},
 				&eval.ParagraphElement{},
 			},
 			expected: FragmentBlock,
