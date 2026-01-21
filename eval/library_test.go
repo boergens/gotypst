@@ -278,4 +278,15 @@ func TestLibrary_LoremOutput(t *testing.T) {
 	if loremWords[1] != "ipsum" {
 		t.Errorf("Second lorem word should be 'ipsum', got %q", loremWords[1])
 	}
+
+	// Test that we have 1000 words from the lipsum corpus
+	if len(loremWords) != 1000 {
+		t.Errorf("loremWords should have 1000 words, got %d", len(loremWords))
+	}
+
+	// Verify some specific words match the lipsum output (seeded with 97)
+	// Word 17 should be "magnam" (not "magna" from classic Lorem Ipsum)
+	if loremWords[17] != "magnam" {
+		t.Errorf("Word 17 should be 'magnam' (from lipsum crate), got %q", loremWords[17])
+	}
 }
