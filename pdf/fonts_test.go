@@ -115,3 +115,25 @@ func TestTextPositionHex(t *testing.T) {
 		t.Error("Output should contain TJ operator")
 	}
 }
+
+func TestSanitizePostScriptName(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"Arial", "Arial"},
+		{"Times New Roman", "TimesNewRoman"},
+		{"Arial-Bold", "Arial-Bold"},
+		{"Font_Name", "Font_Name"},
+		{"日本語フォント", "Font"}, // Non-ASCII becomes "Font"
+		{"", "Font"},
+		{"123", "123"},
+	}
+
+	for _, tt := range tests {
+		result := sanitizePostScriptName(tt.input)
+		if result != tt.expected {
+			t.Errorf("sanitizePostScriptName(%q) = %q, expected %q", tt.input, result, tt.expected)
+		}
+	}
+}

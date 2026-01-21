@@ -459,11 +459,29 @@ func (w *Writer) processFrame(frame *pages.Frame, content *bytes.Buffer, imageRe
 			// Y position needs to account for page height and baseline
 			yPos := float64(frame.Size.Height - y - v.FontSize)
 
-			fmt.Fprintf(content, "BT\n")              // Begin text
-			fmt.Fprintf(content, "/F1 %g Tf\n", fontSize) // Set font and size
-			fmt.Fprintf(content, "%g %g Td\n", xPos, yPos) // Position
+			fmt.Fprintf(content, "BT\n")                            // Begin text
+			fmt.Fprintf(content, "/F1 %g Tf\n", fontSize)           // Set font and size
+			fmt.Fprintf(content, "%g %g Td\n", xPos, yPos)          // Position
 			fmt.Fprintf(content, "(%s) Tj\n", escapeString(v.Text)) // Show text
-			fmt.Fprintf(content, "ET\n")              // End text
+			fmt.Fprintf(content, "ET\n")                            // End text
+
+		case pages.ShapedTextItem:
+			// ShapedTextItem support - render using fallback for now
+			// Full support requires font subsetting integration
+			if len(v.Glyphs) == 0 {
+				continue
+			}
+
+			fontSize := float64(v.FontSize)
+			xPos := float64(x)
+			yPos := float64(frame.Size.Height - y - v.FontSize)
+
+			fmt.Fprintf(content, "BT\n")
+			fmt.Fprintf(content, "/F1 %g Tf\n", fontSize)
+			fmt.Fprintf(content, "%g %g Td\n", xPos, yPos)
+			// Render as placeholder - actual glyph rendering needs font subsetting
+			fmt.Fprintf(content, "( ) Tj\n")
+			fmt.Fprintf(content, "ET\n")
 		}
 	}
 	return nil

@@ -27,6 +27,10 @@ type Font struct {
 	// Index is the face index within a font collection (TTC).
 	// Zero for single-face fonts (TTF/OTF).
 	Index int
+
+	// RawData stores the original font file bytes for subsetting.
+	// This is nil for TTC fonts where the data is shared.
+	RawData []byte
 }
 
 // Family returns the font family name.
@@ -213,4 +217,18 @@ func BoldItalicVariant() Variant {
 		Weight:  WeightBold,
 		Stretch: StretchNormal,
 	}
+}
+
+// CanSubset returns true if the font has raw data available for subsetting.
+func (f *Font) CanSubset() bool {
+	return len(f.RawData) > 0
+}
+
+// NewSubsetter creates a subsetter for this font.
+// Returns nil if the font doesn't have raw data for subsetting.
+func (f *Font) NewSubsetter() *Subsetter {
+	if !f.CanSubset() {
+		return nil
+	}
+	return NewSubsetter(f, f.RawData)
 }

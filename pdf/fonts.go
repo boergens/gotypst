@@ -326,3 +326,17 @@ func buildCompressedStream(data []byte) ([]byte, error) {
 	}
 	return buf.Bytes(), nil
 }
+
+// sanitizePostScriptName removes invalid characters from a PostScript name.
+func sanitizePostScriptName(name string) string {
+	var result bytes.Buffer
+	for _, r := range name {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			result.WriteRune(r)
+		}
+	}
+	if result.Len() == 0 {
+		return "Font"
+	}
+	return result.String()
+}
