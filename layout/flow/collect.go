@@ -129,6 +129,10 @@ func (c *Collector) collectElement(elem eval.ContentElement) {
 	case *eval.RefElement:
 		c.collectRef(e)
 
+	// Image elements
+	case *eval.ImageElement:
+		c.collectImage(e)
+
 	// Math elements
 	case *eval.EquationElement:
 		c.collectEquation(e)
@@ -393,6 +397,19 @@ func (c *Collector) collectMathSymbol(elem *eval.MathSymbolElement) {
 // collectSmartQuote handles smart quote elements.
 func (c *Collector) collectSmartQuote(elem *eval.SmartQuoteElement) {
 	// Smart quotes are inline elements.
+	c.lastWasSpacing = false
+}
+
+// collectImage handles image elements.
+func (c *Collector) collectImage(elem *eval.ImageElement) {
+	// Images are single unbreakable blocks.
+	// They cannot be split across pages.
+	align := c.getBlockAlignment()
+	c.children = append(c.children, &SingleChild{
+		Align:  align,
+		Sticky: false,
+		Alone:  false,
+	})
 	c.lastWasSpacing = false
 }
 
