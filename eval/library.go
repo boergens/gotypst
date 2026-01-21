@@ -196,7 +196,7 @@ func registerTypes(scope *Scope) {
 	}
 
 	for _, t := range types {
-		scope.Define(t.String(), TypeValue{Inner: t}, syntax.Detached())
+		scope.Define(t.Ident(), TypeValue{Inner: t}, syntax.Detached())
 	}
 }
 

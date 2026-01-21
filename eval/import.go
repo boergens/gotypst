@@ -588,7 +588,7 @@ func typeToModule(t Type, span syntax.Span) (*Module, error) {
 	// For now, return an empty module - type scopes would be populated
 	// by the standard library
 	return &Module{
-		Name:    t.String(),
+		Name:    t.Ident(),
 		Scope:   scope,
 		Content: Content{},
 	}, nil

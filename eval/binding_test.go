@@ -111,7 +111,7 @@ func TestDestructureDict(t *testing.T) {
 func TestDestructuringErrors(t *testing.T) {
 	t.Run("cannot destructure error", func(t *testing.T) {
 		err := &CannotDestructureError{Type: TypeInt, Span: syntax.Detached()}
-		if err.Error() != "cannot destructure int" {
+		if err.Error() != "cannot destructure integer" {
 			t.Errorf("Unexpected error message: %s", err.Error())
 		}
 	})

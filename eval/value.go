@@ -752,6 +752,22 @@ func (t Type) String() string {
 	}
 }
 
+// Ident returns the short identifier for the type (used in code, e.g., "int").
+// This differs from String() which returns the display name (e.g., "integer").
+func (t Type) Ident() string {
+	switch t {
+	case TypeBool:
+		return "bool"
+	case TypeInt:
+		return "int"
+	case TypeStr:
+		return "str"
+	default:
+		// Most types use the same name for both
+		return t.String()
+	}
+}
+
 // ----------------------------------------------------------------------------
 // Value Conversion Helpers
 // ----------------------------------------------------------------------------

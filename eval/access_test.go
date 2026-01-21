@@ -82,7 +82,7 @@ func TestAccessErrors(t *testing.T) {
 
 	t.Run("fields not mutable error", func(t *testing.T) {
 		err := &FieldsNotMutableError{Type: TypeInt, Span: syntax.Detached()}
-		if err.Error() != "fields on int are not yet mutable" {
+		if err.Error() != "fields on integer are not yet mutable" {
 			t.Errorf("Unexpected error message: %s", err.Error())
 		}
 	})
