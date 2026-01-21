@@ -730,9 +730,10 @@ func assignToExpr(vm *Vm, expr syntax.Expr, value Value) (Value, error) {
 		if binding == nil {
 			return nil, &UndefinedVariableError{Name: name, Span: e.ToUntyped().Span()}
 		}
-		if err := binding.Write(value); err != nil {
-			return nil, err
+		if !binding.Mutable {
+			return nil, &ImmutableBindingError{Name: name}
 		}
+		binding.Value = value
 		return None, nil
 
 	case *syntax.FieldAccessExpr:

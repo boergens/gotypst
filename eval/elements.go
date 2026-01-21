@@ -40,6 +40,13 @@ func RegisterElementFunctions(scope *Scope) {
 
 	// Visualize module functions (from elem_visualize.go)
 	scope.DefineFunc("image", ImageFunc())
+	scope.DefineFunc("rect", RectFunc())
+	scope.DefineFunc("circle", CircleFunc())
+	scope.DefineFunc("ellipse", EllipseFunc())
+	scope.DefineFunc("line", LineFunc())
+	scope.DefineFunc("path", PathFunc())
+	scope.DefineFunc("polygon", PolygonFunc())
+	scope.DefineFunc("square", SquareFunc())
 }
 
 // ElementFunctions returns a map of all element function names to their functions.

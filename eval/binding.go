@@ -122,10 +122,12 @@ type Category struct {
 }
 
 // ImmutableBindingError is returned when trying to mutate an immutable binding.
-type ImmutableBindingError struct{}
+type ImmutableBindingError struct {
+	Name string
+}
 
 func (e *ImmutableBindingError) Error() string {
-	return "cannot mutate immutable binding"
+	return fmt.Sprintf("cannot mutate a constant: %s", e.Name)
 }
 
 // ----------------------------------------------------------------------------

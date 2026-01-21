@@ -311,3 +311,110 @@ func decodeGenericDimensions(data []byte) (width, height int, err error) {
 func decodeImageConfig(data []byte) (image.Config, string, error) {
 	return image.DecodeConfig(bytes.NewReader(data))
 }
+
+// ----------------------------------------------------------------------------
+// Shape Element Functions (stubs)
+// ----------------------------------------------------------------------------
+// These are stub implementations for the visualize module shape elements.
+// Full implementations should match typst-library/src/visualize/shape.rs
+
+// RectFunc creates the rect element function.
+func RectFunc() *Func {
+	name := "rect"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: shapeStub("rect"),
+			Info: &FuncInfo{Name: "rect"},
+		},
+	}
+}
+
+// CircleFunc creates the circle element function.
+func CircleFunc() *Func {
+	name := "circle"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: shapeStub("circle"),
+			Info: &FuncInfo{Name: "circle"},
+		},
+	}
+}
+
+// EllipseFunc creates the ellipse element function.
+func EllipseFunc() *Func {
+	name := "ellipse"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: shapeStub("ellipse"),
+			Info: &FuncInfo{Name: "ellipse"},
+		},
+	}
+}
+
+// LineFunc creates the line element function.
+func LineFunc() *Func {
+	name := "line"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: shapeStub("line"),
+			Info: &FuncInfo{Name: "line"},
+		},
+	}
+}
+
+// PathFunc creates the path element function.
+func PathFunc() *Func {
+	name := "path"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: shapeStub("path"),
+			Info: &FuncInfo{Name: "path"},
+		},
+	}
+}
+
+// PolygonFunc creates the polygon element function.
+func PolygonFunc() *Func {
+	name := "polygon"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: shapeStub("polygon"),
+			Info: &FuncInfo{Name: "polygon"},
+		},
+	}
+}
+
+// SquareFunc creates the square element function.
+func SquareFunc() *Func {
+	name := "square"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: shapeStub("square"),
+			Info: &FuncInfo{Name: "square"},
+		},
+	}
+}
+
+// shapeStub creates a stub native function for shape elements.
+func shapeStub(name string) func(*Vm, *Args) (Value, error) {
+	return func(vm *Vm, args *Args) (Value, error) {
+		// Consume all arguments silently
+		args.Finish()
+		// Return empty content
+		return ContentValue{Content: Content{}}, nil
+	}
+}
