@@ -172,34 +172,17 @@ func evalSetRule(vm *Vm, e *syntax.SetRuleExpr) (Value, error) {
 		}
 	}
 
-	// Get the target expression.
-	// In Typst syntax, `set text(fill: red)` has a FuncCall as the target.
-	targetExpr := e.Target()
-	if targetExpr == nil {
+	// Get the target expression (the function identifier).
+	// In Typst syntax, `set text(fill: red)` has the target as `text` (Ident).
+	calleeExpr := e.Target()
+	if calleeExpr == nil {
 		return nil, &SetRuleError{
 			Message: "set rule missing target",
 			Span:    e.ToUntyped().Span(),
 		}
 	}
 
-	// The target should be a function call expression
-	funcCallExpr, ok := targetExpr.(*syntax.FuncCallExpr)
-	if !ok {
-		return nil, &SetRuleError{
-			Message: "set rule target must be a function call",
-			Span:    targetExpr.ToUntyped().Span(),
-		}
-	}
-
 	// Evaluate the callee to get the function
-	calleeExpr := funcCallExpr.Callee()
-	if calleeExpr == nil {
-		return nil, &SetRuleError{
-			Message: "set rule missing function",
-			Span:    funcCallExpr.ToUntyped().Span(),
-		}
-	}
-
 	calleeVal, err := EvalExpr(vm, calleeExpr)
 	if err != nil {
 		return nil, err
@@ -225,8 +208,8 @@ func evalSetRule(vm *Vm, e *syntax.SetRuleExpr) (Value, error) {
 		}
 	}
 
-	// Evaluate arguments from the function call
-	argsNode := funcCallExpr.Args()
+	// Evaluate arguments from the set rule
+	argsNode := e.Args()
 	args, err := evalArgs(vm, argsNode)
 	if err != nil {
 		return nil, err
