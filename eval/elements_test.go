@@ -2752,3 +2752,146 @@ func TestElementFunctionsIncludesBoxBlockPad(t *testing.T) {
 		t.Error("expected 'pad' in ElementFunctions()")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// Link Element Tests
+// ----------------------------------------------------------------------------
+
+func TestLinkFunc(t *testing.T) {
+	// Get the link function
+	linkFunc := LinkFunc()
+
+	if linkFunc == nil {
+		t.Fatal("LinkFunc() returned nil")
+	}
+
+	if linkFunc.Name == nil || *linkFunc.Name != "link" {
+		t.Errorf("expected function name 'link', got %v", linkFunc.Name)
+	}
+
+	// Verify it's a native function
+	_, ok := linkFunc.Repr.(NativeFunc)
+	if !ok {
+		t.Error("expected NativeFunc representation")
+	}
+}
+
+func TestLinkNativeBasic(t *testing.T) {
+	// Create a VM with minimal setup
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create args with just the dest
+	args := NewArgs(syntax.Detached())
+	args.Push(Str("https://example.com"), syntax.Detached())
+
+	// Call the link function
+	result, err := linkNative(vm, args)
+	if err != nil {
+		t.Fatalf("linkNative() error: %v", err)
+	}
+
+	// Verify result is ContentValue
+	content, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	// Verify it contains one LinkElement
+	if len(content.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(content.Content.Elements))
+	}
+
+	link, ok := content.Content.Elements[0].(*LinkElement)
+	if !ok {
+		t.Fatalf("expected *LinkElement, got %T", content.Content.Elements[0])
+	}
+
+	// Verify element properties
+	if link.URL != "https://example.com" {
+		t.Errorf("URL = %q, want %q", link.URL, "https://example.com")
+	}
+	if link.Body != nil {
+		t.Errorf("Body = %v, want nil", link.Body)
+	}
+}
+
+func TestLinkNativeWithBody(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create body content
+	bodyContent := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Click here"}},
+	}}
+
+	// Create args with dest and body
+	args := NewArgs(syntax.Detached())
+	args.Push(Str("https://example.com"), syntax.Detached())
+	args.Push(bodyContent, syntax.Detached())
+
+	result, err := linkNative(vm, args)
+	if err != nil {
+		t.Fatalf("linkNative() error: %v", err)
+	}
+
+	content := result.(ContentValue)
+	link := content.Content.Elements[0].(*LinkElement)
+
+	if link.URL != "https://example.com" {
+		t.Errorf("URL = %q, want %q", link.URL, "https://example.com")
+	}
+	if link.Body == nil {
+		t.Fatal("Body = nil, want content")
+	}
+	if len(link.Body.Elements) != 1 {
+		t.Fatalf("expected 1 body element, got %d", len(link.Body.Elements))
+	}
+	textElem, ok := link.Body.Elements[0].(*TextElement)
+	if !ok {
+		t.Fatalf("expected *TextElement in body, got %T", link.Body.Elements[0])
+	}
+	if textElem.Text != "Click here" {
+		t.Errorf("body text = %q, want %q", textElem.Text, "Click here")
+	}
+}
+
+func TestLinkNativeMissingDest(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create args with no arguments
+	args := NewArgs(syntax.Detached())
+
+	// Call should fail due to missing dest
+	_, err := linkNative(vm, args)
+	if err == nil {
+		t.Error("expected error for missing dest argument")
+	}
+}
+
+func TestRegisterElementFunctionsIncludesLink(t *testing.T) {
+	scope := NewScope()
+	RegisterElementFunctions(scope)
+
+	// Verify link function is registered
+	linkBinding := scope.Get("link")
+	if linkBinding == nil {
+		t.Fatal("expected 'link' to be registered")
+	}
+	linkFunc, ok := linkBinding.Value.(FuncValue)
+	if !ok {
+		t.Fatalf("expected FuncValue for link, got %T", linkBinding.Value)
+	}
+	if linkFunc.Func.Name == nil || *linkFunc.Func.Name != "link" {
+		t.Errorf("expected function name 'link', got %v", linkFunc.Func.Name)
+	}
+}
+
+func TestElementFunctionsIncludesLink(t *testing.T) {
+	funcs := ElementFunctions()
+
+	if _, ok := funcs["link"]; !ok {
+		t.Error("expected 'link' in ElementFunctions()")
+	}
+}

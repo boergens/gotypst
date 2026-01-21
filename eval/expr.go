@@ -1767,7 +1767,8 @@ func evalLink(_ *Vm, e *syntax.LinkExpr) (Value, error) {
 }
 
 type LinkElement struct {
-	URL string
+	URL  string   // The destination URL
+	Body *Content // Optional body content (nil for bare links)
 }
 
 func (*LinkElement) IsContentElement() {}
