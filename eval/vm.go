@@ -442,7 +442,7 @@ type UndefinedVariableError struct {
 }
 
 func (e *UndefinedVariableError) Error() string {
-	return "undefined variable: " + e.Name
+	return "unknown variable: " + e.Name
 }
 
 // CyclicImportError is returned when a cyclic import is detected.

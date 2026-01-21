@@ -1402,9 +1402,15 @@ func (e *UnaryExpr) Op() UnOp {
 // Expr returns the operand.
 func (e *UnaryExpr) Expr() Expr {
 	for _, child := range e.node.Children() {
-		if child.Kind() != Plus && child.Kind() != Minus && child.Kind() != Not {
-			return ExprFromNode(child)
+		kind := child.Kind()
+		// Skip operator and whitespace
+		if kind == Plus || kind == Minus || kind == Not {
+			continue
 		}
+		if !isSignificantExprKind(kind) {
+			continue
+		}
+		return ExprFromNode(child)
 	}
 	return nil
 }

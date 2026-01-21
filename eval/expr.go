@@ -583,7 +583,7 @@ func applyPos(v Value, span syntax.Span) (Value, error) {
 	case FractionValue:
 		return val, nil
 	default:
-		return nil, &TypeError{Expected: TypeInt, Got: v.Type(), Span: span}
+		return nil, &UnaryOpError{Op: "+", Type: v.Type(), Span: span}
 	}
 }
 
@@ -602,14 +602,14 @@ func applyNeg(v Value, span syntax.Span) (Value, error) {
 	case FractionValue:
 		return FractionValue{Fraction: Fraction{Value: -val.Fraction.Value}}, nil
 	default:
-		return nil, &TypeError{Expected: TypeInt, Got: v.Type(), Span: span}
+		return nil, &UnaryOpError{Op: "-", Type: v.Type(), Span: span}
 	}
 }
 
 func applyNot(v Value, span syntax.Span) (Value, error) {
 	b, ok := AsBool(v)
 	if !ok {
-		return nil, &TypeError{Expected: TypeBool, Got: v.Type(), Span: span}
+		return nil, &UnaryOpError{Op: "not", Type: v.Type(), Span: span}
 	}
 	return Bool(!b), nil
 }
@@ -2025,6 +2025,17 @@ type TypeError struct {
 
 func (e *TypeError) Error() string {
 	return fmt.Sprintf("expected %s, found %s", e.Expected, e.Got)
+}
+
+// UnaryOpError is returned when a unary operator is applied to an unsupported type.
+type UnaryOpError struct {
+	Op   string
+	Type Type
+	Span syntax.Span
+}
+
+func (e *UnaryOpError) Error() string {
+	return fmt.Sprintf("cannot apply '%s' to %s", e.Op, e.Type)
 }
 
 // IterationError is returned when a loop iteration fails.
