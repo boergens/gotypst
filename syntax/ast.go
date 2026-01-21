@@ -2040,7 +2040,7 @@ func isSignificantExprKind(kind SyntaxKind) bool {
 	switch kind {
 	case Space, Linebreak, Parbreak, Hash,
 		LeftBrace, RightBrace, LeftBracket, RightBracket, LeftParen, RightParen,
-		Comma, Semicolon, Colon, CodeBlock, ContentBlock:
+		Comma, Semicolon, Colon:
 		return false
 	default:
 		return true

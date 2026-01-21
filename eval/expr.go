@@ -2035,6 +2035,10 @@ type UnaryOpError struct {
 }
 
 func (e *UnaryOpError) Error() string {
+	// Rust uses "unary" prefix for + operator specifically
+	if e.Op == "+" {
+		return fmt.Sprintf("cannot apply unary '%s' to %s", e.Op, e.Type)
+	}
 	return fmt.Sprintf("cannot apply '%s' to %s", e.Op, e.Type)
 }
 
