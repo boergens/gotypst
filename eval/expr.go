@@ -1704,14 +1704,17 @@ func evalStrong(vm *Vm, e *syntax.StrongExpr) (Value, error) {
 	}
 	if c, ok := content.(ContentValue); ok {
 		return ContentValue{Content: Content{
-			Elements: []ContentElement{&StrongElement{Content: c.Content}},
+			Elements: []ContentElement{&StrongElement{Content: c.Content, Delta: 300}},
 		}}, nil
 	}
 	return content, nil
 }
 
+// StrongElement represents strongly emphasized content (bold).
+// Delta is the font weight increase (default 300, matching Typst).
 type StrongElement struct {
 	Content Content
+	Delta   int64 // Font weight delta (default 300)
 }
 
 func (*StrongElement) IsContentElement() {}

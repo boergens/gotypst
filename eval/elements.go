@@ -2588,6 +2588,10 @@ func decodeImageConfig(data []byte) (image.Config, string, error) {
 // RegisterElementFunctions registers all element functions in the given scope.
 // Call this when setting up the standard library scope.
 func RegisterElementFunctions(scope *Scope) {
+	// Text styling functions (from text_funcs.go)
+	scope.DefineFunc("text", TextFunc())
+	scope.DefineFunc("strong", StrongFunc())
+	scope.DefineFunc("emph", EmphFunc())
 	// Register raw element function
 	scope.DefineFunc("raw", RawFunc())
 	// Register paragraph element function
@@ -2624,6 +2628,9 @@ func RegisterElementFunctions(scope *Scope) {
 // This is useful for introspection and testing.
 func ElementFunctions() map[string]*Func {
 	return map[string]*Func{
+		"text":     TextFunc(),
+		"strong":   StrongFunc(),
+		"emph":     EmphFunc(),
 		"raw":      RawFunc(),
 		"par":      ParFunc(),
 		"parbreak": ParbreakFunc(),

@@ -1,3 +1,6 @@
 # Gas Town runtime directories
 .beads/
 .runtime/
+
+# Reference Typst repo (Rust implementation)
+typst-reference/

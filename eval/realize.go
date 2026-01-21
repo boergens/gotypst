@@ -394,20 +394,24 @@ const (
 // Realize transforms content by applying show rules.
 // This is the main entry point for the realization system.
 func Realize(content Content, styles *Styles, vm *Vm) (Content, error) {
-	return RealizeWithOptions(content, styles, vm, RealizeOptions{Kind: RealizeDocument})
+	chain := NewStyleChain(styles)
+	return RealizeWithChain(content, chain, vm, RealizeOptions{Kind: RealizeDocument})
 }
 
 // RealizeWithOptions transforms content with specific options.
-func RealizeWithOptions(content Content, styles *Styles, vm *Vm, _ RealizeOptions) (Content, error) {
-	if styles == nil || len(styles.Recipes) == 0 {
-		// No show rules to apply
-		return content, nil
-	}
+// Deprecated: Use RealizeWithChain for proper style chain support.
+func RealizeWithOptions(content Content, styles *Styles, vm *Vm, opts RealizeOptions) (Content, error) {
+	chain := NewStyleChain(styles)
+	return RealizeWithChain(content, chain, vm, opts)
+}
 
+// RealizeWithChain transforms content using a style chain.
+// This properly handles nested styles via StyledElement.
+func RealizeWithChain(content Content, chain *StyleChain, vm *Vm, _ RealizeOptions) (Content, error) {
 	var result []ContentElement
 
 	for _, elem := range content.Elements {
-		transformed, err := realizeElement(elem, styles, vm)
+		transformed, err := realizeElementWithChain(elem, chain, vm)
 		if err != nil {
 			return Content{}, err
 		}
@@ -418,15 +422,40 @@ func RealizeWithOptions(content Content, styles *Styles, vm *Vm, _ RealizeOption
 }
 
 // realizeElement processes a single element through show rules.
+// Deprecated: Use realizeElementWithChain for proper style chain support.
 func realizeElement(elem ContentElement, styles *Styles, vm *Vm) ([]ContentElement, error) {
+	chain := NewStyleChain(styles)
+	return realizeElementWithChain(elem, chain, vm)
+}
+
+// realizeElementWithChain processes a single element through show rules using a style chain.
+func realizeElementWithChain(elem ContentElement, chain *StyleChain, vm *Vm) ([]ContentElement, error) {
+	// Handle StyledElement specially - it pushes styles onto the chain
+	if styled, ok := elem.(*StyledElement); ok {
+		// Chain the styles from this element
+		innerChain := chain.Chain(styled.Styles)
+		// Realize the child content with the extended chain
+		realized, err := RealizeWithChain(styled.Child, innerChain, vm, RealizeOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return realized.Elements, nil
+	}
+
 	// First, recursively realize any child content
-	elem, err := realizeChildren(elem, styles, vm)
+	elem, err := realizeChildrenWithChain(elem, chain, vm)
 	if err != nil {
 		return nil, err
 	}
 
+	// Get all recipes from the chain for matching
+	recipes := chain.Recipes()
+	if len(recipes) == 0 {
+		return []ContentElement{elem}, nil
+	}
+
 	// Then, try to match and apply show rules
-	for _, recipe := range styles.Recipes {
+	for _, recipe := range recipes {
 		matched, transformation, err := matchRecipe(recipe, elem, vm)
 		if err != nil {
 			return nil, err
@@ -443,7 +472,7 @@ func realizeElement(elem ContentElement, styles *Styles, vm *Vm) ([]ContentEleme
 			var result []ContentElement
 			for _, te := range transformed {
 				// Avoid infinite loops by not re-processing with the same recipe
-				realized, err := realizeElementExcluding(te, styles, recipe, vm)
+				realized, err := realizeElementExcludingWithChain(te, chain, recipe, vm)
 				if err != nil {
 					return nil, err
 				}
@@ -458,25 +487,86 @@ func realizeElement(elem ContentElement, styles *Styles, vm *Vm) ([]ContentEleme
 }
 
 // realizeElementExcluding processes an element excluding a specific recipe to prevent loops.
+// Deprecated: Use realizeElementExcludingWithChain for proper style chain support.
 func realizeElementExcluding(elem ContentElement, styles *Styles, exclude *Recipe, vm *Vm) ([]ContentElement, error) {
-	// Create a filtered styles without the excluded recipe
+	chain := NewStyleChain(styles)
+	return realizeElementExcludingWithChain(elem, chain, exclude, vm)
+}
+
+// realizeElementExcludingWithChain processes an element excluding a specific recipe.
+// This is used to prevent infinite loops when a show rule produces content that
+// would match the same rule again.
+func realizeElementExcludingWithChain(elem ContentElement, chain *StyleChain, exclude *Recipe, vm *Vm) ([]ContentElement, error) {
+	// Get all recipes and filter out the excluded one
+	allRecipes := chain.Recipes()
 	var filteredRecipes []*Recipe
-	for _, r := range styles.Recipes {
+	for _, r := range allRecipes {
 		if r != exclude {
 			filteredRecipes = append(filteredRecipes, r)
 		}
 	}
 
+	// Create a new chain with filtered recipes (even if empty)
+	// This ensures children are processed with the filtered set
+	var rules []StyleRule
+	if allStyles := chain.AllStyles(); allStyles != nil {
+		rules = allStyles.Rules
+	}
+	filteredStyles := &Styles{
+		Rules:   rules, // Preserve style rules
+		Recipes: filteredRecipes,
+	}
+	filteredChain := NewStyleChain(filteredStyles)
+
+	// Handle StyledElement specially
+	if styled, ok := elem.(*StyledElement); ok {
+		innerChain := filteredChain.Chain(styled.Styles)
+		realized, err := RealizeWithChain(styled.Child, innerChain, vm, RealizeOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return realized.Elements, nil
+	}
+
+	// Process children with the filtered chain
+	elem, err := realizeChildrenWithChain(elem, filteredChain, vm)
+	if err != nil {
+		return nil, err
+	}
+
+	// If no recipes left, return the element with realized children
 	if len(filteredRecipes) == 0 {
 		return []ContentElement{elem}, nil
 	}
 
-	filteredStyles := &Styles{
-		Rules:   styles.Rules,
-		Recipes: filteredRecipes,
+	// Try to match remaining recipes
+	for _, recipe := range filteredRecipes {
+		matched, transformation, err := matchRecipe(recipe, elem, vm)
+		if err != nil {
+			return nil, err
+		}
+		if matched {
+			// Apply the transformation
+			transformed, err := ApplyTransformation(transformation, elem, vm)
+			if err != nil {
+				return nil, err
+			}
+
+			// Recursively realize, excluding this recipe too
+			var result []ContentElement
+			for _, te := range transformed {
+				realized, err := realizeElementExcludingWithChain(te, filteredChain, recipe, vm)
+				if err != nil {
+					return nil, err
+				}
+				result = append(result, realized...)
+			}
+			return result, nil
+		}
 	}
 
-	return realizeElement(elem, filteredStyles, vm)
+	// No recipes matched
+	return []ContentElement{elem}, nil
 }
 
 // matchRecipe checks if a recipe matches an element and returns the transformation.
@@ -623,6 +713,165 @@ func realizeChildren(elem ContentElement, styles *Styles, vm *Vm) (ContentElemen
 			return nil, err
 		}
 		lowerRealized, err := RealizeWithOptions(e.Lower, styles, vm, RealizeOptions{Kind: RealizeMath})
+		if err != nil {
+			return nil, err
+		}
+		return &MathLimitsElement{
+			Nucleus: nucleusRealized,
+			Upper:   upperRealized,
+			Lower:   lowerRealized,
+		}, nil
+
+	default:
+		// Element has no children to realize
+		return elem, nil
+	}
+}
+
+// realizeChildrenWithChain recursively realizes child content using a style chain.
+func realizeChildrenWithChain(elem ContentElement, chain *StyleChain, vm *Vm) (ContentElement, error) {
+	switch e := elem.(type) {
+	case *StyledElement:
+		// StyledElement is handled specially in realizeElementWithChain
+		// This shouldn't normally be reached, but handle it just in case
+		innerChain := chain.Chain(e.Styles)
+		realized, err := RealizeWithChain(e.Child, innerChain, vm, RealizeOptions{})
+		if err != nil {
+			return nil, err
+		}
+		// Return the realized content directly, not wrapped
+		if len(realized.Elements) == 1 {
+			return realized.Elements[0], nil
+		}
+		// Multiple elements - need to keep as styled wrapper
+		return &StyledElement{Child: realized, Styles: e.Styles}, nil
+
+	case *StrongElement:
+		realized, err := RealizeWithChain(e.Content, chain, vm, RealizeOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return &StrongElement{Content: realized, Delta: e.Delta}, nil
+
+	case *EmphElement:
+		realized, err := RealizeWithChain(e.Content, chain, vm, RealizeOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return &EmphElement{Content: realized}, nil
+
+	case *HeadingElement:
+		realized, err := RealizeWithChain(e.Content, chain, vm, RealizeOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return &HeadingElement{Level: e.Level, Content: realized}, nil
+
+	case *ListItemElement:
+		realized, err := RealizeWithChain(e.Content, chain, vm, RealizeOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return &ListItemElement{Content: realized}, nil
+
+	case *EnumItemElement:
+		realized, err := RealizeWithChain(e.Content, chain, vm, RealizeOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return &EnumItemElement{Number: e.Number, Content: realized}, nil
+
+	case *TermItemElement:
+		termRealized, err := RealizeWithChain(e.Term, chain, vm, RealizeOptions{})
+		if err != nil {
+			return nil, err
+		}
+		descRealized, err := RealizeWithChain(e.Description, chain, vm, RealizeOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return &TermItemElement{Term: termRealized, Description: descRealized}, nil
+
+	case *ParagraphElement:
+		realized, err := RealizeWithChain(e.Body, chain, vm, RealizeOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return &ParagraphElement{
+			Body:            realized,
+			Leading:         e.Leading,
+			Justify:         e.Justify,
+			Linebreaks:      e.Linebreaks,
+			FirstLineIndent: e.FirstLineIndent,
+			HangingIndent:   e.HangingIndent,
+		}, nil
+
+	case *EquationElement:
+		realized, err := RealizeWithChain(e.Body, chain, vm, RealizeOptions{Kind: RealizeMath})
+		if err != nil {
+			return nil, err
+		}
+		return &EquationElement{Body: realized, Block: e.Block}, nil
+
+	case *MathFracElement:
+		numRealized, err := RealizeWithChain(e.Num, chain, vm, RealizeOptions{Kind: RealizeMath})
+		if err != nil {
+			return nil, err
+		}
+		denomRealized, err := RealizeWithChain(e.Denom, chain, vm, RealizeOptions{Kind: RealizeMath})
+		if err != nil {
+			return nil, err
+		}
+		return &MathFracElement{Num: numRealized, Denom: denomRealized}, nil
+
+	case *MathRootElement:
+		indexRealized, err := RealizeWithChain(e.Index, chain, vm, RealizeOptions{Kind: RealizeMath})
+		if err != nil {
+			return nil, err
+		}
+		radicandRealized, err := RealizeWithChain(e.Radicand, chain, vm, RealizeOptions{Kind: RealizeMath})
+		if err != nil {
+			return nil, err
+		}
+		return &MathRootElement{Index: indexRealized, Radicand: radicandRealized}, nil
+
+	case *MathAttachElement:
+		baseRealized, err := RealizeWithChain(e.Base, chain, vm, RealizeOptions{Kind: RealizeMath})
+		if err != nil {
+			return nil, err
+		}
+		subRealized, err := RealizeWithChain(e.Subscript, chain, vm, RealizeOptions{Kind: RealizeMath})
+		if err != nil {
+			return nil, err
+		}
+		superRealized, err := RealizeWithChain(e.Superscript, chain, vm, RealizeOptions{Kind: RealizeMath})
+		if err != nil {
+			return nil, err
+		}
+		return &MathAttachElement{
+			Base:        baseRealized,
+			Subscript:   subRealized,
+			Superscript: superRealized,
+			Primes:      e.Primes,
+		}, nil
+
+	case *MathDelimitedElement:
+		realized, err := RealizeWithChain(e.Body, chain, vm, RealizeOptions{Kind: RealizeMath})
+		if err != nil {
+			return nil, err
+		}
+		return &MathDelimitedElement{Open: e.Open, Close: e.Close, Body: realized}, nil
+
+	case *MathLimitsElement:
+		nucleusRealized, err := RealizeWithChain(e.Nucleus, chain, vm, RealizeOptions{Kind: RealizeMath})
+		if err != nil {
+			return nil, err
+		}
+		upperRealized, err := RealizeWithChain(e.Upper, chain, vm, RealizeOptions{Kind: RealizeMath})
+		if err != nil {
+			return nil, err
+		}
+		lowerRealized, err := RealizeWithChain(e.Lower, chain, vm, RealizeOptions{Kind: RealizeMath})
 		if err != nil {
 			return nil, err
 		}
