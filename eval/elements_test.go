@@ -2752,3 +2752,173 @@ func TestElementFunctionsIncludesBoxBlockPad(t *testing.T) {
 		t.Error("expected 'pad' in ElementFunctions()")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// Table Element Tests
+// ----------------------------------------------------------------------------
+
+func TestTableFunc(t *testing.T) {
+	// Get the table function
+	tableFunc := TableFunc()
+
+	if tableFunc == nil {
+		t.Fatal("TableFunc() returned nil")
+	}
+
+	if tableFunc.Name == nil || *tableFunc.Name != "table" {
+		t.Error("TableFunc name should be 'table'")
+	}
+}
+
+func TestTableNativeBasic(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create table cells as content
+	cell1 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Name"}},
+	}}
+	cell2 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Value"}},
+	}}
+	cell3 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "Alpha"}},
+	}}
+	cell4 := ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "1"}},
+	}}
+
+	// Create args with columns and cells
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("columns", Int(2), syntax.Detached())
+	args.Push(cell1, syntax.Detached())
+	args.Push(cell2, syntax.Detached())
+	args.Push(cell3, syntax.Detached())
+	args.Push(cell4, syntax.Detached())
+
+	// Call table native function
+	tableFunc := TableFunc()
+	result, err := tableFunc.Repr.(NativeFunc).Func(vm, args)
+
+	if err != nil {
+		t.Fatalf("tableNative failed: %v", err)
+	}
+
+	cv, ok := result.(ContentValue)
+	if !ok {
+		t.Fatalf("expected ContentValue, got %T", result)
+	}
+
+	if len(cv.Content.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(cv.Content.Elements))
+	}
+
+	tableElem, ok := cv.Content.Elements[0].(*TableElement)
+	if !ok {
+		t.Fatalf("expected TableElement, got %T", cv.Content.Elements[0])
+	}
+
+	if tableElem.Columns != 2 {
+		t.Errorf("expected 2 columns, got %d", tableElem.Columns)
+	}
+
+	if len(tableElem.Cells) != 4 {
+		t.Errorf("expected 4 cells, got %d", len(tableElem.Cells))
+	}
+}
+
+func TestTableNativeMissingColumns(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create args without columns
+	args := NewArgs(syntax.Detached())
+	args.Push(ContentValue{Content: Content{
+		Elements: []ContentElement{&TextElement{Text: "cell"}},
+	}}, syntax.Detached())
+
+	// Call table native function
+	tableFunc := TableFunc()
+	_, err := tableFunc.Repr.(NativeFunc).Func(vm, args)
+
+	if err == nil {
+		t.Fatal("expected error for missing columns argument")
+	}
+
+	if _, ok := err.(*MissingArgumentError); !ok {
+		t.Errorf("expected MissingArgumentError, got %T", err)
+	}
+}
+
+func TestTableNativeInvalidColumns(t *testing.T) {
+	scopes := NewScopes(nil)
+	vm := NewVm(nil, NewContext(), scopes, syntax.Detached())
+
+	// Create args with invalid columns (0)
+	args := NewArgs(syntax.Detached())
+	args.PushNamed("columns", Int(0), syntax.Detached())
+
+	// Call table native function
+	tableFunc := TableFunc()
+	_, err := tableFunc.Repr.(NativeFunc).Func(vm, args)
+
+	if err == nil {
+		t.Fatal("expected error for columns < 1")
+	}
+
+	if _, ok := err.(*InvalidArgumentError); !ok {
+		t.Errorf("expected InvalidArgumentError, got %T", err)
+	}
+}
+
+func TestTableElement(t *testing.T) {
+	// Test TableElement struct and ContentElement interface
+	elem := &TableElement{
+		Columns: 3,
+		Cells: []Content{
+			{Elements: []ContentElement{&TextElement{Text: "A"}}},
+			{Elements: []ContentElement{&TextElement{Text: "B"}}},
+			{Elements: []ContentElement{&TextElement{Text: "C"}}},
+		},
+	}
+
+	// Verify it satisfies ContentElement interface
+	var _ ContentElement = elem
+
+	if elem.Columns != 3 {
+		t.Errorf("expected 3 columns, got %d", elem.Columns)
+	}
+
+	if len(elem.Cells) != 3 {
+		t.Errorf("expected 3 cells, got %d", len(elem.Cells))
+	}
+}
+
+func TestRegisterElementFunctionsIncludesTable(t *testing.T) {
+	scope := NewScope()
+	RegisterElementFunctions(scope)
+
+	// Verify table function is registered
+	tableBinding := scope.Get("table")
+	if tableBinding == nil {
+		t.Error("table function not registered")
+	}
+
+	if tableBinding != nil {
+		fv, ok := tableBinding.Value.(FuncValue)
+		if !ok {
+			t.Error("table binding should be a function")
+		}
+		if fv.Func.Name == nil || *fv.Func.Name != "table" {
+			t.Error("table function name mismatch")
+		}
+	}
+}
+
+func TestElementFunctionsIncludesTable(t *testing.T) {
+	funcs := ElementFunctions()
+
+	if _, ok := funcs["table"]; !ok {
+		t.Error("expected 'table' in ElementFunctions()")
+	}
+}

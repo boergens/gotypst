@@ -1860,6 +1860,97 @@ func padNative(vm *Vm, args *Args) (Value, error) {
 }
 
 // ----------------------------------------------------------------------------
+// Table Element
+// ----------------------------------------------------------------------------
+
+// TableFunc creates the table element function.
+func TableFunc() *Func {
+	name := "table"
+	return &Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: NativeFunc{
+			Func: tableNative,
+			Info: &FuncInfo{
+				Name: "table",
+				Params: []ParamInfo{
+					{Name: "columns", Type: TypeInt, Named: true},
+					{Name: "children", Type: TypeContent, Variadic: true},
+				},
+			},
+		},
+	}
+}
+
+// tableNative implements the table() function.
+// Creates a TableElement with cells arranged in a grid.
+//
+// Arguments:
+//   - columns (named, int): The number of columns in the table
+//   - children (positional, variadic, content): The table cells
+func tableNative(vm *Vm, args *Args) (Value, error) {
+	// Get required columns argument
+	columnsArg := args.Find("columns")
+	if columnsArg == nil {
+		return nil, &MissingArgumentError{
+			What: "columns",
+			Span: args.Span,
+		}
+	}
+
+	columns, ok := AsInt(columnsArg.V)
+	if !ok {
+		return nil, &TypeMismatchError{
+			Expected: "int",
+			Got:      columnsArg.V.Type().String(),
+			Span:     columnsArg.Span,
+		}
+	}
+
+	if columns < 1 {
+		return nil, &InvalidArgumentError{
+			Message: "columns must be at least 1",
+			Span:    columnsArg.Span,
+		}
+	}
+
+	// Collect cell children (variadic positional arguments)
+	var cells []Content
+	for {
+		child := args.Eat()
+		if child == nil {
+			break
+		}
+
+		// Convert child to content
+		var content Content
+		switch v := child.V.(type) {
+		case ContentValue:
+			content = v.Content
+		case StrValue:
+			content = Content{Elements: []ContentElement{&TextElement{Text: string(v)}}}
+		default:
+			// Try to display other values as text
+			content = Content{Elements: []ContentElement{&TextElement{Text: v.Display().String()}}}
+		}
+		cells = append(cells, content)
+	}
+
+	// Check for unexpected arguments
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	// Create the TableElement wrapped in ContentValue
+	return ContentValue{Content: Content{
+		Elements: []ContentElement{&TableElement{
+			Columns: int(columns),
+			Cells:   cells,
+		}},
+	}}, nil
+}
+
+// ----------------------------------------------------------------------------
 // Library Registration
 // ----------------------------------------------------------------------------
 
@@ -1890,6 +1981,8 @@ func RegisterElementFunctions(scope *Scope) {
 	scope.DefineFunc("block", BlockFunc())
 	// Register pad element function
 	scope.DefineFunc("pad", PadFunc())
+	// Register table element function
+	scope.DefineFunc("table", TableFunc())
 }
 
 // ElementFunctions returns a map of all element function names to their functions.
@@ -1908,5 +2001,6 @@ func ElementFunctions() map[string]*Func {
 		"box":      BoxFunc(),
 		"block":    BlockFunc(),
 		"pad":      PadFunc(),
+		"table":    TableFunc(),
 	}
 }
