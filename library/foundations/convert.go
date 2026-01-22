@@ -25,6 +25,17 @@ func (e *TypeMismatchError) Error() string {
 	return fmt.Sprintf("expected %s, got %s", e.Expected, e.Got)
 }
 
+// ConstructorError is returned when a type constructor fails.
+type ConstructorError struct {
+	Message string
+	Span    syntax.Span
+	Hints   []string
+}
+
+func (e *ConstructorError) Error() string {
+	return e.Message
+}
+
 // ConvertValue converts a Typst Value to a Go value based on the target type.
 // Returns the converted value and any error.
 //

@@ -4,6 +4,7 @@ package layout
 
 import (
 	"github.com/boergens/gotypst/library/foundations"
+	"github.com/boergens/gotypst/syntax"
 )
 
 // PadElement represents a padding container element.
@@ -80,4 +81,29 @@ func (p *PadElement) BottomPts() float64 {
 		return 0
 	}
 	return p.Bottom.Points
+}
+
+// PadFunc creates the pad element function.
+func PadFunc() *foundations.Func {
+	name := "pad"
+	return &foundations.Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: foundations.NativeFunc{
+			Func: padNative,
+			Info: PadDef.ToFuncInfo(),
+		},
+	}
+}
+
+// padNative implements the pad() function using the generic element parser.
+func padNative(engine foundations.Engine, context foundations.Context, args *foundations.Args) (foundations.Value, error) {
+	elem, err := foundations.ParseElement[PadElement](PadDef, args)
+	if err != nil {
+		return nil, err
+	}
+
+	return foundations.ContentValue{Content: foundations.Content{
+		Elements: []foundations.ContentElement{elem},
+	}}, nil
 }

@@ -1,7 +1,10 @@
 package layout
 
 import (
+	"fmt"
+
 	"github.com/boergens/gotypst/library/foundations"
+	"github.com/boergens/gotypst/syntax"
 )
 
 // GridTrackSizing represents a track sizing specification.
@@ -46,3 +49,243 @@ type GridElement struct {
 }
 
 func (*GridElement) IsContentElement() {}
+
+// GridFunc creates the grid element function.
+func GridFunc() *foundations.Func {
+	name := "grid"
+	return &foundations.Func{
+		Name: &name,
+		Span: syntax.Detached(),
+		Repr: foundations.NativeFunc{
+			Func: gridNative,
+			Info: &foundations.FuncInfo{
+				Name: "grid",
+				Params: []foundations.ParamInfo{
+					{Name: "columns", Type: foundations.TypeDyn, Default: foundations.Auto, Named: true},
+					{Name: "rows", Type: foundations.TypeDyn, Default: foundations.Auto, Named: true},
+					{Name: "gutter", Type: foundations.TypeDyn, Default: foundations.None, Named: true},
+					{Name: "column-gutter", Type: foundations.TypeDyn, Default: foundations.None, Named: true},
+					{Name: "row-gutter", Type: foundations.TypeDyn, Default: foundations.None, Named: true},
+					{Name: "inset", Type: foundations.TypeDyn, Default: foundations.None, Named: true},
+					{Name: "align", Type: foundations.TypeDyn, Default: foundations.Auto, Named: true},
+					{Name: "fill", Type: foundations.TypeDyn, Default: foundations.None, Named: true},
+					{Name: "stroke", Type: foundations.TypeDyn, Default: foundations.None, Named: true},
+					{Name: "children", Type: foundations.TypeContent, Named: false, Variadic: true},
+				},
+			},
+		},
+	}
+}
+
+// gridNative implements the grid() function.
+func gridNative(engine foundations.Engine, context foundations.Context, args *foundations.Args) (foundations.Value, error) {
+	elem := &GridElement{}
+
+	// Get optional columns argument
+	if colArg := args.Find("columns"); colArg != nil {
+		if !foundations.IsAuto(colArg.V) && !foundations.IsNone(colArg.V) {
+			cols, err := parseGridTrackSizings(colArg.V, colArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Columns = cols
+		}
+	}
+
+	// Get optional rows argument
+	if rowArg := args.Find("rows"); rowArg != nil {
+		if !foundations.IsAuto(rowArg.V) && !foundations.IsNone(rowArg.V) {
+			rows, err := parseGridTrackSizings(rowArg.V, rowArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.Rows = rows
+		}
+	}
+
+	// Get optional gutter argument (sets both column and row gutter)
+	var gutterVal *float64
+	if gutterArg := args.Find("gutter"); gutterArg != nil {
+		if !foundations.IsNone(gutterArg.V) && !foundations.IsAuto(gutterArg.V) {
+			g, err := parseGridLength(gutterArg.V, gutterArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			gutterVal = &g
+		}
+	}
+
+	// Get optional column-gutter argument
+	if cgArg := args.Find("column-gutter"); cgArg != nil {
+		if !foundations.IsNone(cgArg.V) && !foundations.IsAuto(cgArg.V) {
+			cg, err := parseGridLength(cgArg.V, cgArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.ColumnGutter = &cg
+		}
+	} else if gutterVal != nil {
+		elem.ColumnGutter = gutterVal
+	}
+
+	// Get optional row-gutter argument
+	if rgArg := args.Find("row-gutter"); rgArg != nil {
+		if !foundations.IsNone(rgArg.V) && !foundations.IsAuto(rgArg.V) {
+			rg, err := parseGridLength(rgArg.V, rgArg.Span)
+			if err != nil {
+				return nil, err
+			}
+			elem.RowGutter = &rg
+		}
+	} else if gutterVal != nil {
+		elem.RowGutter = gutterVal
+	}
+
+	// Get optional inset argument
+	if insetArg := args.Find("inset"); insetArg != nil {
+		if !foundations.IsNone(insetArg.V) {
+			elem.Inset = insetArg.V
+		}
+	}
+
+	// Get optional align argument
+	if alignArg := args.Find("align"); alignArg != nil {
+		if !foundations.IsAuto(alignArg.V) && !foundations.IsNone(alignArg.V) {
+			elem.Align = alignArg.V
+		}
+	}
+
+	// Get optional fill argument
+	if fillArg := args.Find("fill"); fillArg != nil {
+		if !foundations.IsNone(fillArg.V) {
+			elem.Fill = fillArg.V
+		}
+	}
+
+	// Get optional stroke argument
+	if strokeArg := args.Find("stroke"); strokeArg != nil {
+		if !foundations.IsNone(strokeArg.V) {
+			elem.Stroke = strokeArg.V
+		}
+	}
+
+	// Collect remaining positional arguments as children
+	for {
+		childArg := args.Eat()
+		if childArg == nil {
+			break
+		}
+
+		if cv, ok := childArg.V.(foundations.ContentValue); ok {
+			elem.Children = append(elem.Children, cv.Content)
+		} else {
+			return nil, &foundations.TypeMismatchError{
+				Expected: "content",
+				Got:      childArg.V.Type().String(),
+				Span:     childArg.Span,
+			}
+		}
+	}
+
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	return foundations.ContentValue{Content: foundations.Content{
+		Elements: []foundations.ContentElement{elem},
+	}}, nil
+}
+
+// parseGridTrackSizings parses a value into grid track sizings.
+func parseGridTrackSizings(v foundations.Value, span syntax.Span) ([]GridTrackSizing, error) {
+	// Handle integer (number of auto columns)
+	if intVal, ok := foundations.AsInt(v); ok {
+		count := int(intVal)
+		if count < 1 {
+			return nil, &foundations.ConstructorError{
+				Message: "track count must be at least 1",
+				Span:    span,
+			}
+		}
+		result := make([]GridTrackSizing, count)
+		for i := range result {
+			result[i] = GridTrackSizing{Auto: true}
+		}
+		return result, nil
+	}
+
+	// Handle single sizing value
+	if sizing, err := parseGridTrackSizing(v, span); err == nil {
+		return []GridTrackSizing{sizing}, nil
+	}
+
+	// Handle array
+	if arr, ok := v.(*foundations.Array); ok {
+		result := make([]GridTrackSizing, 0, arr.Len())
+		for i, elem := range arr.Items() {
+			sizing, err := parseGridTrackSizing(elem, span)
+			if err != nil {
+				return nil, &foundations.ConstructorError{
+					Message: fmt.Sprintf("invalid track sizing at index %d: %v", i, err),
+					Span:    span,
+				}
+			}
+			result = append(result, sizing)
+		}
+		return result, nil
+	}
+
+	return nil, &foundations.TypeMismatchError{
+		Expected: "integer, length, fraction, ratio, or array",
+		Got:      v.Type().String(),
+		Span:     span,
+	}
+}
+
+// parseGridTrackSizing parses a single track sizing value.
+func parseGridTrackSizing(v foundations.Value, span syntax.Span) (GridTrackSizing, error) {
+	if foundations.IsAuto(v) {
+		return GridTrackSizing{Auto: true}, nil
+	}
+
+	if lv, ok := v.(foundations.LengthValue); ok {
+		l := lv.Length.Points
+		return GridTrackSizing{Length: &l}, nil
+	}
+
+	if fv, ok := v.(foundations.FractionValue); ok {
+		f := fv.Fraction.Value
+		return GridTrackSizing{Fr: &f}, nil
+	}
+
+	if rv, ok := v.(foundations.RatioValue); ok {
+		r := rv.Ratio.Value
+		return GridTrackSizing{Ratio: &r}, nil
+	}
+
+	if rv, ok := v.(foundations.RelativeValue); ok {
+		l := rv.Relative.Abs.Points
+		return GridTrackSizing{Length: &l}, nil
+	}
+
+	return GridTrackSizing{}, &foundations.TypeMismatchError{
+		Expected: "auto, length, fraction, or ratio",
+		Got:      v.Type().String(),
+		Span:     span,
+	}
+}
+
+// parseGridLength extracts a length value in points.
+func parseGridLength(v foundations.Value, span syntax.Span) (float64, error) {
+	if lv, ok := v.(foundations.LengthValue); ok {
+		return lv.Length.Points, nil
+	}
+	if rv, ok := v.(foundations.RelativeValue); ok {
+		return rv.Relative.Abs.Points, nil
+	}
+	return 0, &foundations.TypeMismatchError{
+		Expected: "length",
+		Got:      v.Type().String(),
+		Span:     span,
+	}
+}

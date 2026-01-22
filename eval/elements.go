@@ -1,5 +1,9 @@
 package eval
 
+import (
+	"github.com/boergens/gotypst/library/layout"
+)
+
 // ----------------------------------------------------------------------------
 // Element Function Registration
 // ----------------------------------------------------------------------------
@@ -8,7 +12,7 @@ package eval
 //
 // Element implementations are organized by Typst module:
 // - elem_model.go:     par, parbreak, heading, list, enum, link, table
-// - elem_layout_*.go:  stack, align, columns, box, block, pad, grid, page
+// - library/layout:    stack, align, columns, box, block, pad, grid, page
 // - elem_visualize.go: image
 // - text_funcs.go:     text, strong, emph, raw
 
@@ -30,15 +34,15 @@ func RegisterElementFunctions(scope *Scope) {
 	scope.DefineFunc("link", LinkFunc())
 	scope.DefineFunc("table", TableFunc())
 
-	// Layout module functions (from elem_layout_*.go)
-	scope.DefineFunc("stack", StackFunc())
-	scope.DefineFunc("align", AlignFunc())
-	scope.DefineFunc("columns", ColumnsFunc())
-	scope.DefineFunc("box", BoxFunc())
-	scope.DefineFunc("block", BlockFunc())
-	scope.DefineFunc("pad", PadFunc())
-	scope.DefineFunc("grid", GridFunc())
-	scope.DefineFunc("page", PageFunc())
+	// Layout module functions (from library/layout)
+	scope.DefineFunc("stack", layout.StackFunc())
+	scope.DefineFunc("align", layout.AlignFunc())
+	scope.DefineFunc("columns", layout.ColumnsFunc())
+	scope.DefineFunc("box", layout.BoxFunc())
+	scope.DefineFunc("block", layout.BlockFunc())
+	scope.DefineFunc("pad", layout.PadFunc())
+	scope.DefineFunc("grid", layout.GridFunc())
+	scope.DefineFunc("page", layout.PageFunc())
 
 	// Visualize module functions (from elem_visualize.go)
 	scope.DefineFunc("image", ImageFunc())
@@ -71,14 +75,14 @@ func ElementFunctions() map[string]*Func {
 		"table":    TableFunc(),
 
 		// Layout module
-		"stack":   StackFunc(),
-		"align":   AlignFunc(),
-		"columns": ColumnsFunc(),
-		"box":     BoxFunc(),
-		"block":   BlockFunc(),
-		"pad":     PadFunc(),
-		"grid":    GridFunc(),
-		"page":    PageFunc(),
+		"stack":   layout.StackFunc(),
+		"align":   layout.AlignFunc(),
+		"columns": layout.ColumnsFunc(),
+		"box":     layout.BoxFunc(),
+		"block":   layout.BlockFunc(),
+		"pad":     layout.PadFunc(),
+		"grid":    layout.GridFunc(),
+		"page":    layout.PageFunc(),
 
 		// Visualize module
 		"image": ImageFunc(),
