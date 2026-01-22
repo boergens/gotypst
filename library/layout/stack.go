@@ -25,15 +25,43 @@ const (
 // Reference: typst-reference/crates/typst-library/src/layout/stack.rs
 type StackElement struct {
 	// Dir is the stacking direction (ltr, rtl, ttb, btt).
-	Dir StackDirection
-	// Spacing is the spacing between children (in points).
-	// If nil, uses default spacing (0pt).
-	Spacing *float64
+	Dir string `typst:"dir,type=str,default=ttb"`
+	// Spacing is the spacing between children.
+	Spacing *foundations.Length `typst:"spacing,type=length"`
 	// Children contains the content elements to stack.
-	Children []foundations.Content
+	Children []foundations.Content `typst:"children,positional,variadic"`
 }
 
 func (*StackElement) IsContentElement() {}
+
+// StackDef is the registered element definition for stack.
+var StackDef *foundations.ElementDef
+
+func init() {
+	StackDef = foundations.RegisterElement[StackElement]("stack", nil)
+}
+
+// Direction returns the stack direction as a typed enum.
+func (s *StackElement) Direction() StackDirection {
+	switch s.Dir {
+	case "ltr":
+		return StackLTR
+	case "rtl":
+		return StackRTL
+	case "btt":
+		return StackBTT
+	default:
+		return StackTTB
+	}
+}
+
+// SpacingPts returns the spacing in points, or 0 if not set.
+func (s *StackElement) SpacingPts() float64 {
+	if s.Spacing == nil {
+		return 0
+	}
+	return s.Spacing.Points
+}
 
 // StackFunc creates the stack element function.
 func StackFunc() *foundations.Func {
@@ -43,92 +71,34 @@ func StackFunc() *foundations.Func {
 		Span: syntax.Detached(),
 		Repr: foundations.NativeFunc{
 			Func: stackNative,
-			Info: &foundations.FuncInfo{
-				Name: "stack",
-				Params: []foundations.ParamInfo{
-					{Name: "dir", Type: foundations.TypeStr, Default: foundations.Str("ttb"), Named: true},
-					{Name: "spacing", Type: foundations.TypeLength, Default: foundations.None, Named: true},
-					{Name: "children", Type: foundations.TypeContent, Named: false, Variadic: true},
-				},
-			},
+			Info: StackDef.ToFuncInfo(),
 		},
 	}
 }
 
-// stackNative implements the stack() function.
+// stackNative implements the stack() function using the generic element parser.
 func stackNative(engine foundations.Engine, context foundations.Context, args *foundations.Args) (foundations.Value, error) {
-	dir := StackTTB
-	if dirArg := args.Find("dir"); dirArg != nil {
-		if !foundations.IsNone(dirArg.V) && !foundations.IsAuto(dirArg.V) {
-			dirStr, ok := foundations.AsStr(dirArg.V)
-			if !ok {
-				return nil, &foundations.TypeMismatchError{
-					Expected: "string",
-					Got:      dirArg.V.Type().String(),
-					Span:     dirArg.Span,
-				}
-			}
-			switch dirStr {
-			case "ltr":
-				dir = StackLTR
-			case "rtl":
-				dir = StackRTL
-			case "ttb":
-				dir = StackTTB
-			case "btt":
-				dir = StackBTT
-			default:
-				return nil, &foundations.TypeMismatchError{
-					Expected: "\"ltr\", \"rtl\", \"ttb\", or \"btt\"",
-					Got:      "\"" + dirStr + "\"",
-					Span:     dirArg.Span,
-				}
-			}
-		}
-	}
-
-	var spacing *float64
-	if spacingArg := args.Find("spacing"); spacingArg != nil {
-		if !foundations.IsNone(spacingArg.V) && !foundations.IsAuto(spacingArg.V) {
-			if lv, ok := spacingArg.V.(foundations.LengthValue); ok {
-				s := lv.Length.Points
-				spacing = &s
-			} else {
-				return nil, &foundations.TypeMismatchError{
-					Expected: "length or none",
-					Got:      spacingArg.V.Type().String(),
-					Span:     spacingArg.Span,
-				}
-			}
-		}
-	}
-
-	var children []foundations.Content
-	for {
-		childArg := args.Eat()
-		if childArg == nil {
-			break
-		}
-		if cv, ok := childArg.V.(foundations.ContentValue); ok {
-			children = append(children, cv.Content)
-		} else {
-			return nil, &foundations.TypeMismatchError{
-				Expected: "content",
-				Got:      childArg.V.Type().String(),
-				Span:     childArg.Span,
-			}
-		}
-	}
-
-	if err := args.Finish(); err != nil {
+	elem, err := foundations.ParseElement[StackElement](StackDef, args)
+	if err != nil {
 		return nil, err
 	}
 
+	// Validate direction
+	switch elem.Dir {
+	case "", "ltr", "rtl", "ttb", "btt":
+		// Valid
+		if elem.Dir == "" {
+			elem.Dir = "ttb" // Apply default
+		}
+	default:
+		return nil, &foundations.TypeMismatchError{
+			Expected: "\"ltr\", \"rtl\", \"ttb\", or \"btt\"",
+			Got:      "\"" + elem.Dir + "\"",
+			Span:     args.Span,
+		}
+	}
+
 	return foundations.ContentValue{Content: foundations.Content{
-		Elements: []foundations.ContentElement{&StackElement{
-			Dir:      dir,
-			Spacing:  spacing,
-			Children: children,
-		}},
+		Elements: []foundations.ContentElement{elem},
 	}}, nil
 }

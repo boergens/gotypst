@@ -10,26 +10,26 @@ import (
 //
 // Reference: typst-reference/crates/typst-library/src/layout/container.rs
 type BoxElement struct {
-	// Width of the box (in points). If nil, auto-sizes to content.
-	Width *float64
-	// Height of the box (in points). If nil, auto-sizes to content.
-	Height *float64
-	// Baseline position (in points from bottom). If nil, uses content baseline.
-	Baseline *float64
+	// Width of the box. If nil, auto-sizes to content.
+	Width *foundations.Relative `typst:"width,type=relative"`
+	// Height of the box. If nil, auto-sizes to content.
+	Height *foundations.Relative `typst:"height,type=relative"`
+	// Baseline position. If nil, uses content baseline.
+	Baseline *foundations.Length `typst:"baseline,type=length"`
 	// Fill color for the background. If nil, no fill.
-	Fill foundations.Value
+	Fill foundations.Value `typst:"fill"`
 	// Stroke for the border. Can be length, color, or stroke dict. If nil, no stroke.
-	Stroke foundations.Value
+	Stroke foundations.Value `typst:"stroke"`
 	// Radius for rounded corners. Can be single value or dictionary.
-	Radius foundations.Value
+	Radius foundations.Value `typst:"radius"`
 	// Inset padding inside the box.
-	Inset foundations.Value
+	Inset foundations.Value `typst:"inset"`
 	// Outset expansion outside the box.
-	Outset foundations.Value
+	Outset foundations.Value `typst:"outset"`
 	// Whether to clip content that overflows the box.
-	Clip bool
+	Clip bool `typst:"clip,type=bool,default=false"`
 	// Body is the content inside the box.
-	Body foundations.Content
+	Body foundations.Content `typst:"body,positional,type=content"`
 }
 
 func (*BoxElement) IsContentElement() {}
@@ -39,37 +39,120 @@ func (*BoxElement) IsContentElement() {}
 //
 // Reference: typst-reference/crates/typst-library/src/layout/container.rs
 type BlockElement struct {
-	// Width of the block (in points). If nil, auto-sizes.
-	Width *float64
-	// Height of the block (in points). If nil, auto-sizes.
-	Height *float64
+	// Width of the block. If nil, auto-sizes.
+	Width *foundations.Relative `typst:"width,type=relative"`
+	// Height of the block. If nil, auto-sizes.
+	Height *foundations.Relative `typst:"height,type=relative"`
 	// Whether the block can break across pages.
-	Breakable *bool
+	Breakable *bool `typst:"breakable,type=bool,default=true"`
 	// Fill color for the background.
-	Fill foundations.Value
+	Fill foundations.Value `typst:"fill"`
 	// Stroke for the border.
-	Stroke foundations.Value
+	Stroke foundations.Value `typst:"stroke"`
 	// Radius for rounded corners.
-	Radius foundations.Value
+	Radius foundations.Value `typst:"radius"`
 	// Inset padding inside the block.
-	Inset foundations.Value
+	Inset foundations.Value `typst:"inset"`
 	// Outset expansion outside the block.
-	Outset foundations.Value
+	Outset foundations.Value `typst:"outset"`
 	// Spacing between adjacent blocks.
-	Spacing *float64
+	Spacing *foundations.Length `typst:"spacing,type=length"`
 	// Spacing above this block (overrides Spacing).
-	Above *float64
+	Above *foundations.Length `typst:"above,type=length"`
 	// Spacing below this block (overrides Spacing).
-	Below *float64
+	Below *foundations.Length `typst:"below,type=length"`
 	// Whether to clip content that overflows.
-	Clip bool
+	Clip bool `typst:"clip,type=bool,default=false"`
 	// Whether the block sticks to the next block.
-	Sticky bool
+	Sticky bool `typst:"sticky,type=bool,default=false"`
 	// Body is the content inside the block.
-	Body foundations.Content
+	Body foundations.Content `typst:"body,positional,type=content"`
 }
 
 func (*BlockElement) IsContentElement() {}
+
+// BoxDef is the registered element definition for box.
+var BoxDef *foundations.ElementDef
+
+// BlockDef is the registered element definition for block.
+var BlockDef *foundations.ElementDef
+
+func init() {
+	BoxDef = foundations.RegisterElement[BoxElement]("box", nil)
+	BlockDef = foundations.RegisterElement[BlockElement]("block", nil)
+}
+
+// WidthPts returns the width in points, or 0 if not set.
+func (b *BoxElement) WidthPts() float64 {
+	if b.Width == nil {
+		return 0
+	}
+	return b.Width.Abs.Points
+}
+
+// HeightPts returns the height in points, or 0 if not set.
+func (b *BoxElement) HeightPts() float64 {
+	if b.Height == nil {
+		return 0
+	}
+	return b.Height.Abs.Points
+}
+
+// BaselinePts returns the baseline in points, or 0 if not set.
+func (b *BoxElement) BaselinePts() float64 {
+	if b.Baseline == nil {
+		return 0
+	}
+	return b.Baseline.Points
+}
+
+// WidthPts returns the width in points, or 0 if not set.
+func (b *BlockElement) WidthPts() float64 {
+	if b.Width == nil {
+		return 0
+	}
+	return b.Width.Abs.Points
+}
+
+// HeightPts returns the height in points, or 0 if not set.
+func (b *BlockElement) HeightPts() float64 {
+	if b.Height == nil {
+		return 0
+	}
+	return b.Height.Abs.Points
+}
+
+// IsBreakable returns whether the block can break across pages.
+func (b *BlockElement) IsBreakable() bool {
+	if b.Breakable == nil {
+		return true
+	}
+	return *b.Breakable
+}
+
+// SpacingPts returns the spacing in points, or 0 if not set.
+func (b *BlockElement) SpacingPts() float64 {
+	if b.Spacing == nil {
+		return 0
+	}
+	return b.Spacing.Points
+}
+
+// AbovePts returns the above spacing in points, or 0 if not set.
+func (b *BlockElement) AbovePts() float64 {
+	if b.Above == nil {
+		return 0
+	}
+	return b.Above.Points
+}
+
+// BelowPts returns the below spacing in points, or 0 if not set.
+func (b *BlockElement) BelowPts() float64 {
+	if b.Below == nil {
+		return 0
+	}
+	return b.Below.Points
+}
 
 // BoxFunc creates the box element function.
 func BoxFunc() *foundations.Func {
@@ -79,154 +162,15 @@ func BoxFunc() *foundations.Func {
 		Span: syntax.Detached(),
 		Repr: foundations.NativeFunc{
 			Func: boxNative,
-			Info: &foundations.FuncInfo{
-				Name: "box",
-				Params: []foundations.ParamInfo{
-					{Name: "body", Type: foundations.TypeContent, Default: foundations.None, Named: false},
-					{Name: "width", Type: foundations.TypeLength, Default: foundations.Auto, Named: true},
-					{Name: "height", Type: foundations.TypeLength, Default: foundations.Auto, Named: true},
-					{Name: "baseline", Type: foundations.TypeLength, Default: foundations.None, Named: true},
-					{Name: "fill", Type: foundations.TypeColor, Default: foundations.None, Named: true},
-					{Name: "stroke", Type: foundations.TypeDyn, Default: foundations.None, Named: true},
-					{Name: "radius", Type: foundations.TypeDyn, Default: foundations.None, Named: true},
-					{Name: "inset", Type: foundations.TypeDyn, Default: foundations.None, Named: true},
-					{Name: "outset", Type: foundations.TypeDyn, Default: foundations.None, Named: true},
-					{Name: "clip", Type: foundations.TypeBool, Default: foundations.False, Named: true},
-				},
-			},
+			Info: BoxDef.ToFuncInfo(),
 		},
 	}
 }
 
-// boxNative implements the box() function.
+// boxNative implements the box() function using the generic element parser.
 func boxNative(engine foundations.Engine, context foundations.Context, args *foundations.Args) (foundations.Value, error) {
-	elem := &BoxElement{}
-
-	// Get optional body argument (positional or named)
-	bodyArg := args.Find("body")
-	if bodyArg == nil {
-		bodyArg2 := args.Eat()
-		if bodyArg2 != nil {
-			bodyArg = bodyArg2
-		}
-	}
-	if bodyArg != nil && !foundations.IsNone(bodyArg.V) {
-		if cv, ok := bodyArg.V.(foundations.ContentValue); ok {
-			elem.Body = cv.Content
-		} else {
-			return nil, &foundations.TypeMismatchError{
-				Expected: "content or none",
-				Got:      bodyArg.V.Type().String(),
-				Span:     bodyArg.Span,
-			}
-		}
-	}
-
-	// Get optional width argument
-	if widthArg := args.Find("width"); widthArg != nil {
-		if !foundations.IsAuto(widthArg.V) && !foundations.IsNone(widthArg.V) {
-			if lv, ok := widthArg.V.(foundations.LengthValue); ok {
-				w := lv.Length.Points
-				elem.Width = &w
-			} else if rv, ok := widthArg.V.(foundations.RelativeValue); ok {
-				w := rv.Relative.Rel.Value * 100
-				elem.Width = &w
-			} else {
-				return nil, &foundations.TypeMismatchError{
-					Expected: "length or auto",
-					Got:      widthArg.V.Type().String(),
-					Span:     widthArg.Span,
-				}
-			}
-		}
-	}
-
-	// Get optional height argument
-	if heightArg := args.Find("height"); heightArg != nil {
-		if !foundations.IsAuto(heightArg.V) && !foundations.IsNone(heightArg.V) {
-			if lv, ok := heightArg.V.(foundations.LengthValue); ok {
-				h := lv.Length.Points
-				elem.Height = &h
-			} else if rv, ok := heightArg.V.(foundations.RelativeValue); ok {
-				h := rv.Relative.Rel.Value * 100
-				elem.Height = &h
-			} else {
-				return nil, &foundations.TypeMismatchError{
-					Expected: "length or auto",
-					Got:      heightArg.V.Type().String(),
-					Span:     heightArg.Span,
-				}
-			}
-		}
-	}
-
-	// Get optional baseline argument
-	if baselineArg := args.Find("baseline"); baselineArg != nil {
-		if !foundations.IsAuto(baselineArg.V) && !foundations.IsNone(baselineArg.V) {
-			if lv, ok := baselineArg.V.(foundations.LengthValue); ok {
-				b := lv.Length.Points
-				elem.Baseline = &b
-			} else {
-				return nil, &foundations.TypeMismatchError{
-					Expected: "length or none",
-					Got:      baselineArg.V.Type().String(),
-					Span:     baselineArg.Span,
-				}
-			}
-		}
-	}
-
-	// Get optional fill argument
-	if fillArg := args.Find("fill"); fillArg != nil {
-		if !foundations.IsNone(fillArg.V) {
-			elem.Fill = fillArg.V
-		}
-	}
-
-	// Get optional stroke argument
-	if strokeArg := args.Find("stroke"); strokeArg != nil {
-		if !foundations.IsNone(strokeArg.V) {
-			elem.Stroke = strokeArg.V
-		}
-	}
-
-	// Get optional radius argument
-	if radiusArg := args.Find("radius"); radiusArg != nil {
-		if !foundations.IsNone(radiusArg.V) {
-			elem.Radius = radiusArg.V
-		}
-	}
-
-	// Get optional inset argument
-	if insetArg := args.Find("inset"); insetArg != nil {
-		if !foundations.IsNone(insetArg.V) {
-			elem.Inset = insetArg.V
-		}
-	}
-
-	// Get optional outset argument
-	if outsetArg := args.Find("outset"); outsetArg != nil {
-		if !foundations.IsNone(outsetArg.V) {
-			elem.Outset = outsetArg.V
-		}
-	}
-
-	// Get optional clip argument (default: false)
-	if clipArg := args.Find("clip"); clipArg != nil {
-		if !foundations.IsNone(clipArg.V) && !foundations.IsAuto(clipArg.V) {
-			clipVal, ok := foundations.AsBool(clipArg.V)
-			if !ok {
-				return nil, &foundations.TypeMismatchError{
-					Expected: "bool",
-					Got:      clipArg.V.Type().String(),
-					Span:     clipArg.Span,
-				}
-			}
-			elem.Clip = clipVal
-		}
-	}
-
-	if err := args.Finish(); err != nil {
+	elem, err := foundations.ParseElement[BoxElement](BoxDef, args)
+	if err != nil {
 		return nil, err
 	}
 
@@ -243,220 +187,15 @@ func BlockFunc() *foundations.Func {
 		Span: syntax.Detached(),
 		Repr: foundations.NativeFunc{
 			Func: blockNative,
-			Info: &foundations.FuncInfo{
-				Name: "block",
-				Params: []foundations.ParamInfo{
-					{Name: "body", Type: foundations.TypeContent, Default: foundations.None, Named: false},
-					{Name: "width", Type: foundations.TypeLength, Default: foundations.Auto, Named: true},
-					{Name: "height", Type: foundations.TypeLength, Default: foundations.Auto, Named: true},
-					{Name: "breakable", Type: foundations.TypeBool, Default: foundations.True, Named: true},
-					{Name: "fill", Type: foundations.TypeColor, Default: foundations.None, Named: true},
-					{Name: "stroke", Type: foundations.TypeDyn, Default: foundations.None, Named: true},
-					{Name: "radius", Type: foundations.TypeDyn, Default: foundations.None, Named: true},
-					{Name: "inset", Type: foundations.TypeDyn, Default: foundations.None, Named: true},
-					{Name: "outset", Type: foundations.TypeDyn, Default: foundations.None, Named: true},
-					{Name: "spacing", Type: foundations.TypeLength, Default: foundations.None, Named: true},
-					{Name: "above", Type: foundations.TypeLength, Default: foundations.Auto, Named: true},
-					{Name: "below", Type: foundations.TypeLength, Default: foundations.Auto, Named: true},
-					{Name: "clip", Type: foundations.TypeBool, Default: foundations.False, Named: true},
-					{Name: "sticky", Type: foundations.TypeBool, Default: foundations.False, Named: true},
-				},
-			},
+			Info: BlockDef.ToFuncInfo(),
 		},
 	}
 }
 
-// blockNative implements the block() function.
+// blockNative implements the block() function using the generic element parser.
 func blockNative(engine foundations.Engine, context foundations.Context, args *foundations.Args) (foundations.Value, error) {
-	elem := &BlockElement{}
-
-	// Get optional body argument (positional or named)
-	bodyArg := args.Find("body")
-	if bodyArg == nil {
-		bodyArg2 := args.Eat()
-		if bodyArg2 != nil {
-			bodyArg = bodyArg2
-		}
-	}
-	if bodyArg != nil && !foundations.IsNone(bodyArg.V) {
-		if cv, ok := bodyArg.V.(foundations.ContentValue); ok {
-			elem.Body = cv.Content
-		} else {
-			return nil, &foundations.TypeMismatchError{
-				Expected: "content or none",
-				Got:      bodyArg.V.Type().String(),
-				Span:     bodyArg.Span,
-			}
-		}
-	}
-
-	// Get optional width argument
-	if widthArg := args.Find("width"); widthArg != nil {
-		if !foundations.IsAuto(widthArg.V) && !foundations.IsNone(widthArg.V) {
-			if lv, ok := widthArg.V.(foundations.LengthValue); ok {
-				w := lv.Length.Points
-				elem.Width = &w
-			} else if rv, ok := widthArg.V.(foundations.RelativeValue); ok {
-				w := rv.Relative.Rel.Value * 100
-				elem.Width = &w
-			} else {
-				return nil, &foundations.TypeMismatchError{
-					Expected: "length or auto",
-					Got:      widthArg.V.Type().String(),
-					Span:     widthArg.Span,
-				}
-			}
-		}
-	}
-
-	// Get optional height argument
-	if heightArg := args.Find("height"); heightArg != nil {
-		if !foundations.IsAuto(heightArg.V) && !foundations.IsNone(heightArg.V) {
-			if lv, ok := heightArg.V.(foundations.LengthValue); ok {
-				h := lv.Length.Points
-				elem.Height = &h
-			} else if rv, ok := heightArg.V.(foundations.RelativeValue); ok {
-				h := rv.Relative.Rel.Value * 100
-				elem.Height = &h
-			} else {
-				return nil, &foundations.TypeMismatchError{
-					Expected: "length or auto",
-					Got:      heightArg.V.Type().String(),
-					Span:     heightArg.Span,
-				}
-			}
-		}
-	}
-
-	// Get optional breakable argument (default: true)
-	if breakableArg := args.Find("breakable"); breakableArg != nil {
-		if !foundations.IsNone(breakableArg.V) && !foundations.IsAuto(breakableArg.V) {
-			breakVal, ok := foundations.AsBool(breakableArg.V)
-			if !ok {
-				return nil, &foundations.TypeMismatchError{
-					Expected: "bool",
-					Got:      breakableArg.V.Type().String(),
-					Span:     breakableArg.Span,
-				}
-			}
-			elem.Breakable = &breakVal
-		}
-	}
-
-	// Get optional fill argument
-	if fillArg := args.Find("fill"); fillArg != nil {
-		if !foundations.IsNone(fillArg.V) {
-			elem.Fill = fillArg.V
-		}
-	}
-
-	// Get optional stroke argument
-	if strokeArg := args.Find("stroke"); strokeArg != nil {
-		if !foundations.IsNone(strokeArg.V) {
-			elem.Stroke = strokeArg.V
-		}
-	}
-
-	// Get optional radius argument
-	if radiusArg := args.Find("radius"); radiusArg != nil {
-		if !foundations.IsNone(radiusArg.V) {
-			elem.Radius = radiusArg.V
-		}
-	}
-
-	// Get optional inset argument
-	if insetArg := args.Find("inset"); insetArg != nil {
-		if !foundations.IsNone(insetArg.V) {
-			elem.Inset = insetArg.V
-		}
-	}
-
-	// Get optional outset argument
-	if outsetArg := args.Find("outset"); outsetArg != nil {
-		if !foundations.IsNone(outsetArg.V) {
-			elem.Outset = outsetArg.V
-		}
-	}
-
-	// Get optional spacing argument
-	if spacingArg := args.Find("spacing"); spacingArg != nil {
-		if !foundations.IsAuto(spacingArg.V) && !foundations.IsNone(spacingArg.V) {
-			if lv, ok := spacingArg.V.(foundations.LengthValue); ok {
-				s := lv.Length.Points
-				elem.Spacing = &s
-			} else {
-				return nil, &foundations.TypeMismatchError{
-					Expected: "length or auto",
-					Got:      spacingArg.V.Type().String(),
-					Span:     spacingArg.Span,
-				}
-			}
-		}
-	}
-
-	// Get optional above argument
-	if aboveArg := args.Find("above"); aboveArg != nil {
-		if !foundations.IsAuto(aboveArg.V) && !foundations.IsNone(aboveArg.V) {
-			if lv, ok := aboveArg.V.(foundations.LengthValue); ok {
-				a := lv.Length.Points
-				elem.Above = &a
-			} else {
-				return nil, &foundations.TypeMismatchError{
-					Expected: "length or auto",
-					Got:      aboveArg.V.Type().String(),
-					Span:     aboveArg.Span,
-				}
-			}
-		}
-	}
-
-	// Get optional below argument
-	if belowArg := args.Find("below"); belowArg != nil {
-		if !foundations.IsAuto(belowArg.V) && !foundations.IsNone(belowArg.V) {
-			if lv, ok := belowArg.V.(foundations.LengthValue); ok {
-				b := lv.Length.Points
-				elem.Below = &b
-			} else {
-				return nil, &foundations.TypeMismatchError{
-					Expected: "length or auto",
-					Got:      belowArg.V.Type().String(),
-					Span:     belowArg.Span,
-				}
-			}
-		}
-	}
-
-	// Get optional clip argument (default: false)
-	if clipArg := args.Find("clip"); clipArg != nil {
-		if !foundations.IsNone(clipArg.V) && !foundations.IsAuto(clipArg.V) {
-			clipVal, ok := foundations.AsBool(clipArg.V)
-			if !ok {
-				return nil, &foundations.TypeMismatchError{
-					Expected: "bool",
-					Got:      clipArg.V.Type().String(),
-					Span:     clipArg.Span,
-				}
-			}
-			elem.Clip = clipVal
-		}
-	}
-
-	// Get optional sticky argument (default: false)
-	if stickyArg := args.Find("sticky"); stickyArg != nil {
-		if !foundations.IsNone(stickyArg.V) && !foundations.IsAuto(stickyArg.V) {
-			stickyVal, ok := foundations.AsBool(stickyArg.V)
-			if !ok {
-				return nil, &foundations.TypeMismatchError{
-					Expected: "bool",
-					Got:      stickyArg.V.Type().String(),
-					Span:     stickyArg.Span,
-				}
-			}
-			elem.Sticky = stickyVal
-		}
-	}
-
-	if err := args.Finish(); err != nil {
+	elem, err := foundations.ParseElement[BlockElement](BlockDef, args)
+	if err != nil {
 		return nil, err
 	}
 

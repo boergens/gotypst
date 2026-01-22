@@ -81,6 +81,76 @@ type PageElement struct {
 
 func (*PageElement) IsContentElement() {}
 
+// PageDef is the registered element definition for page.
+// Note: Page uses custom parsing due to paper size lookup and margin dict handling.
+var PageDef *foundations.ElementDef
+
+func init() {
+	// Register with manual FuncInfo since we need custom parsing
+	PageDef = &foundations.ElementDef{
+		Name: "page",
+		Shorthands: map[string][]string{
+			// Margin uses dict-based shorthands, handled in parseMarginDict
+		},
+	}
+}
+
+// WidthPts returns the page width in points, defaulting to A4 width.
+func (p *PageElement) WidthPts() float64 {
+	if p.Width == nil {
+		return Papers["a4"].Width
+	}
+	return *p.Width
+}
+
+// HeightPts returns the page height in points, defaulting to A4 height.
+func (p *PageElement) HeightPts() float64 {
+	if p.Height == nil {
+		return Papers["a4"].Height
+	}
+	return *p.Height
+}
+
+// MarginLeftPts returns the left margin in points, or 0 if not set.
+func (p *PageElement) MarginLeftPts() float64 {
+	if p.MarginLeft == nil {
+		return 0
+	}
+	return *p.MarginLeft
+}
+
+// MarginTopPts returns the top margin in points, or 0 if not set.
+func (p *PageElement) MarginTopPts() float64 {
+	if p.MarginTop == nil {
+		return 0
+	}
+	return *p.MarginTop
+}
+
+// MarginRightPts returns the right margin in points, or 0 if not set.
+func (p *PageElement) MarginRightPts() float64 {
+	if p.MarginRight == nil {
+		return 0
+	}
+	return *p.MarginRight
+}
+
+// MarginBottomPts returns the bottom margin in points, or 0 if not set.
+func (p *PageElement) MarginBottomPts() float64 {
+	if p.MarginBottom == nil {
+		return 0
+	}
+	return *p.MarginBottom
+}
+
+// ColumnCount returns the number of columns, defaulting to 1.
+func (p *PageElement) ColumnCount() int {
+	if p.Columns == nil {
+		return 1
+	}
+	return *p.Columns
+}
+
 // PageFunc creates the page element function.
 func PageFunc() *foundations.Func {
 	name := "page"

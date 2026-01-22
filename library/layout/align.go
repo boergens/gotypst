@@ -39,13 +39,26 @@ const (
 //
 // Reference: typst-reference/crates/typst-library/src/layout/align.rs
 type AlignElement struct {
-	// Alignment is the 2D alignment specification.
-	Alignment Alignment2D
+	// AlignmentStr is the raw alignment string for declarative parsing.
+	AlignmentStr string `typst:"alignment,positional,required,type=str"`
 	// Body is the content to align.
-	Body foundations.Content
+	Body foundations.Content `typst:"body,positional,required,type=content"`
 }
 
 func (*AlignElement) IsContentElement() {}
+
+// AlignDef is the registered element definition for align.
+var AlignDef *foundations.ElementDef
+
+func init() {
+	AlignDef = foundations.RegisterElement[AlignElement]("align", nil)
+}
+
+// Alignment returns the parsed 2D alignment from the string.
+func (a *AlignElement) Alignment() Alignment2D {
+	result, _ := parseAlignmentString(a.AlignmentStr, syntax.Detached())
+	return result
+}
 
 // AlignFunc creates the align element function.
 func AlignFunc() *foundations.Func {
@@ -55,67 +68,26 @@ func AlignFunc() *foundations.Func {
 		Span: syntax.Detached(),
 		Repr: foundations.NativeFunc{
 			Func: alignNative,
-			Info: &foundations.FuncInfo{
-				Name: "align",
-				Params: []foundations.ParamInfo{
-					{Name: "alignment", Type: foundations.TypeStr, Named: false},
-					{Name: "body", Type: foundations.TypeContent, Named: false},
-				},
-			},
+			Info: AlignDef.ToFuncInfo(),
 		},
 	}
 }
 
-// alignNative implements the align() function.
+// alignNative implements the align() function using the generic element parser.
 func alignNative(engine foundations.Engine, context foundations.Context, args *foundations.Args) (foundations.Value, error) {
-	alignArg, err := args.Expect("alignment")
+	elem, err := foundations.ParseElement[AlignElement](AlignDef, args)
 	if err != nil {
 		return nil, err
 	}
 
-	alignment, err := parseAlignment(alignArg.V, alignArg.Span)
-	if err != nil {
-		return nil, err
-	}
-
-	bodyArg, err := args.Expect("body")
-	if err != nil {
-		return nil, err
-	}
-
-	var body foundations.Content
-	if cv, ok := bodyArg.V.(foundations.ContentValue); ok {
-		body = cv.Content
-	} else {
-		return nil, &foundations.TypeMismatchError{
-			Expected: "content",
-			Got:      bodyArg.V.Type().String(),
-			Span:     bodyArg.Span,
-		}
-	}
-
-	if err := args.Finish(); err != nil {
+	// Validate alignment string
+	if _, err := parseAlignmentString(elem.AlignmentStr, args.Span); err != nil {
 		return nil, err
 	}
 
 	return foundations.ContentValue{Content: foundations.Content{
-		Elements: []foundations.ContentElement{&AlignElement{
-			Alignment: alignment,
-			Body:      body,
-		}},
+		Elements: []foundations.ContentElement{elem},
 	}}, nil
-}
-
-// parseAlignment parses an alignment value from a Value.
-func parseAlignment(v foundations.Value, span syntax.Span) (Alignment2D, error) {
-	if s, ok := foundations.AsStr(v); ok {
-		return parseAlignmentString(s, span)
-	}
-	return Alignment2D{}, &foundations.TypeMismatchError{
-		Expected: "alignment",
-		Got:      v.Type().String(),
-		Span:     span,
-	}
 }
 
 // parseAlignmentString parses an alignment from a string.

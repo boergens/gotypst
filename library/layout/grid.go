@@ -28,7 +28,6 @@ type GridTrackSizing struct {
 // Reference: typst-reference/crates/typst-library/src/layout/grid/mod.rs
 type GridElement struct {
 	// Columns defines the column track sizes.
-	// Can be a number (for auto columns) or an array of sizes.
 	Columns []GridTrackSizing
 	// Rows defines the row track sizes.
 	Rows []GridTrackSizing
@@ -36,7 +35,7 @@ type GridElement struct {
 	ColumnGutter *float64
 	// RowGutter is the gap between rows (in points).
 	RowGutter *float64
-	// Inset is the cell padding (in points).
+	// Inset is the cell padding.
 	Inset foundations.Value
 	// Align is the cell alignment.
 	Align foundations.Value
@@ -49,6 +48,21 @@ type GridElement struct {
 }
 
 func (*GridElement) IsContentElement() {}
+
+// GridDef is the registered element definition for grid.
+// Note: Grid uses custom parsing due to complex track sizing and gutter shorthand.
+var GridDef *foundations.ElementDef
+
+func init() {
+	// Register with manual FuncInfo since we need custom parsing
+	GridDef = &foundations.ElementDef{
+		Name: "grid",
+		Shorthands: map[string][]string{
+			"gutter": {"column-gutter", "row-gutter"},
+		},
+		ShorthandOrder: []string{"gutter"},
+	}
+}
 
 // GridFunc creates the grid element function.
 func GridFunc() *foundations.Func {
@@ -78,6 +92,7 @@ func GridFunc() *foundations.Func {
 }
 
 // gridNative implements the grid() function.
+// Uses custom parsing due to complex track sizing and gutter shorthand.
 func gridNative(engine foundations.Engine, context foundations.Context, args *foundations.Args) (foundations.Value, error) {
 	elem := &GridElement{}
 
@@ -194,6 +209,22 @@ func gridNative(engine foundations.Engine, context foundations.Context, args *fo
 	return foundations.ContentValue{Content: foundations.Content{
 		Elements: []foundations.ContentElement{elem},
 	}}, nil
+}
+
+// ColumnGutterPts returns the column gutter in points, or 0 if not set.
+func (g *GridElement) ColumnGutterPts() float64 {
+	if g.ColumnGutter == nil {
+		return 0
+	}
+	return *g.ColumnGutter
+}
+
+// RowGutterPts returns the row gutter in points, or 0 if not set.
+func (g *GridElement) RowGutterPts() float64 {
+	if g.RowGutter == nil {
+		return 0
+	}
+	return *g.RowGutter
 }
 
 // parseGridTrackSizings parses a value into grid track sizings.
