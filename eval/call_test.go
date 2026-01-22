@@ -215,13 +215,13 @@ func TestCallDepthLimit(t *testing.T) {
 		Repr: NativeFunc{
 			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				// Use engine.CallFunc for recursive calls
-				return engine.CallFunc(context, FuncValue{Func: recursiveFunc}, NewArgs(syntax.Span{}), syntax.Span{})
+				return engine.callFuncInternal(context, FuncValue{Func: recursiveFunc}, NewArgs(syntax.Span{}), syntax.Span{})
 			},
 		},
 	}
 
 	engine := NewEngine(nil)
-	_, err := engine.CallFunc(nil, FuncValue{Func: recursiveFunc}, NewArgs(syntax.Span{}), syntax.Span{})
+	_, err := engine.callFuncInternal(nil, FuncValue{Func: recursiveFunc}, NewArgs(syntax.Span{}), syntax.Span{})
 	if err == nil {
 		t.Error("Expected error for exceeding call depth")
 	}

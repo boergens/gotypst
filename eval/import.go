@@ -163,7 +163,7 @@ func importFile(vm *Vm, path string, span syntax.Span) (*Module, error) {
 	}
 
 	// Check for cyclic imports
-	if vm.Engine.Route.Contains(fileID) {
+	if vm.Engine.route.Contains(fileID) {
 		return nil, &CyclicImportError{
 			File: fileID,
 			Span: span,
@@ -171,11 +171,11 @@ func importFile(vm *Vm, path string, span syntax.Span) (*Module, error) {
 	}
 
 	// Push this file onto the route
-	vm.Engine.Route.Push(fileID)
-	defer vm.Engine.Route.Pop()
+	vm.Engine.route.Push(fileID)
+	defer vm.Engine.route.Pop()
 
 	// Load the source
-	source, err := vm.World().Source(fileID)
+	source, err := vm.WorldInternal().Source(fileID)
 	if err != nil {
 		return nil, &ImportError{
 			Message: fmt.Sprintf("cannot read file: %v", err),
@@ -205,7 +205,7 @@ func importPackage(vm *Vm, spec string, span syntax.Span) (*Module, error) {
 	}
 
 	// Check for cyclic imports
-	if vm.Engine.Route.Contains(fileID) {
+	if vm.Engine.route.Contains(fileID) {
 		return nil, &CyclicImportError{
 			File: fileID,
 			Span: span,
@@ -213,11 +213,11 @@ func importPackage(vm *Vm, spec string, span syntax.Span) (*Module, error) {
 	}
 
 	// Push this file onto the route
-	vm.Engine.Route.Push(fileID)
-	defer vm.Engine.Route.Pop()
+	vm.Engine.route.Push(fileID)
+	defer vm.Engine.route.Pop()
 
 	// Load the source
-	source, err := vm.World().Source(fileID)
+	source, err := vm.WorldInternal().Source(fileID)
 	if err != nil {
 		return nil, &ImportError{
 			Message: fmt.Sprintf("cannot read package: %v", err),
@@ -240,7 +240,7 @@ func importPackage(vm *Vm, spec string, span syntax.Span) (*Module, error) {
 // resolveFilePath resolves a file path to a FileID.
 func resolveFilePath(vm *Vm, path string, span syntax.Span) (FileID, error) {
 	// Get the current file's directory for relative paths
-	currentFile := vm.Engine.Route.CurrentFile()
+	currentFile := vm.Engine.route.CurrentFile()
 
 	var resolvedPath string
 	if filepath.IsAbs(path) {
@@ -251,7 +251,7 @@ func resolveFilePath(vm *Vm, path string, span syntax.Span) (FileID, error) {
 		resolvedPath = filepath.Join(dir, path)
 	} else {
 		// Resolve relative to main file
-		mainFile := vm.World().MainFile()
+		mainFile := vm.WorldInternal().MainFile()
 		dir := filepath.Dir(mainFile.Path)
 		resolvedPath = filepath.Join(dir, path)
 	}
@@ -336,7 +336,7 @@ func resolvePackage(vm *Vm, spec *PackageSpec, span syntax.Span) (FileID, string
 	}
 
 	// Load the manifest
-	manifestBytes, err := vm.World().File(manifestID)
+	manifestBytes, err := vm.WorldInternal().File(manifestID)
 	if err != nil {
 		return FileID{}, "", &ImportError{
 			Message: fmt.Sprintf("cannot read package manifest: %v", err),
@@ -477,7 +477,7 @@ func evalModule(vm *Vm, source *syntax.Source, fileID FileID) (*Module, error) {
 	}
 
 	// Create a new VM for module evaluation
-	scopes := NewScopes(vm.World().Library())
+	scopes := NewScopes(vm.WorldInternal().Library())
 	moduleVm := NewVm(vm.Engine, NewContext(), scopes, root.Span())
 
 	// Evaluate the markup content
@@ -711,18 +711,6 @@ func resolveImportPath(module *Module, path []string, span syntax.Span) (Value, 
 	}
 
 	return value, nil
-}
-
-// ----------------------------------------------------------------------------
-// Route Extensions
-// ----------------------------------------------------------------------------
-
-// CurrentFile returns the current file being evaluated, or nil if none.
-func (r *Route) CurrentFile() *FileID {
-	if len(r.files) == 0 {
-		return nil
-	}
-	return &r.files[len(r.files)-1]
 }
 
 // ----------------------------------------------------------------------------

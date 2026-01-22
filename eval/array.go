@@ -299,7 +299,7 @@ func ArrayFind(engine *Engine, context *Context, arr ArrayValue, args *Args) (Va
 	for _, item := range arr {
 		predArgs := NewArgs(args.Span)
 		predArgs.Push(item, args.Span)
-		result, err := engine.CallFunc(context, predArg.V, predArgs, args.Span)
+		result, err := engine.callFuncInternal(context, predArg.V, predArgs, args.Span)
 		if err != nil {
 			return nil, err
 		}
@@ -324,7 +324,7 @@ func ArrayPosition(engine *Engine, context *Context, arr ArrayValue, args *Args)
 	for i, item := range arr {
 		predArgs := NewArgs(args.Span)
 		predArgs.Push(item, args.Span)
-		result, err := engine.CallFunc(context, predArg.V, predArgs, args.Span)
+		result, err := engine.callFuncInternal(context, predArg.V, predArgs, args.Span)
 		if err != nil {
 			return nil, err
 		}
@@ -350,7 +350,7 @@ func ArrayFilter(engine *Engine, context *Context, arr ArrayValue, args *Args) (
 	for _, item := range arr {
 		predArgs := NewArgs(args.Span)
 		predArgs.Push(item, args.Span)
-		res, err := engine.CallFunc(context, predArg.V, predArgs, args.Span)
+		res, err := engine.callFuncInternal(context, predArg.V, predArgs, args.Span)
 		if err != nil {
 			return nil, err
 		}
@@ -376,7 +376,7 @@ func ArrayMap(engine *Engine, context *Context, arr ArrayValue, args *Args) (Val
 	for i, item := range arr {
 		fnArgs := NewArgs(args.Span)
 		fnArgs.Push(item, args.Span)
-		res, err := engine.CallFunc(context, fnArg.V, fnArgs, args.Span)
+		res, err := engine.callFuncInternal(context, fnArg.V, fnArgs, args.Span)
 		if err != nil {
 			return nil, err
 		}
@@ -405,7 +405,7 @@ func ArrayFold(engine *Engine, context *Context, arr ArrayValue, args *Args) (Va
 		fnArgs := NewArgs(args.Span)
 		fnArgs.Push(acc, args.Span)
 		fnArgs.Push(item, args.Span)
-		acc, err = engine.CallFunc(context, fnArg.V, fnArgs, args.Span)
+		acc, err = engine.callFuncInternal(context, fnArg.V, fnArgs, args.Span)
 		if err != nil {
 			return nil, err
 		}

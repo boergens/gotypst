@@ -458,7 +458,7 @@ func checkShowPageRule(vm *Vm, recipe *Recipe) {
 		return
 	}
 	if elemSel.Element.Name == "page" {
-		vm.Engine.Sink.Warn(SourceDiagnostic{
+		vm.Engine.sink.Warn(SourceDiagnostic{
 			Span:     recipe.Span,
 			Severity: SeverityWarning,
 			Message:  "`show page` is not supported and has no effect",
@@ -492,7 +492,7 @@ func checkShowParSetBlock(vm *Vm, recipe *Recipe) {
 			// Check for above/below args
 			if rule.Args != nil {
 				if rule.Args.HasNamed("above") || rule.Args.HasNamed("below") || rule.Args.HasNamed("spacing") {
-					vm.Engine.Sink.Warn(SourceDiagnostic{
+					vm.Engine.sink.Warn(SourceDiagnostic{
 						Span:     recipe.Span,
 						Severity: SeverityWarning,
 						Message:  "`show par: set block(spacing: ..)` has no effect anymore",
@@ -519,8 +519,8 @@ func hintIfShadowedStd(vm *Vm, expr syntax.Expr, err error) error {
 	name := ident.Get()
 
 	// Check if there's a standard library function with this name
-	if vm.World() != nil {
-		lib := vm.World().Library()
+	if vm.WorldInternal() != nil {
+		lib := vm.WorldInternal().Library()
 		if lib != nil {
 			if binding := lib.Get(name); binding != nil {
 				// The name exists in the standard library but was shadowed

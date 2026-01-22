@@ -478,7 +478,7 @@ func readFileFromWorld(engine *Engine, path string) ([]byte, error) {
 		resolvedPath = path
 	} else {
 		// Resolve relative to the main file's directory
-		mainFile := engine.World.MainFile()
+		mainFile := engine.world.MainFile()
 		if mainFile.Path != "" {
 			dir := filepath.Dir(mainFile.Path)
 			resolvedPath = filepath.Join(dir, path)
@@ -489,7 +489,7 @@ func readFileFromWorld(engine *Engine, path string) ([]byte, error) {
 
 	// Create FileID and read through World interface
 	fileID := FileID{Path: resolvedPath}
-	data, err := engine.World.File(fileID)
+	data, err := engine.world.File(fileID)
 	if err != nil {
 		return nil, &FileReadError{
 			Path:    path,

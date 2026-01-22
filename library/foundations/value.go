@@ -31,19 +31,153 @@ type Value interface {
 }
 
 // ----------------------------------------------------------------------------
-// Caller Interface
+// Engine and Context Interfaces
 // ----------------------------------------------------------------------------
 
-// Caller provides the ability to invoke functions during evaluation.
-// This interface is implemented by the VM to allow native functions to
-// call other functions without a direct dependency on the VM type.
-type Caller interface {
-	// Call invokes a function with the given arguments.
-	Call(fn *Func, args *Args) (Value, error)
+// Engine provides access to the compilation environment during evaluation.
+// This interface matches Rust's Engine struct pattern, allowing native functions
+// to access world, route, sink, and call other functions.
+//
+// The concrete implementation lives in the eval package.
+type Engine interface {
+	// World returns the compilation environment (files, packages, fonts).
+	World() World
 
-	// CallValue invokes a callable value with the given arguments.
-	CallValue(callee Value, args *Args, span syntax.Span) (Value, error)
+	// Route returns the evaluation route for cycle detection and depth tracking.
+	Route() Route
+
+	// Sink returns the sink for collecting warnings and traced values.
+	Sink() Sink
+
+	// CallFunc calls a function with the given context and arguments.
+	// This is the primary way for native functions to call other functions.
+	CallFunc(context Context, callee Value, args *Args, span syntax.Span) (Value, error)
 }
+
+// Context provides contextual data during evaluation.
+// This matches Rust's Context struct which holds location and styles.
+type Context interface {
+	// Styles returns the currently active styles, or nil if not in context.
+	Styles() *Styles
+
+	// Location returns the current location for introspection, or nil if not available.
+	Location() *Location
+}
+
+// World provides access to the external environment during evaluation.
+type World interface {
+	// Library returns the standard library scope.
+	Library() *Scope
+
+	// MainFile returns the main source file ID.
+	MainFile() FileID
+
+	// Source returns the source content for a file.
+	Source(id FileID) (*syntax.Source, error)
+
+	// File returns the raw bytes of a file.
+	File(id FileID) ([]byte, error)
+
+	// Today returns the current date.
+	Today(offset *int) Date
+}
+
+// Route tracks the evaluation path for detecting cyclic imports and call depth.
+type Route interface {
+	// CheckCallDepth checks if the call depth limit has been exceeded.
+	CheckCallDepth() error
+
+	// EnterCall increments the call depth.
+	EnterCall()
+
+	// ExitCall decrements the call depth.
+	ExitCall()
+
+	// Contains checks if a file is already in the route.
+	Contains(id FileID) bool
+
+	// Push adds a file to the route.
+	Push(id FileID)
+
+	// Pop removes the last file from the route.
+	Pop()
+
+	// CurrentFile returns the current file being evaluated, or nil.
+	CurrentFile() *FileID
+}
+
+// Sink collects warnings and traced values during evaluation.
+type Sink interface {
+	// Warn adds a warning to the sink.
+	Warn(warning SourceDiagnostic)
+}
+
+// FileID uniquely identifies a file.
+type FileID struct {
+	// Package is the optional package specification.
+	Package *PackageSpec
+
+	// Path is the file path within the package or project.
+	Path string
+}
+
+// PackageSpec identifies a package.
+type PackageSpec struct {
+	Namespace string
+	Name      string
+	Version   Version
+}
+
+// Version represents a semantic version (for packages).
+type Version struct {
+	Major int
+	Minor int
+	Patch int
+}
+
+// Date represents a date value.
+type Date struct {
+	Year  int
+	Month int
+	Day   int
+}
+
+// Location represents a location in the document for introspection.
+type Location struct {
+	// Page is the current page number.
+	Page int
+
+	// Position is the position on the page.
+	Position Point
+}
+
+// Point represents a position on a page.
+type Point struct {
+	X, Y Length
+}
+
+// SourceDiagnostic represents a diagnostic message with source location.
+type SourceDiagnostic struct {
+	// Span is the source location.
+	Span syntax.Span
+
+	// Severity indicates the severity level.
+	Severity DiagnosticSeverity
+
+	// Message is the diagnostic message.
+	Message string
+
+	// Hints are optional hints for resolving the issue.
+	Hints []string
+}
+
+// DiagnosticSeverity indicates the severity of a diagnostic.
+type DiagnosticSeverity int
+
+const (
+	SeverityError DiagnosticSeverity = iota
+	SeverityWarning
+)
 
 // ----------------------------------------------------------------------------
 // Primitive Values
@@ -652,10 +786,12 @@ type FuncRepr interface {
 }
 
 // NativeFunc represents a built-in function implemented in Go.
+// This matches Rust's NativeFuncSignature pattern where native functions
+// receive Engine and Context explicitly.
 type NativeFunc struct {
 	// Func is the Go function implementing this native.
-	// The Caller parameter provides the ability to call other functions.
-	Func func(caller Caller, args *Args) (Value, error)
+	// Receives Engine (world, route, sink) and Context (styles, location) explicitly.
+	Func func(engine Engine, context Context, args *Args) (Value, error)
 	// Info contains function metadata.
 	Info *FuncInfo
 	// Scope contains associated methods (e.g., table.cell).

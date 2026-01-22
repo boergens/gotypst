@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"github.com/boergens/gotypst/library/foundations"
 	"github.com/boergens/gotypst/syntax"
 )
 
@@ -78,8 +79,8 @@ func (vm *Vm) Trace(value Value, span syntax.Span) {
 }
 
 // World returns the world from the engine.
-func (vm *Vm) World() World {
-	return vm.Engine.World
+func (vm *Vm) WorldInternal() WorldInternal {
+	return vm.Engine.world
 }
 
 // CheckCallDepth checks if the call depth limit has been exceeded.
@@ -144,48 +145,47 @@ func (vm *Vm) TakeFlow() FlowEvent {
 
 // Engine provides access to the typesetter and external resources.
 type Engine struct {
-	// World provides access to files, packages, and fonts.
-	World World
+	// world provides access to files, packages, and fonts.
+	world WorldInternal
 
-	// Route tracks the evaluation path for cycle detection.
-	Route *Route
+	// route tracks the evaluation path for cycle detection.
+	route *Route
 
-	// Sink collects warnings and traced values.
-	Sink *Sink
+	// sink collects warnings and traced values.
+	sink *Sink
 
-	// Traced tracks spans for IDE inspection.
-	Traced *Traced
+	// traced tracks spans for IDE inspection.
+	traced *Traced
 
-	// Routines provides access to introspection routines.
-	Routines *Routines
+	// routines provides access to introspection routines.
+	routines *Routines
 }
 
 // NewEngine creates a new engine with the given world.
-func NewEngine(world World) *Engine {
+func NewEngine(world WorldInternal) *Engine {
 	return &Engine{
-		World:    world,
-		Route:    NewRoute(),
-		Sink:     NewSink(),
-		Traced:   nil,
-		Routines: nil,
+		world:    world,
+		route:    NewRoute(),
+		sink:     NewSink(),
+		traced:   nil,
+		routines: nil,
 	}
 }
 
-// CallFunc calls a function with the given context and arguments.
-// This is the primary way for native functions to call other functions.
-// It handles call depth tracking through the Engine's Route.
-func (e *Engine) CallFunc(context *Context, callee Value, args *Args, span syntax.Span) (Value, error) {
+// callFuncInternal calls a function with eval-specific types.
+// This is the internal implementation used by the VM.
+func (e *Engine) callFuncInternal(context *Context, callee Value, args *Args, span syntax.Span) (Value, error) {
 	fn, ok := AsFunc(callee)
 	if !ok {
 		return nil, &InvalidCalleeError{Value: callee, Span: span}
 	}
 
 	// Check and update call depth
-	if err := e.Route.CheckCallDepth(); err != nil {
+	if err := e.route.CheckCallDepth(); err != nil {
 		return nil, err
 	}
-	e.Route.EnterCall()
-	defer e.Route.ExitCall()
+	e.route.EnterCall()
+	defer e.route.ExitCall()
 
 	// Dispatch based on function representation
 	switch repr := fn.Repr.(type) {
@@ -194,7 +194,7 @@ func (e *Engine) CallFunc(context *Context, callee Value, args *Args, span synta
 
 	case ClosureFunc:
 		// Create a temporary Vm for closure evaluation
-		scopes := NewScopes(e.World.Library())
+		scopes := NewScopes(e.world.Library())
 		if repr.Closure.Captured != nil {
 			scopes.SetTop(repr.Closure.Captured.Clone())
 		}
@@ -206,7 +206,7 @@ func (e *Engine) CallFunc(context *Context, callee Value, args *Args, span synta
 		merged := &Args{Span: args.Span}
 		merged.Items = append(merged.Items, repr.Args.Items...)
 		merged.Items = append(merged.Items, args.Items...)
-		return e.CallFunc(context, FuncValue{Func: repr.Func}, merged, span)
+		return e.callFuncInternal(context, FuncValue{Func: repr.Func}, merged, span)
 
 	default:
 		return nil, &InvalidCalleeError{Value: callee, Span: span}
@@ -214,11 +214,219 @@ func (e *Engine) CallFunc(context *Context, callee Value, args *Args, span synta
 }
 
 // ----------------------------------------------------------------------------
+// foundations.Engine Interface Implementation
+// ----------------------------------------------------------------------------
+
+// Verify Engine implements foundations.Engine interface.
+var _ foundations.Engine = (*Engine)(nil)
+
+// World returns the world as a foundations.World interface.
+func (e *Engine) World() foundations.World {
+	return &worldAdapter{e.world}
+}
+
+// Route returns the route as a foundations.Route interface.
+func (e *Engine) Route() foundations.Route {
+	return &routeAdapter{e.route}
+}
+
+// Sink returns the sink as a foundations.Sink interface.
+func (e *Engine) Sink() foundations.Sink {
+	return &sinkAdapter{e.sink}
+}
+
+// sinkAdapter wraps eval.Sink to implement foundations.Sink.
+type sinkAdapter struct {
+	s *Sink
+}
+
+func (a *sinkAdapter) Warn(warning foundations.SourceDiagnostic) {
+	a.s.Warn(SourceDiagnostic{
+		Span:     warning.Span,
+		Severity: DiagnosticSeverity(warning.Severity),
+		Message:  warning.Message,
+		Hints:    warning.Hints,
+	})
+}
+
+// routeAdapter wraps eval.Route to implement foundations.Route.
+type routeAdapter struct {
+	r *Route
+}
+
+func (a *routeAdapter) CheckCallDepth() error {
+	return a.r.CheckCallDepth()
+}
+
+func (a *routeAdapter) EnterCall() {
+	a.r.EnterCall()
+}
+
+func (a *routeAdapter) ExitCall() {
+	a.r.ExitCall()
+}
+
+func (a *routeAdapter) Contains(id foundations.FileID) bool {
+	return a.r.Contains(FileID{Path: id.Path, Package: convertPackageSpec(id.Package)})
+}
+
+func (a *routeAdapter) Push(id foundations.FileID) {
+	a.r.Push(FileID{Path: id.Path, Package: convertPackageSpec(id.Package)})
+}
+
+func (a *routeAdapter) Pop() {
+	a.r.Pop()
+}
+
+func (a *routeAdapter) CurrentFile() *foundations.FileID {
+	f := a.r.CurrentFile()
+	if f == nil {
+		return nil
+	}
+	return &foundations.FileID{Path: f.Path}
+}
+
+// convertPackageSpec converts foundations.PackageSpec to eval.PackageSpec.
+func convertPackageSpec(spec *foundations.PackageSpec) *PackageSpec {
+	if spec == nil {
+		return nil
+	}
+	return &PackageSpec{
+		Namespace: spec.Namespace,
+		Name:      spec.Name,
+		Version:   Version{Major: spec.Version.Major, Minor: spec.Version.Minor, Patch: spec.Version.Patch},
+	}
+}
+
+// CallFunc calls a function with foundations interface types.
+// This implements foundations.Engine.CallFunc().
+func (e *Engine) CallFunc(context foundations.Context, callee foundations.Value, args *foundations.Args, span syntax.Span) (foundations.Value, error) {
+	// Convert foundations types to eval types
+	ctx := contextFromFoundations(context)
+	evalArgs := argsFromFoundations(args)
+	evalCallee := valueFromFoundations(callee)
+
+	result, err := e.callFuncInternal(ctx, evalCallee, evalArgs, span)
+	if err != nil {
+		return nil, err
+	}
+	return valueToFoundations(result), nil
+}
+
+// worldAdapter wraps an eval.WorldInternal to implement foundations.World.
+type worldAdapter struct {
+	w WorldInternal
+}
+
+func (a *worldAdapter) Library() *foundations.Scope {
+	// For now, return nil - full integration requires scope migration
+	return nil
+}
+
+func (a *worldAdapter) MainFile() foundations.FileID {
+	f := a.w.MainFile()
+	return foundations.FileID{Path: f.Path}
+}
+
+func (a *worldAdapter) Source(id foundations.FileID) (*syntax.Source, error) {
+	return a.w.Source(FileID{Path: id.Path})
+}
+
+func (a *worldAdapter) File(id foundations.FileID) ([]byte, error) {
+	return a.w.File(FileID{Path: id.Path})
+}
+
+func (a *worldAdapter) Today(offset *int) foundations.Date {
+	d := a.w.Today(offset)
+	return foundations.Date{Year: d.Year, Month: d.Month, Day: d.Day}
+}
+
+// contextFromFoundations converts foundations.Context to *Context.
+func contextFromFoundations(ctx foundations.Context) *Context {
+	if ctx == nil {
+		return nil
+	}
+	// For now, create empty context - full integration requires styles migration
+	return &Context{}
+}
+
+// argsFromFoundations converts *foundations.Args to *Args.
+func argsFromFoundations(args *foundations.Args) *Args {
+	if args == nil {
+		return nil
+	}
+	// For now, create minimal conversion
+	result := &Args{Span: args.Span}
+	for _, item := range args.Items {
+		result.Items = append(result.Items, Arg{
+			Span:  item.Span,
+			Name:  item.Name,
+			Value: syntax.Spanned[Value]{V: valueFromFoundations(item.Value.V), Span: item.Value.Span},
+		})
+	}
+	return result
+}
+
+// valueFromFoundations converts foundations.Value to eval.Value.
+// This is a temporary adapter during migration.
+func valueFromFoundations(v foundations.Value) Value {
+	if v == nil {
+		return nil
+	}
+	// Type switch on common types
+	switch val := v.(type) {
+	case foundations.NoneValue:
+		return NoneValue{}
+	case foundations.AutoValue:
+		return AutoValue{}
+	case foundations.Bool:
+		return BoolValue(val)
+	case foundations.Int:
+		return IntValue(val)
+	case foundations.Float:
+		return FloatValue(val)
+	case foundations.Str:
+		return StrValue(val)
+	default:
+		// Wrap unknown types in DynValue
+		return DynValue{Inner: v, TypeName: v.Type().String()}
+	}
+}
+
+// valueToFoundations converts eval.Value to foundations.Value.
+// This is a temporary adapter during migration.
+func valueToFoundations(v Value) foundations.Value {
+	if v == nil {
+		return nil
+	}
+	// Type switch on common types
+	switch val := v.(type) {
+	case NoneValue:
+		return foundations.NoneValue{}
+	case AutoValue:
+		return foundations.AutoValue{}
+	case BoolValue:
+		return foundations.Bool(val)
+	case IntValue:
+		return foundations.Int(val)
+	case FloatValue:
+		return foundations.Float(val)
+	case StrValue:
+		return foundations.Str(val)
+	default:
+		// Wrap unknown types in DynValue
+		return foundations.DynValue{Inner: v, TypeName: v.Type().String()}
+	}
+}
+
+// ----------------------------------------------------------------------------
 // World Interface
 // ----------------------------------------------------------------------------
 
-// World provides access to the external environment during evaluation.
-type World interface {
+// WorldInternal provides access to the external environment during evaluation.
+// This is the internal interface using eval types. The Engine.World() method
+// returns a foundations.World adapter for external use.
+type WorldInternal interface {
 	// Library returns the standard library scope.
 	Library() *Scope
 
@@ -269,25 +477,53 @@ type Date struct {
 // Context
 // ----------------------------------------------------------------------------
 
+// Verify Context implements foundations.Context interface.
+var _ foundations.Context = (*Context)(nil)
+
 // Context provides contextual data during evaluation.
 type Context struct {
-	// Styles are the currently active styles.
-	Styles *Styles
+	// styles are the currently active styles.
+	styles *Styles
 
-	// Location is the current location for introspection.
-	Location *Location
+	// location is the current location for introspection.
+	location *LocationInternal
 }
 
 // NewContext creates a new empty context.
 func NewContext() *Context {
 	return &Context{
-		Styles:   nil,
-		Location: nil,
+		styles:   nil,
+		location: nil,
 	}
 }
 
-// Location represents a location in the document for introspection.
-type Location struct {
+// Styles returns the currently active styles as foundations.Styles.
+// Implements foundations.Context.Styles().
+func (c *Context) Styles() *foundations.Styles {
+	if c == nil || c.styles == nil {
+		return nil
+	}
+	// For now, return nil - full integration requires styles migration
+	return nil
+}
+
+// Location returns the current location as foundations.Location.
+// Implements foundations.Context.Location().
+func (c *Context) Location() *foundations.Location {
+	if c == nil || c.location == nil {
+		return nil
+	}
+	return &foundations.Location{
+		Page: c.location.Page,
+		Position: foundations.Point{
+			X: foundations.Length{Points: c.location.Position.X.Points},
+			Y: foundations.Length{Points: c.location.Position.Y.Points},
+		},
+	}
+}
+
+// LocationInternal represents a location in the document for introspection.
+type LocationInternal struct {
 	// Page is the current page number.
 	Page int
 
@@ -366,6 +602,14 @@ func (r *Route) Pop() {
 	if len(r.files) > 0 {
 		r.files = r.files[:len(r.files)-1]
 	}
+}
+
+// CurrentFile returns the current file being evaluated, or nil.
+func (r *Route) CurrentFile() *FileID {
+	if r == nil || len(r.files) == 0 {
+		return nil
+	}
+	return &r.files[len(r.files)-1]
 }
 
 // Clone creates a copy of the route.

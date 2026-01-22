@@ -50,7 +50,7 @@ func (w *mockWorld) Today(offset *int) Date {
 	return Date{Year: 2026, Month: 1, Day: 19}
 }
 
-func newTestVm(world World) *Vm {
+func newTestVm(world WorldInternal) *Vm {
 	engine := NewEngine(world)
 	scopes := NewScopes(nil)
 	return NewVm(engine, NewContext(), scopes, syntax.Detached())
