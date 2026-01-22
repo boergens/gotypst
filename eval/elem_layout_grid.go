@@ -8,12 +8,6 @@ import (
 	"github.com/boergens/gotypst/syntax"
 )
 
-// Re-export grid types for backwards compatibility.
-type (
-	GridTrackSizing = layout.GridTrackSizing
-	GridElement     = layout.GridElement
-)
-
 // GridFunc creates the grid element function.
 func GridFunc() *Func {
 	name := "grid"
@@ -177,7 +171,7 @@ func gridNative(engine foundations.Engine, context foundations.Context, args *Ar
 
 // parseGridTrackSizings parses a value into grid track sizings.
 // Accepts: int (auto count), length, fr, ratio, or array of these.
-func parseGridTrackSizings(v Value, span syntax.Span) ([]GridTrackSizing, error) {
+func parseGridTrackSizings(v Value, span syntax.Span) ([]layout.GridTrackSizing, error) {
 	// Handle integer (number of auto columns)
 	if intVal, ok := AsInt(v); ok {
 		count := int(intVal)
@@ -187,22 +181,22 @@ func parseGridTrackSizings(v Value, span syntax.Span) ([]GridTrackSizing, error)
 				Span:    span,
 			}
 		}
-		result := make([]GridTrackSizing, count)
+		result := make([]layout.GridTrackSizing, count)
 		for i := range result {
-			result[i] = GridTrackSizing{Auto: true}
+			result[i] = layout.GridTrackSizing{Auto: true}
 		}
 		return result, nil
 	}
 
 	// Handle single sizing value
 	if sizing, err := parseGridTrackSizing(v, span); err == nil {
-		return []GridTrackSizing{sizing}, nil
+		return []layout.GridTrackSizing{sizing}, nil
 	}
 
 	// Handle array
-	if arr, ok := v.(ArrayValue); ok {
-		result := make([]GridTrackSizing, 0, len(arr))
-		for i, elem := range arr {
+	if arr, ok := v.(*ArrayValue); ok {
+		result := make([]layout.GridTrackSizing, 0, arr.Len())
+		for i, elem := range arr.Items() {
 			sizing, err := parseGridTrackSizing(elem, span)
 			if err != nil {
 				return nil, &ConstructorError{
@@ -223,38 +217,38 @@ func parseGridTrackSizings(v Value, span syntax.Span) ([]GridTrackSizing, error)
 }
 
 // parseGridTrackSizing parses a single track sizing value.
-func parseGridTrackSizing(v Value, span syntax.Span) (GridTrackSizing, error) {
+func parseGridTrackSizing(v Value, span syntax.Span) (layout.GridTrackSizing, error) {
 	// Check for auto
 	if IsAuto(v) {
-		return GridTrackSizing{Auto: true}, nil
+		return layout.GridTrackSizing{Auto: true}, nil
 	}
 
 	// Check for length
 	if lv, ok := v.(LengthValue); ok {
 		l := lv.Length.Points
-		return GridTrackSizing{Length: &l}, nil
+		return layout.GridTrackSizing{Length: &l}, nil
 	}
 
 	// Check for fraction
 	if fv, ok := v.(FractionValue); ok {
 		f := fv.Fraction.Value
-		return GridTrackSizing{Fr: &f}, nil
+		return layout.GridTrackSizing{Fr: &f}, nil
 	}
 
 	// Check for ratio
 	if rv, ok := v.(RatioValue); ok {
 		r := rv.Ratio.Value
-		return GridTrackSizing{Ratio: &r}, nil
+		return layout.GridTrackSizing{Ratio: &r}, nil
 	}
 
 	// Check for relative (combo of absolute and ratio)
 	if rv, ok := v.(RelativeValue); ok {
 		// Use the absolute part
 		l := rv.Relative.Abs.Points
-		return GridTrackSizing{Length: &l}, nil
+		return layout.GridTrackSizing{Length: &l}, nil
 	}
 
-	return GridTrackSizing{}, &TypeMismatchError{
+	return layout.GridTrackSizing{}, &TypeMismatchError{
 		Expected: "auto, length, fraction, or ratio",
 		Got:      v.Type().String(),
 		Span:     span,

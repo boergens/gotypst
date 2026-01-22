@@ -6,12 +6,6 @@ import (
 	"github.com/boergens/gotypst/syntax"
 )
 
-// Re-export container types for backwards compatibility.
-type (
-	BoxElement   = layout.BoxElement
-	BlockElement = layout.BlockElement
-)
-
 // BoxFunc creates the box element function.
 func BoxFunc() *Func {
 	name := "box"

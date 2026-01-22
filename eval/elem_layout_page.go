@@ -8,15 +8,6 @@ import (
 	"github.com/boergens/gotypst/syntax"
 )
 
-// Re-export page types for backwards compatibility.
-type (
-	Paper       = layout.Paper
-	PageElement = layout.PageElement
-)
-
-// Re-export Papers map for backwards compatibility.
-var Papers = layout.Papers
-
 // PageFunc creates the page element function.
 func PageFunc() *Func {
 	name := "page"
@@ -77,7 +68,7 @@ func pageNative(engine foundations.Engine, context foundations.Context, args *Ar
 	paperArg := args.Find("paper")
 	if paperArg == nil {
 		// Try to peek at first positional arg
-		if peeked := args.Take(); peeked != nil {
+		if peeked := args.Peek(); peeked != nil {
 			if _, ok := AsStr(peeked.V); ok {
 				paperArgSpanned, _ := args.Expect("paper")
 				paperArg = &paperArgSpanned
@@ -94,7 +85,7 @@ func pageNative(engine foundations.Engine, context foundations.Context, args *Ar
 					Span:     paperArg.Span,
 				}
 			}
-			paper, exists := Papers[paperStr]
+			paper, exists := layout.Papers[paperStr]
 			if !exists {
 				return nil, &ConstructorError{
 					Message: fmt.Sprintf("unknown paper size: %q", paperStr),
@@ -167,7 +158,7 @@ func pageNative(engine foundations.Engine, context foundations.Context, args *Ar
 				elem.MarginTop = &pts
 				elem.MarginRight = &pts
 				elem.MarginBottom = &pts
-			case DictValue:
+			case *DictValue:
 				// Parse individual margins from dict
 				if err := parseMarginDict(m, elem, marginArg.Span); err != nil {
 					return nil, err
@@ -294,7 +285,7 @@ func pageNative(engine foundations.Engine, context foundations.Context, args *Ar
 }
 
 // parseMarginDict parses a dictionary of margin values.
-func parseMarginDict(d DictValue, elem *PageElement, span syntax.Span) error {
+func parseMarginDict(d *DictValue, elem *layout.PageElement, span syntax.Span) error {
 	// Helper to get and parse a length from the dict
 	getLength := func(key string) *float64 {
 		val, ok := d.Get(key)

@@ -6,9 +6,6 @@ import (
 	"github.com/boergens/gotypst/syntax"
 )
 
-// Re-export ColumnsElement for backwards compatibility.
-type ColumnsElement = layout.ColumnsElement
-
 // ColumnsFunc creates the columns element function.
 func ColumnsFunc() *Func {
 	name := "columns"
@@ -34,7 +31,7 @@ func columnsNative(engine foundations.Engine, context foundations.Context, args 
 	count := 2
 	countArg := args.Find("count")
 	if countArg == nil {
-		if peeked := args.Take(); peeked != nil {
+		if peeked := args.Peek(); peeked != nil {
 			if _, ok := AsInt(peeked.V); ok {
 				countArgSpanned, _ := args.Expect("count")
 				countArg = &countArgSpanned

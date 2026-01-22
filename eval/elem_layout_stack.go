@@ -6,20 +6,6 @@ import (
 	"github.com/boergens/gotypst/syntax"
 )
 
-// Re-export stack types for backwards compatibility.
-type (
-	StackDirection = layout.StackDirection
-	StackElement   = layout.StackElement
-)
-
-// Re-export stack direction constants.
-const (
-	StackLTR = layout.StackLTR
-	StackRTL = layout.StackRTL
-	StackTTB = layout.StackTTB
-	StackBTT = layout.StackBTT
-)
-
 // StackFunc creates the stack element function.
 func StackFunc() *Func {
 	name := "stack"

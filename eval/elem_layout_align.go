@@ -6,26 +6,6 @@ import (
 	"github.com/boergens/gotypst/syntax"
 )
 
-// Re-export layout types for backwards compatibility.
-type (
-	Alignment2D  = layout.Alignment2D
-	HAlignment   = layout.HAlignment
-	VAlignment   = layout.VAlignment
-	AlignElement = layout.AlignElement
-)
-
-// Re-export alignment constants.
-const (
-	HAlignStart  = layout.HAlignStart
-	HAlignLeft   = layout.HAlignLeft
-	HAlignCenter = layout.HAlignCenter
-	HAlignRight  = layout.HAlignRight
-	HAlignEnd    = layout.HAlignEnd
-	VAlignTop    = layout.VAlignTop
-	VAlignHorizon = layout.VAlignHorizon
-	VAlignBottom = layout.VAlignBottom
-)
-
 // AlignFunc creates the align element function.
 func AlignFunc() *Func {
 	name := "align"

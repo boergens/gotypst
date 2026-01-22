@@ -6,10 +6,6 @@ import (
 	"github.com/boergens/gotypst/syntax"
 )
 
-// Re-export PadElement for backwards compatibility.
-// New code should import from library/layout directly.
-type PadElement = layout.PadElement
-
 // PadFunc creates the pad element function.
 func PadFunc() *Func {
 	name := "pad"
