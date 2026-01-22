@@ -1,13 +1,18 @@
-package eval
+// World implementations for Typst.
+// Provides concrete implementations of the foundations.World interface.
+//
+// Translated from typst-kit/src/files.rs
+
+package kit
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/boergens/gotypst/font"
+	"github.com/boergens/gotypst/library/foundations"
 	"github.com/boergens/gotypst/syntax"
 )
 
@@ -25,19 +30,22 @@ type FileWorld struct {
 	root string
 
 	// mainFile is the main source file being compiled.
-	mainFile FileID
+	mainFile syntax.FileId
 
 	// library is the standard library scope.
-	library *Scope
+	library *foundations.Scope
 
 	// fontBook manages loaded fonts.
 	fontBook *font.FontBook
 
-	// sourceCache caches parsed sources by file path.
-	sourceCache map[string]*syntax.Source
+	// sourceCache caches parsed sources by file ID.
+	sourceCache map[syntax.FileId]*syntax.Source
 
-	// fileCache caches raw file bytes by file path.
-	fileCache map[string][]byte
+	// fileCache caches raw file bytes by file ID.
+	fileCache map[syntax.FileId][]byte
+
+	// pathCache maps file IDs to resolved absolute paths.
+	pathCache map[syntax.FileId]string
 
 	// mu protects the caches.
 	mu sync.RWMutex
@@ -51,14 +59,14 @@ type FileWorld struct {
 type PackageResolver interface {
 	// Resolve returns the root directory for a package specification.
 	// Returns an error if the package cannot be found.
-	Resolve(spec *PackageSpec) (string, error)
+	Resolve(spec *syntax.PackageSpec) (string, error)
 }
 
 // FileWorldOption configures a FileWorld.
 type FileWorldOption func(*FileWorld)
 
 // WithLibrary sets the standard library scope.
-func WithLibrary(lib *Scope) FileWorldOption {
+func WithLibrary(lib *foundations.Scope) FileWorldOption {
 	return func(w *FileWorld) {
 		w.library = lib
 	}
@@ -126,16 +134,29 @@ func NewFileWorld(root string, mainPath string, opts ...FileWorldOption) (*FileW
 		return nil, fmt.Errorf("main file does not exist: %w", err)
 	}
 
-	w := &FileWorld{
-		root: absRoot,
-		mainFile: FileID{
-			Package: nil,
-			Path:    absMainPath,
-		},
-		library:     NewScope(),
-		sourceCache: make(map[string]*syntax.Source),
-		fileCache:   make(map[string][]byte),
+	// Create the main file ID
+	relPath, err := filepath.Rel(absRoot, absMainPath)
+	if err != nil {
+		relPath = absMainPath
 	}
+	vpath, err := syntax.NewVirtualPath("/" + filepath.ToSlash(relPath))
+	if err != nil {
+		vpath, _ = syntax.NewVirtualPath("/main.typ")
+	}
+	rpath := syntax.NewRootedPath(syntax.ProjectRoot(), *vpath)
+	mainFileId := rpath.Intern()
+
+	w := &FileWorld{
+		root:        absRoot,
+		mainFile:    mainFileId,
+		library:     foundations.NewScope(),
+		sourceCache: make(map[syntax.FileId]*syntax.Source),
+		fileCache:   make(map[syntax.FileId][]byte),
+		pathCache:   make(map[syntax.FileId]string),
+	}
+
+	// Store the path mapping
+	w.pathCache[mainFileId] = absMainPath
 
 	for _, opt := range opts {
 		opt(w)
@@ -154,12 +175,12 @@ func NewFileWorld(root string, mainPath string, opts ...FileWorldOption) (*FileW
 }
 
 // Library returns the standard library scope.
-func (w *FileWorld) Library() *Scope {
+func (w *FileWorld) Library() *foundations.Scope {
 	return w.library
 }
 
 // MainFile returns the main source file ID.
-func (w *FileWorld) MainFile() FileID {
+func (w *FileWorld) MainFile() syntax.FileId {
 	return w.mainFile
 }
 
@@ -167,19 +188,20 @@ func (w *FileWorld) MainFile() FileID {
 //
 // The source is cached after first access. If the file cannot be read
 // or parsed, an error is returned.
-func (w *FileWorld) Source(id FileID) (*syntax.Source, error) {
-	path, err := w.resolvePath(id)
-	if err != nil {
-		return nil, err
-	}
-
+func (w *FileWorld) Source(id syntax.FileId) (*syntax.Source, error) {
 	// Check cache first
 	w.mu.RLock()
-	if src, ok := w.sourceCache[path]; ok {
+	if src, ok := w.sourceCache[id]; ok {
 		w.mu.RUnlock()
 		return src, nil
 	}
 	w.mu.RUnlock()
+
+	// Resolve the path
+	path, err := w.resolvePath(id)
+	if err != nil {
+		return nil, err
+	}
 
 	// Read the file
 	content, err := w.readFile(path)
@@ -187,15 +209,12 @@ func (w *FileWorld) Source(id FileID) (*syntax.Source, error) {
 		return nil, fmt.Errorf("cannot read source file %s: %w", path, err)
 	}
 
-	// Create file ID for the syntax package
-	fileId := w.createSyntaxFileId(id, path)
-
 	// Parse the source
-	src := syntax.NewSource(fileId, string(content))
+	src := syntax.NewSource(id, string(content))
 
 	// Cache it
 	w.mu.Lock()
-	w.sourceCache[path] = src
+	w.sourceCache[id] = src
 	w.mu.Unlock()
 
 	return src, nil
@@ -204,19 +223,20 @@ func (w *FileWorld) Source(id FileID) (*syntax.Source, error) {
 // File returns the raw bytes of a file.
 //
 // The file content is cached after first access.
-func (w *FileWorld) File(id FileID) ([]byte, error) {
-	path, err := w.resolvePath(id)
-	if err != nil {
-		return nil, err
-	}
-
+func (w *FileWorld) File(id syntax.FileId) ([]byte, error) {
 	// Check cache first
 	w.mu.RLock()
-	if data, ok := w.fileCache[path]; ok {
+	if data, ok := w.fileCache[id]; ok {
 		w.mu.RUnlock()
 		return data, nil
 	}
 	w.mu.RUnlock()
+
+	// Resolve the path
+	path, err := w.resolvePath(id)
+	if err != nil {
+		return nil, err
+	}
 
 	// Read the file
 	data, err := w.readFile(path)
@@ -226,7 +246,7 @@ func (w *FileWorld) File(id FileID) ([]byte, error) {
 
 	// Cache it
 	w.mu.Lock()
-	w.fileCache[path] = data
+	w.fileCache[id] = data
 	w.mu.Unlock()
 
 	return data, nil
@@ -256,44 +276,57 @@ func (w *FileWorld) FontBook() *font.FontBook {
 //
 // If offset is not nil, it adjusts the UTC offset used to determine
 // the current date. For example, offset=8 would use UTC+8.
-func (w *FileWorld) Today(offset *int) Date {
-	now := time.Now()
-
-	if offset != nil {
-		// Apply UTC offset
-		loc := time.FixedZone("", *offset*3600)
-		now = now.In(loc)
-	}
-
-	return Date{
-		Year:  now.Year(),
-		Month: int(now.Month()),
-		Day:   now.Day(),
-	}
+func (w *FileWorld) Today(offset *int) *foundations.Datetime {
+	return foundations.Today(offset)
 }
 
-// resolvePath resolves a FileID to an absolute file system path.
-func (w *FileWorld) resolvePath(id FileID) (string, error) {
-	if id.Package != nil {
+// resolvePath resolves a FileId to an absolute file system path.
+func (w *FileWorld) resolvePath(id syntax.FileId) (string, error) {
+	// Check path cache first
+	w.mu.RLock()
+	if path, ok := w.pathCache[id]; ok {
+		w.mu.RUnlock()
+		return path, nil
+	}
+	w.mu.RUnlock()
+
+	// Get the rooted path from the file ID
+	rpath := id.Get()
+	if rpath == nil {
+		return "", fmt.Errorf("cannot resolve file ID: no rooted path")
+	}
+
+	var absPath string
+	root := rpath.Root()
+
+	// Check if it's a package root
+	if spec := rpath.Package(); spec != nil {
 		// Package file - resolve through package resolver
 		if w.packageResolver == nil {
 			return "", fmt.Errorf("package imports not supported: no package resolver configured")
 		}
 
-		pkgRoot, err := w.packageResolver.Resolve(id.Package)
+		pkgRoot, err := w.packageResolver.Resolve(spec)
 		if err != nil {
-			return "", fmt.Errorf("cannot resolve package %s: %w", id.Package.Name, err)
+			return "", fmt.Errorf("cannot resolve package %s: %w", spec.Name, err)
 		}
 
-		return filepath.Join(pkgRoot, id.Path), nil
+		vpath := rpath.VPath()
+		absPath = vpath.Realize(pkgRoot)
+	} else if root == syntax.ProjectRoot() {
+		// Project file - resolve relative to root
+		vpath := rpath.VPath()
+		absPath = vpath.Realize(w.root)
+	} else {
+		return "", fmt.Errorf("unknown virtual root type")
 	}
 
-	// Project file - resolve relative to root or use absolute path
-	if filepath.IsAbs(id.Path) {
-		return id.Path, nil
-	}
+	// Cache the resolved path
+	w.mu.Lock()
+	w.pathCache[id] = absPath
+	w.mu.Unlock()
 
-	return filepath.Join(w.root, id.Path), nil
+	return absPath, nil
 }
 
 // readFile reads a file from the filesystem.
@@ -308,46 +341,12 @@ func (w *FileWorld) readFile(path string) ([]byte, error) {
 	return data, nil
 }
 
-// createSyntaxFileId creates a syntax.FileId from an eval.FileID.
-func (w *FileWorld) createSyntaxFileId(id FileID, resolvedPath string) syntax.FileId {
-	// Create a virtual path from the resolved path
-	relPath, err := filepath.Rel(w.root, resolvedPath)
-	if err != nil {
-		// Fall back to absolute path
-		relPath = resolvedPath
-	}
-
-	vpath, err := syntax.NewVirtualPath("/" + filepath.ToSlash(relPath))
-	if err != nil {
-		// Fall back to a simple path
-		vpath, _ = syntax.NewVirtualPath("/unknown")
-	}
-
-	var root syntax.VirtualRoot
-	if id.Package != nil {
-		root = syntax.PackageRoot(syntax.PackageSpec{
-			Namespace: id.Package.Namespace,
-			Name:      id.Package.Name,
-			Version: syntax.PackageVersion{
-				Major: uint32(id.Package.Version.Major),
-				Minor: uint32(id.Package.Version.Minor),
-				Patch: uint32(id.Package.Version.Patch),
-			},
-		})
-	} else {
-		root = syntax.ProjectRoot()
-	}
-
-	rpath := syntax.NewRootedPath(root, *vpath)
-	return rpath.Intern()
-}
-
 // ClearCache clears all cached sources and files.
 func (w *FileWorld) ClearCache() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.sourceCache = make(map[string]*syntax.Source)
-	w.fileCache = make(map[string][]byte)
+	w.sourceCache = make(map[syntax.FileId]*syntax.Source)
+	w.fileCache = make(map[syntax.FileId][]byte)
 }
 
 // ClearSourceCache clears only the parsed source cache.
@@ -355,15 +354,15 @@ func (w *FileWorld) ClearCache() {
 func (w *FileWorld) ClearSourceCache() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.sourceCache = make(map[string]*syntax.Source)
+	w.sourceCache = make(map[syntax.FileId]*syntax.Source)
 }
 
 // InvalidateFile removes a specific file from the caches.
-func (w *FileWorld) InvalidateFile(path string) {
+func (w *FileWorld) InvalidateFile(id syntax.FileId) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	delete(w.sourceCache, path)
-	delete(w.fileCache, path)
+	delete(w.sourceCache, id)
+	delete(w.fileCache, id)
 }
 
 // Root returns the project root directory.
@@ -406,13 +405,13 @@ func NewLocalPackageResolver(root string) *LocalPackageResolver {
 }
 
 // Resolve returns the root directory for a package specification.
-func (r *LocalPackageResolver) Resolve(spec *PackageSpec) (string, error) {
+func (r *LocalPackageResolver) Resolve(spec *syntax.PackageSpec) (string, error) {
 	if spec == nil {
 		return "", fmt.Errorf("nil package specification")
 	}
 
 	// Build the package path: <root>/<namespace>/<name>/<version>/
-	versionStr := fmt.Sprintf("%d.%d.%d", spec.Version.Major, spec.Version.Minor, spec.Version.Patch)
+	versionStr := spec.Version.String()
 	pkgPath := filepath.Join(r.root, spec.Namespace, spec.Name, versionStr)
 
 	// Verify the package directory exists
@@ -433,14 +432,13 @@ func (r *LocalPackageResolver) Resolve(spec *PackageSpec) (string, error) {
 
 // PackageNotFoundError is returned when a package cannot be found.
 type PackageNotFoundError struct {
-	Spec *PackageSpec
+	Spec *syntax.PackageSpec
 }
 
 func (e *PackageNotFoundError) Error() string {
 	if e.Spec == nil {
 		return "package not found: nil spec"
 	}
-	return fmt.Sprintf("package not found: @%s/%s:%d.%d.%d",
-		e.Spec.Namespace, e.Spec.Name,
-		e.Spec.Version.Major, e.Spec.Version.Minor, e.Spec.Version.Patch)
+	return fmt.Sprintf("package not found: @%s/%s:%s",
+		e.Spec.Namespace, e.Spec.Name, e.Spec.Version.String())
 }

@@ -847,6 +847,56 @@ func (e *MathAttachExpr) Base() Expr {
 	return nil
 }
 
+// Bottom returns the bottom (subscript) attachment.
+func (e *MathAttachExpr) Bottom() Expr {
+	foundUnderscore := false
+	for _, child := range e.node.Children() {
+		if child.Kind() == Underscore {
+			foundUnderscore = true
+			continue
+		}
+		if foundUnderscore {
+			if expr := ExprFromNode(child); expr != nil {
+				return expr
+			}
+		}
+	}
+	return nil
+}
+
+// Top returns the top (superscript) attachment.
+func (e *MathAttachExpr) Top() Expr {
+	foundHat := false
+	for _, child := range e.node.Children() {
+		if child.Kind() == Hat {
+			foundHat = true
+			continue
+		}
+		if foundHat {
+			if expr := ExprFromNode(child); expr != nil {
+				return expr
+			}
+		}
+	}
+	return nil
+}
+
+// Primes returns attached primes if present.
+func (e *MathAttachExpr) Primes() *MathPrimesExpr {
+	foundExpr := false
+	count := 0
+	for _, child := range e.node.Children() {
+		if ExprFromNode(child) != nil {
+			foundExpr = true
+			count++
+		}
+		if foundExpr && count > 1 && child.Kind() == MathPrimes {
+			return MathPrimesExprFromNode(child)
+		}
+	}
+	return nil
+}
+
 // MathAttachExprFromNode casts a syntax node to a MathAttachExpr.
 func MathAttachExprFromNode(node *SyntaxNode) *MathAttachExpr {
 	if node == nil || node.Kind() != MathAttach {
@@ -1712,6 +1762,27 @@ func LetBindingExprFromNode(node *SyntaxNode) *LetBindingExpr {
 		return nil
 	}
 	return &LetBindingExpr{node: node}
+}
+
+// Bindings returns all identifiers bound by this let binding.
+// For plain bindings, this is the identifiers in the pattern.
+// For closure bindings, this is the function name.
+func (e *LetBindingExpr) Bindings() []*IdentExpr {
+	if e.BindingKind() == LetBindingClosure {
+		// For closure bindings, the function name is the binding
+		init := e.Init()
+		if closure, ok := init.(*ClosureExpr); ok {
+			if name := closure.Name(); name != nil {
+				return []*IdentExpr{name}
+			}
+		}
+		return nil
+	}
+	// For plain bindings, get bindings from the pattern
+	if pattern := e.Pattern(); pattern != nil {
+		return pattern.Bindings()
+	}
+	return nil
 }
 
 // LetBindingKind indicates the kind of let binding.

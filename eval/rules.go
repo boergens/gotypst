@@ -26,11 +26,7 @@ func evalSetRuleToStyles(vm *Vm, e *syntax.SetRuleExpr) (*foundations.Styles, er
 		}
 		cond, ok := condVal.(foundations.Bool)
 		if !ok {
-			return nil, &TypeError{
-				Expected: foundations.TypeBool,
-				Got:      condVal.Type(),
-				Span:     condExpr.ToUntyped().Span(),
-			}
+			return nil, atSpan(fmt.Errorf("expected boolean, found %s", condVal.Type()), condExpr.ToUntyped().Span())
 		}
 		// If condition is false, return empty styles
 		if !cond {
@@ -55,11 +51,7 @@ func evalSetRuleToStyles(vm *Vm, e *syntax.SetRuleExpr) (*foundations.Styles, er
 	// Cast to function
 	funcVal, ok := targetVal.(foundations.FuncValue)
 	if !ok {
-		err := &TypeMismatchError{
-			Expected: "function",
-			Got:      targetVal.Type().String(),
-			Span:     targetExpr.ToUntyped().Span(),
-		}
+		err := atSpan(fmt.Errorf("expected function, found %s", targetVal.Type()), targetExpr.ToUntyped().Span())
 		return nil, hintIfShadowedStd(vm, targetExpr, err)
 	}
 
@@ -194,11 +186,7 @@ func castToShowableSelector(val foundations.Value, expr syntax.Expr) (*foundatio
 				}, nil
 			}
 		}
-		return nil, &TypeMismatchError{
-			Expected: "element function",
-			Got:      "function",
-			Span:     span,
-		}
+		return nil, atSpan(fmt.Errorf("expected element function, found function"), span)
 
 	case foundations.LabelValue:
 		return &foundations.ShowableSelector{
@@ -216,11 +204,7 @@ func castToShowableSelector(val foundations.Value, expr syntax.Expr) (*foundatio
 		}, nil
 
 	default:
-		return nil, &TypeMismatchError{
-			Expected: "selector (function, label, string, or type)",
-			Got:      val.Type().String(),
-			Span:     span,
-		}
+		return nil, atSpan(fmt.Errorf("expected selector (function, label, string, or type), found %s", val.Type()), span)
 	}
 }
 
@@ -240,11 +224,7 @@ func castToTransformation(val foundations.Value, span syntax.Span) (foundations.
 		return foundations.StyleTransformation{Styles: v.Styles}, nil
 
 	default:
-		return nil, &TypeMismatchError{
-			Expected: "transformation (function, content, none, or styles)",
-			Got:      val.Type().String(),
-			Span:     span,
-		}
+		return nil, atSpan(fmt.Errorf("expected transformation (function, content, none, or styles), found %s", val.Type()), span)
 	}
 }
 
@@ -321,10 +301,11 @@ func hintIfShadowedStd(vm *Vm, expr syntax.Expr, err error) error {
 		if lib != nil {
 			if binding := lib.Get(name); binding != nil {
 				// The name exists in the standard library but was shadowed
-				if tmErr, ok := err.(*TypeMismatchError); ok {
-					return &TypeMismatchErrorWithHint{
-						TypeMismatchError: *tmErr,
-						Hint:              fmt.Sprintf("a variable named `%s` is shadowing a function from the standard library", name),
+				if spannedErr, ok := err.(*SpannedError); ok {
+					return &HintedError{
+						Err:   spannedErr.Err,
+						Hints: []string{fmt.Sprintf("a variable named `%s` is shadowing a function from the standard library", name)},
+						Span:  spannedErr.ErrSpan,
 					}
 				}
 			}
@@ -358,12 +339,3 @@ func (e *ShowRuleError) Error() string {
 	return e.Message
 }
 
-// TypeMismatchErrorWithHint extends TypeMismatchError with a hint.
-type TypeMismatchErrorWithHint struct {
-	TypeMismatchError
-	Hint string
-}
-
-func (e *TypeMismatchErrorWithHint) Error() string {
-	return fmt.Sprintf("%s; hint: %s", e.TypeMismatchError.Error(), e.Hint)
-}

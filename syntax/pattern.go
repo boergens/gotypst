@@ -5,6 +5,8 @@ package syntax
 type Pattern interface {
 	AstNode
 	isPattern()
+	// Bindings returns all identifiers bound by this pattern.
+	Bindings() []*IdentExpr
 }
 
 // PatternFromNode attempts to create a Pattern from an untyped syntax node.
@@ -63,6 +65,11 @@ func (p *NormalPattern) Name() string {
 	return p.node.Text()
 }
 
+// Bindings returns the single identifier bound by this pattern.
+func (p *NormalPattern) Bindings() []*IdentExpr {
+	return []*IdentExpr{{node: p.node}}
+}
+
 // NormalPatternFromNode casts a syntax node to a NormalPattern.
 func NormalPatternFromNode(node *SyntaxNode) *NormalPattern {
 	if node == nil || node.Kind() != Ident {
@@ -87,6 +94,11 @@ func PlaceholderPatternFromNode(node *SyntaxNode) *PlaceholderPattern {
 		return nil
 	}
 	return &PlaceholderPattern{node: node}
+}
+
+// Bindings returns no identifiers (placeholder binds nothing).
+func (p *PlaceholderPattern) Bindings() []*IdentExpr {
+	return nil
 }
 
 // ParenthesizedPattern represents a parenthesized pattern: (x).
@@ -117,6 +129,15 @@ func ParenthesizedPatternFromNode(node *SyntaxNode) *ParenthesizedPattern {
 	return &ParenthesizedPattern{node: node}
 }
 
+// Bindings returns the identifiers bound by the inner pattern.
+func (p *ParenthesizedPattern) Bindings() []*IdentExpr {
+	inner := p.Pattern()
+	if inner == nil {
+		return nil
+	}
+	return inner.Bindings()
+}
+
 // DestructuringPattern represents a destructuring pattern: (a, b).
 type DestructuringPattern struct {
 	node *SyntaxNode
@@ -145,6 +166,28 @@ func DestructuringPatternFromNode(node *SyntaxNode) *DestructuringPattern {
 		return nil
 	}
 	return &DestructuringPattern{node: node}
+}
+
+// Bindings returns all identifiers bound by this destructuring pattern.
+func (p *DestructuringPattern) Bindings() []*IdentExpr {
+	var result []*IdentExpr
+	for _, item := range p.Items() {
+		switch i := item.(type) {
+		case *DestructuringBinding:
+			if pat := i.Pattern(); pat != nil {
+				result = append(result, pat.Bindings()...)
+			}
+		case *DestructuringNamed:
+			if pat := i.Pattern(); pat != nil {
+				result = append(result, pat.Bindings()...)
+			}
+		case *DestructuringSpread:
+			if sink := i.Sink(); sink != nil {
+				result = append(result, sink.Bindings()...)
+			}
+		}
+	}
+	return result
 }
 
 // DestructuringItem represents an item in a destructuring pattern.

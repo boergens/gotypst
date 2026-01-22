@@ -72,6 +72,44 @@ func (e ReturnEvent) Forbidden() error {
 	return fmt.Errorf("cannot return outside of function")
 }
 
+// NewBreakEvent creates a new break event.
+func NewBreakEvent(span syntax.Span) FlowEvent {
+	return BreakEvent{span: span}
+}
+
+// NewContinueEvent creates a new continue event.
+func NewContinueEvent(span syntax.Span) FlowEvent {
+	return ContinueEvent{span: span}
+}
+
+// NewReturnEvent creates a new return event with no value.
+func NewReturnEvent(span syntax.Span) FlowEvent {
+	return ReturnEvent{span: span}
+}
+
+// CheckForbiddenFlow checks if a flow event is forbidden in the current context.
+// Returns nil if the flow is allowed, otherwise returns the forbidden error.
+func CheckForbiddenFlow(flow FlowEvent, allowBreak, allowContinue, allowReturn bool) error {
+	if flow == nil {
+		return nil
+	}
+	switch flow.(type) {
+	case BreakEvent:
+		if allowBreak {
+			return nil
+		}
+	case ContinueEvent:
+		if allowContinue {
+			return nil
+		}
+	case ReturnEvent:
+		if allowReturn {
+			return nil
+		}
+	}
+	return flow.Forbidden()
+}
+
 // ----------------------------------------------------------------------------
 // Conditional Evaluation
 // ----------------------------------------------------------------------------

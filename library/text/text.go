@@ -198,3 +198,6 @@ func (t *TextElem) Decorations() []Decoration {
 	}
 	return decos
 }
+
+// IsContentElement marks TextElem as a content element.
+func (*TextElem) IsContentElement() {}

@@ -10,38 +10,42 @@ import (
 )
 
 // Args represents captured arguments to a function.
-//
-// Like built-in functions, custom functions can also take a variable number of
-// arguments. You can specify an argument sink which collects all excess
-// arguments as ..sink. The resulting sink value is of the arguments type.
+// Matches Rust: pub struct Args
 type Args struct {
-	// Span is the callsite span for the function.
+	// Span is the callsite span for the function (not the argument list itself,
+	// but of the whole function call).
 	Span syntax.Span
 	// Items contains the positional and named arguments.
 	Items []Arg
 }
 
-// Arg represents a single argument.
+// Arg represents a single argument to a function call.
+// Matches Rust: pub struct Arg
 type Arg struct {
-	// Span is the source location.
+	// Span is the span of the whole argument.
 	Span syntax.Span
-	// Name is the optional argument name (for named arguments).
-	Name *string
-	// Value is the argument value.
+	// Name is the name of the argument (None/nil for positional arguments).
+	Name *Str
+	// Value is the value of the argument.
 	Value syntax.Spanned[Value]
 }
 
-// NewArgs creates a new empty Args with the given span.
-func NewArgs(span syntax.Span) *Args {
-	return &Args{Span: span, Items: nil}
-}
-
-// NewArgsFrom creates Args from a slice of argument items.
-func NewArgsFrom(span syntax.Span, items []Arg) *Args {
+// NewArgs creates positional arguments from a span and values.
+// Matches Rust: pub fn new<T: IntoValue>(span: Span, values: impl IntoIterator<Item = T>) -> Self
+func NewArgs(span syntax.Span, values ...Value) *Args {
+	items := make([]Arg, 0, len(values))
+	for _, value := range values {
+		items = append(items, Arg{
+			Span:  span,
+			Name:  nil,
+			Value: syntax.Spanned[Value]{V: value, Span: span},
+		})
+	}
 	return &Args{Span: span, Items: items}
 }
 
 // Spanned attaches a span to these arguments if they don't already have one.
+// Matches Rust: pub fn spanned(mut self, span: Span) -> Self
 func (a *Args) Spanned(span syntax.Span) *Args {
 	if a.Span.IsDetached() {
 		a.Span = span
@@ -50,6 +54,7 @@ func (a *Args) Spanned(span syntax.Span) *Args {
 }
 
 // Remaining returns the number of remaining positional arguments.
+// Matches Rust: pub fn remaining(&self) -> usize
 func (a *Args) Remaining() int {
 	count := 0
 	for _, item := range a.Items {
@@ -61,6 +66,7 @@ func (a *Args) Remaining() int {
 }
 
 // Insert inserts a positional argument at a specific index.
+// Matches Rust: pub fn insert(&mut self, index: usize, span: Span, value: Value)
 func (a *Args) Insert(index int, span syntax.Span, value Value) {
 	arg := Arg{
 		Span:  a.Span,
@@ -76,7 +82,8 @@ func (a *Args) Insert(index int, span syntax.Span, value Value) {
 }
 
 // Push adds a positional argument.
-func (a *Args) Push(value Value, span syntax.Span) {
+// Matches Rust: pub fn push(&mut self, span: Span, value: Value)
+func (a *Args) Push(span syntax.Span, value Value) {
 	a.Items = append(a.Items, Arg{
 		Span:  a.Span,
 		Name:  nil,
@@ -84,54 +91,66 @@ func (a *Args) Push(value Value, span syntax.Span) {
 	})
 }
 
-// PushNamed adds a named argument.
-func (a *Args) PushNamed(name string, value Value, span syntax.Span) {
-	a.Items = append(a.Items, Arg{
-		Span:  a.Span,
-		Name:  &name,
-		Value: syntax.Spanned[Value]{V: value, Span: span},
-	})
-}
-
 // Eat consumes and returns the first positional argument if there is one.
+// Matches Rust: pub fn eat<T>(&mut self) -> SourceResult<Option<T>>
 func (a *Args) Eat() *syntax.Spanned[Value] {
 	for i, item := range a.Items {
 		if item.Name == nil {
+			value := item.Value
 			a.Items = append(a.Items[:i], a.Items[i+1:]...)
-			return &item.Value
+			return &value
 		}
 	}
 	return nil
 }
 
+// Consume consumes n positional arguments if possible.
+// Matches Rust: pub fn consume(&mut self, n: usize) -> SourceResult<Vec<Arg>>
+func (a *Args) Consume(n int) ([]Arg, error) {
+	var list []Arg
+	i := 0
+	for i < len(a.Items) && len(list) < n {
+		if a.Items[i].Name == nil {
+			list = append(list, a.Items[i])
+			a.Items = append(a.Items[:i], a.Items[i+1:]...)
+		} else {
+			i++
+		}
+	}
+	if len(list) < n {
+		return nil, fmt.Errorf("not enough arguments")
+	}
+	return list, nil
+}
+
 // Expect consumes and returns the first positional argument.
 // Returns a "missing argument: {what}" error if no positional argument is left.
+// Matches Rust: pub fn expect<T>(&mut self, what: &str) -> SourceResult<T>
 func (a *Args) Expect(what string) (syntax.Spanned[Value], error) {
 	result := a.Eat()
 	if result == nil {
+		// Check if there's a named argument with this name (positional/named confusion)
+		for _, item := range a.Items {
+			if item.Name != nil && string(*item.Name) == what {
+				return syntax.Spanned[Value]{}, &PositionalArgumentError{
+					Name: what,
+					Span: item.Span,
+				}
+			}
+		}
 		return syntax.Spanned[Value]{}, &MissingArgumentError{Name: what, Span: a.Span}
 	}
 	return *result, nil
 }
 
-// Find retrieves and removes a named argument if present.
-func (a *Args) Find(name string) *syntax.Spanned[Value] {
-	for i, item := range a.Items {
-		if item.Name != nil && *item.Name == name {
-			a.Items = append(a.Items[:i], a.Items[i+1:]...)
-			return &item.Value
-		}
-	}
-	return nil
-}
-
 // Named retrieves and removes the value for the given named argument.
 // When multiple matches exist, removes all of them and returns the last one.
+// Matches Rust: pub fn named<T>(&mut self, name: &str) -> SourceResult<Option<T>>
 func (a *Args) Named(name string) *syntax.Spanned[Value] {
 	var found *syntax.Spanned[Value]
 	i := 0
 	for i < len(a.Items) {
-		if a.Items[i].Name != nil && *a.Items[i].Name == name {
+		if a.Items[i].Name != nil && string(*a.Items[i].Name) == name {
 			value := a.Items[i].Value
 			a.Items = append(a.Items[:i], a.Items[i+1:]...)
 			found = &value
@@ -142,15 +161,85 @@ func (a *Args) Named(name string) *syntax.Spanned[Value] {
 	return found
 }
 
-// NamedOrDefault retrieves a named argument or returns the default.
-func (a *Args) NamedOrDefault(name string, def Value) syntax.Spanned[Value] {
-	if found := a.Named(name); found != nil {
-		return *found
-	}
-	return syntax.Spanned[Value]{V: def, Span: a.Span}
+// Take takes out all arguments into a new instance.
+// Matches Rust: pub fn take(&mut self) -> Self
+func (a *Args) Take() *Args {
+	items := a.Items
+	a.Items = nil
+	return &Args{Span: a.Span, Items: items}
 }
 
-// All returns all remaining positional arguments.
+// Finish returns an "unexpected argument" error if there is any remaining argument.
+// Matches Rust: pub fn finish(self) -> SourceResult<()>
+func (a *Args) Finish() error {
+	if len(a.Items) > 0 {
+		arg := a.Items[0]
+		if arg.Name != nil {
+			return fmt.Errorf("unexpected argument: %s", *arg.Name)
+		}
+		return fmt.Errorf("unexpected argument")
+	}
+	return nil
+}
+
+// IsEmpty returns true if there are no arguments.
+// Matches Rust: pub fn is_empty(&self) -> bool
+func (a *Args) IsEmpty() bool {
+	return len(a.Items) == 0
+}
+
+// Len returns the number of arguments.
+// Matches Rust: #[func(title = "Length")] pub fn len(&self) -> usize
+func (a *Args) Len() int {
+	return len(a.Items)
+}
+
+// Pos returns the positional arguments as an Array.
+// Matches Rust: #[func(name = "pos")] pub fn to_pos(&self) -> Array
+func (a *Args) Pos() *Array {
+	result := NewArray()
+	for _, item := range a.Items {
+		if item.Name == nil {
+			result.Push(item.Value.V)
+		}
+	}
+	return result
+}
+
+// ToNamed returns the named arguments as a Dict.
+// Matches Rust: #[func(name = "named")] pub fn to_named(&self) -> Dict
+func (a *Args) ToNamed() *Dict {
+	result := NewDict()
+	for _, item := range a.Items {
+		if item.Name != nil {
+			result.Set(string(*item.Name), item.Value.V)
+		}
+	}
+	return result
+}
+
+// Clone creates a deep copy of the Args.
+func (a *Args) Clone() *Args {
+	if a == nil {
+		return nil
+	}
+	items := make([]Arg, len(a.Items))
+	for i, item := range a.Items {
+		var nameCopy *Str
+		if item.Name != nil {
+			n := *item.Name
+			nameCopy = &n
+		}
+		items[i] = Arg{
+			Span:  item.Span,
+			Name:  nameCopy,
+			Value: syntax.Spanned[Value]{V: item.Value.V.Clone(), Span: item.Value.Span},
+		}
+	}
+	return &Args{Span: a.Span, Items: items}
+}
+
+// All returns all remaining positional argument values.
 func (a *Args) All() []syntax.Spanned[Value] {
 	var result []syntax.Spanned[Value]
 	i := 0
@@ -165,109 +254,9 @@ func (a *Args) All() []syntax.Spanned[Value] {
 	return result
 }
 
-// Take takes out all arguments into a new instance.
-func (a *Args) Take() *Args {
-	items := a.Items
-	a.Items = nil
-	return &Args{Span: a.Span, Items: items}
-}
-
-// Peek returns the first positional argument without consuming it.
-// Returns nil if there are no positional arguments.
-func (a *Args) Peek() *syntax.Spanned[Value] {
-	for _, item := range a.Items {
-		if item.Name == nil {
-			return &item.Value
-		}
-	}
-	return nil
-}
-
-// Finish returns an "unexpected argument" error if there is any remaining argument.
-func (a *Args) Finish() error {
-	if len(a.Items) > 0 {
-		return &UnexpectedArgumentError{Arg: a.Items[0]}
-	}
-	return nil
-}
-
-// IsEmpty returns true if there are no arguments.
-func (a *Args) IsEmpty() bool {
-	return len(a.Items) == 0
-}
-
-// Len returns the number of arguments.
-func (a *Args) Len() int {
-	return len(a.Items)
-}
-
-// HasPositional returns true if there are any positional arguments.
-func (a *Args) HasPositional() bool {
-	for _, item := range a.Items {
-		if item.Name == nil {
-			return true
-		}
-	}
-	return false
-}
-
-// HasNamed returns true if there is a named argument with the given name.
-func (a *Args) HasNamed(name string) bool {
-	for _, item := range a.Items {
-		if item.Name != nil && *item.Name == name {
-			return true
-		}
-	}
-	return false
-}
-
-// GetNamed retrieves a named argument without removing it.
-func (a *Args) GetNamed(name string) *syntax.Spanned[Value] {
-	for _, item := range a.Items {
-		if item.Name != nil && *item.Name == name {
-			return &item.Value
-		}
-	}
-	return nil
-}
-
-// Clone creates a deep copy of the Args.
-func (a *Args) Clone() *Args {
-	if a == nil {
-		return nil
-	}
-	items := make([]Arg, len(a.Items))
-	for i, item := range a.Items {
-		items[i] = Arg{
-			Span:  item.Span,
-			Name:  item.Name,
-			Value: syntax.Spanned[Value]{V: item.Value.V.Clone(), Span: item.Value.Span},
-		}
-	}
-	return &Args{Span: a.Span, Items: items}
-}
-
-// Pos returns the positional arguments as an Array.
-func (a *Args) Pos() *Array {
-	result := NewArray()
-	for _, item := range a.Items {
-		if item.Name == nil {
-			result.Push(item.Value.V)
-		}
-	}
-	return result
-}
-
-// ToNamed returns the named arguments as a Dict.
-func (a *Args) ToNamed() *Dict {
-	result := NewDict()
-	for _, item := range a.Items {
-		if item.Name != nil {
-			result.Set(*item.Name, item.Value.V)
-		}
-	}
-	return result
-}
+// ----------------------------------------------------------------------------
+// ArgsValue - Value wrapper
+// ----------------------------------------------------------------------------
 
 // ArgsValue wraps Args as a Value.
 type ArgsValue struct {
@@ -281,7 +270,12 @@ func (v ArgsValue) Clone() Value {
 }
 func (ArgsValue) isValue() {}
 
+// ----------------------------------------------------------------------------
+// Error Types
+// ----------------------------------------------------------------------------
+
 // MissingArgumentError is returned when a required argument is missing.
+// Matches Rust: error!(self.span, "missing argument: {what}")
 type MissingArgumentError struct {
 	Name string
 	Span syntax.Span
@@ -291,7 +285,19 @@ func (e *MissingArgumentError) Error() string {
 	return fmt.Sprintf("missing argument: %s", e.Name)
 }
 
+// PositionalArgumentError is returned when a named argument should be positional.
+// Matches Rust: error!(item.span, "the argument `{what}` is positional"; hint: ...)
+type PositionalArgumentError struct {
+	Name string
+	Span syntax.Span
+}
+
+func (e *PositionalArgumentError) Error() string {
+	return fmt.Sprintf("the argument `%s` is positional", e.Name)
+}
+
 // UnexpectedArgumentError is returned when an unexpected argument is provided.
+// Matches Rust: bail!(arg.span, "unexpected argument: {name}")
 type UnexpectedArgumentError struct {
 	Arg Arg
 }
@@ -300,5 +306,5 @@ func (e *UnexpectedArgumentError) Error() string {
 	if e.Arg.Name != nil {
 		return fmt.Sprintf("unexpected argument: %s", *e.Arg.Name)
 	}
-	return "unexpected positional argument"
+	return "unexpected argument"
 }

@@ -132,7 +132,7 @@ func TestCallNativeFunc(t *testing.T) {
 		Name: ptr("add"),
 		Span: syntax.Span{},
 		Repr: NativeFunc{
-			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
+			Func: func(engine foundations.Engine, context foundations.Context, args *Args) (Value, error) {
 				a, err := args.Expect("a")
 				if err != nil {
 					return nil, err
@@ -179,7 +179,7 @@ func TestCallNativeFuncMissingArg(t *testing.T) {
 		Name: ptr("add"),
 		Span: syntax.Span{},
 		Repr: NativeFunc{
-			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
+			Func: func(engine foundations.Engine, context foundations.Context, args *Args) (Value, error) {
 				_, err := args.Expect("a")
 				if err != nil {
 					return nil, err
@@ -213,7 +213,7 @@ func TestCallDepthLimit(t *testing.T) {
 		Name: ptr("recurse"),
 		Span: syntax.Span{},
 		Repr: NativeFunc{
-			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
+			Func: func(engine foundations.Engine, context foundations.Context, args *Args) (Value, error) {
 				// Use engine.CallFunc for recursive calls
 				return engine.callFuncInternal(context, FuncValue{Func: recursiveFunc}, NewArgs(syntax.Span{}), syntax.Span{})
 			},

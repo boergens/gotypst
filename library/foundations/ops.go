@@ -278,12 +278,12 @@ func Or(lhs, rhs Value) (Value, error) {
 
 // Eq checks if two values are equal.
 func Eq(lhs, rhs Value) (Value, error) {
-	return Bool(equal(lhs, rhs)), nil
+	return Bool(Equal(lhs, rhs)), nil
 }
 
 // Neq checks if two values are not equal.
 func Neq(lhs, rhs Value) (Value, error) {
-	return Bool(!equal(lhs, rhs)), nil
+	return Bool(!Equal(lhs, rhs)), nil
 }
 
 // Lt checks if lhs < rhs.
@@ -389,8 +389,8 @@ func Join(lhs, rhs Value) (Value, error) {
 
 // --- Helper Functions ---
 
-// equal checks deep equality between values.
-func equal(lhs, rhs Value) bool {
+// Equal checks deep equality between values.
+func Equal(lhs, rhs Value) bool {
 	switch a := lhs.(type) {
 	case NoneValue:
 		_, ok := rhs.(NoneValue)
@@ -424,7 +424,7 @@ func equal(lhs, rhs Value) bool {
 			return false
 		}
 		for i := range a.items {
-			if !equal(a.items[i], b.items[i]) {
+			if !Equal(a.items[i], b.items[i]) {
 				return false
 			}
 		}
@@ -436,7 +436,7 @@ func equal(lhs, rhs Value) bool {
 		}
 		for i, k := range a.keys {
 			v, exists := b.Get(k)
-			if !exists || !equal(a.values[i], v) {
+			if !exists || !Equal(a.values[i], v) {
 				return false
 			}
 		}
@@ -562,7 +562,7 @@ func contains(container, element Value) (bool, error) {
 		return strings.Contains(string(c), string(e)), nil
 	case *Array:
 		for _, item := range c.Items() {
-			if equal(item, element) {
+			if Equal(item, element) {
 				return true, nil
 			}
 		}

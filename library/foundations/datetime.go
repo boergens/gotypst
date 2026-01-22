@@ -1,3 +1,6 @@
+// Datetime and Duration types for Typst.
+// Translated from foundations/datetime.rs and foundations/duration.rs
+
 package foundations
 
 import (
@@ -5,6 +8,168 @@ import (
 	"strings"
 	"time"
 )
+
+// Datetime represents a date, time, or datetime value.
+// Components are optional: nil means not specified.
+// This matches the Rust Datetime type.
+type Datetime struct {
+	year   *int
+	month  *int
+	day    *int
+	hour   *int
+	minute *int
+	second *int
+}
+
+func (*Datetime) Type() Type         { return TypeDatetime }
+func (v *Datetime) Display() Content { return Content{} }
+func (v *Datetime) Clone() Value     { return v } // Shallow clone is fine for immutable data
+func (*Datetime) isValue()           {}
+
+// Year returns the year component or nil if not set.
+func (dt *Datetime) Year() *int {
+	if dt == nil {
+		return nil
+	}
+	return dt.year
+}
+
+// YearOr returns the year component or a default value.
+func (dt *Datetime) YearOr(def int) int {
+	if dt == nil || dt.year == nil {
+		return def
+	}
+	return *dt.year
+}
+
+// Month returns the month component or nil if not set.
+func (dt *Datetime) Month() *int {
+	if dt == nil {
+		return nil
+	}
+	return dt.month
+}
+
+// MonthOr returns the month component or a default value.
+func (dt *Datetime) MonthOr(def int) int {
+	if dt == nil || dt.month == nil {
+		return def
+	}
+	return *dt.month
+}
+
+// Day returns the day component or nil if not set.
+func (dt *Datetime) Day() *int {
+	if dt == nil {
+		return nil
+	}
+	return dt.day
+}
+
+// DayOr returns the day component or a default value.
+func (dt *Datetime) DayOr(def int) int {
+	if dt == nil || dt.day == nil {
+		return def
+	}
+	return *dt.day
+}
+
+// Hour returns the hour component or nil if not set.
+func (dt *Datetime) Hour() *int {
+	if dt == nil {
+		return nil
+	}
+	return dt.hour
+}
+
+// HourOr returns the hour component or a default value.
+func (dt *Datetime) HourOr(def int) int {
+	if dt == nil || dt.hour == nil {
+		return def
+	}
+	return *dt.hour
+}
+
+// Minute returns the minute component or nil if not set.
+func (dt *Datetime) Minute() *int {
+	if dt == nil {
+		return nil
+	}
+	return dt.minute
+}
+
+// MinuteOr returns the minute component or a default value.
+func (dt *Datetime) MinuteOr(def int) int {
+	if dt == nil || dt.minute == nil {
+		return def
+	}
+	return *dt.minute
+}
+
+// Second returns the second component or nil if not set.
+func (dt *Datetime) Second() *int {
+	if dt == nil {
+		return nil
+	}
+	return dt.second
+}
+
+// SecondOr returns the second component or a default value.
+func (dt *Datetime) SecondOr(def int) int {
+	if dt == nil || dt.second == nil {
+		return def
+	}
+	return *dt.second
+}
+
+// HasDate returns true if the datetime has date components.
+func (dt *Datetime) HasDate() bool {
+	return dt != nil && (dt.year != nil || dt.month != nil || dt.day != nil)
+}
+
+// HasTime returns true if the datetime has time components.
+func (dt *Datetime) HasTime() bool {
+	return dt != nil && (dt.hour != nil || dt.minute != nil || dt.second != nil)
+}
+
+// Duration represents a duration of time in nanoseconds.
+// Positive values represent forward time, negative values represent backward time.
+type Duration int64
+
+func (Duration) Type() Type         { return TypeDuration }
+func (v Duration) Display() Content { return Content{} }
+func (v Duration) Clone() Value     { return v }
+func (Duration) isValue()           {}
+
+// Nanoseconds returns the duration in nanoseconds.
+func (d Duration) Nanoseconds() int64 {
+	return int64(d)
+}
+
+// Seconds returns the duration expressed in seconds (as a float).
+func (d Duration) Seconds() float64 {
+	return float64(d) / 1e9
+}
+
+// Minutes returns the duration expressed in minutes (as a float).
+func (d Duration) Minutes() float64 {
+	return float64(d) / (60 * 1e9)
+}
+
+// Hours returns the duration expressed in hours (as a float).
+func (d Duration) Hours() float64 {
+	return float64(d) / (3600 * 1e9)
+}
+
+// Days returns the duration expressed in days (as a float).
+func (d Duration) Days() float64 {
+	return float64(d) / (86400 * 1e9)
+}
+
+// Weeks returns the duration expressed in weeks (as a float).
+func (d Duration) Weeks() float64 {
+	return float64(d) / (604800 * 1e9)
+}
 
 // NewDatetime creates a new datetime with optional components.
 // Pass nil for any component that should be unset.

@@ -1,13 +1,162 @@
 package foundations
 
 import (
+	"fmt"
+	"strconv"
 	"unicode/utf8"
 
+	"github.com/boergens/gotypst/syntax"
 	"github.com/rivo/uniseg"
 )
 
-// Str inspection methods
+// Str type and constructor for Typst.
 // Translated from foundations/str.rs
+
+// StrConstruct converts a value to a string.
+// Supports: str, int (with optional base), float, decimal, version, bytes, label, type.
+//
+// This matches Rust's str::construct function.
+func StrConstruct(args *Args) (Value, error) {
+	spanned, err := args.Expect("value")
+	if err != nil {
+		return nil, err
+	}
+	value := spanned.V
+
+	// Check for base argument (only valid for integers)
+	base := 10
+	if baseArg := args.Find("base"); baseArg != nil {
+		baseVal, ok := baseArg.V.(Int)
+		if !ok {
+			return nil, &TypeMismatchError{
+				Expected: "integer",
+				Got:      baseArg.V.Type().String(),
+				Span:     baseArg.Span,
+			}
+		}
+		base = int(baseVal)
+		if base < 2 || base > 36 {
+			return nil, &ConstructorError{
+				Message: "base must be between 2 and 36",
+				Span:    baseArg.Span,
+			}
+		}
+	}
+
+	if err := args.Finish(); err != nil {
+		return nil, err
+	}
+
+	switch v := value.(type) {
+	case Str:
+		if base != 10 {
+			return nil, &ConstructorError{
+				Message: "base is only supported for integers",
+				Span:    spanned.Span,
+			}
+		}
+		return v, nil
+
+	case Int:
+		return Str(strconv.FormatInt(int64(v), base)), nil
+
+	case Float:
+		if base != 10 {
+			return nil, &ConstructorError{
+				Message: "base is only supported for integers",
+				Span:    spanned.Span,
+			}
+		}
+		return Str(strconv.FormatFloat(float64(v), 'g', -1, 64)), nil
+
+	case DecimalValue:
+		if base != 10 {
+			return nil, &ConstructorError{
+				Message: "base is only supported for integers",
+				Span:    spanned.Span,
+			}
+		}
+		if v.Value == nil {
+			return Str("0"), nil
+		}
+		return Str(v.Value.FloatString(10)), nil
+
+	case VersionValue:
+		if base != 10 {
+			return nil, &ConstructorError{
+				Message: "base is only supported for integers",
+				Span:    spanned.Span,
+			}
+		}
+		return Str(fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch)), nil
+
+	case BytesValue:
+		if base != 10 {
+			return nil, &ConstructorError{
+				Message: "base is only supported for integers",
+				Span:    spanned.Span,
+			}
+		}
+		return Str(string(v)), nil
+
+	case LabelValue:
+		if base != 10 {
+			return nil, &ConstructorError{
+				Message: "base is only supported for integers",
+				Span:    spanned.Span,
+			}
+		}
+		return Str(string(v)), nil
+
+	case TypeValue:
+		if base != 10 {
+			return nil, &ConstructorError{
+				Message: "base is only supported for integers",
+				Span:    spanned.Span,
+			}
+		}
+		return Str(v.Inner.String()), nil
+
+	default:
+		return nil, &ConstructorError{
+			Message: fmt.Sprintf("expected integer, float, decimal, version, bytes, label, type, or string, found %s", value.Type().String()),
+			Span:    spanned.Span,
+		}
+	}
+}
+
+// StrFromUnicode creates a string from a Unicode codepoint.
+func StrFromUnicode(codepoint Int, span syntax.Span) (Str, error) {
+	n := int64(codepoint)
+	if n < 0 {
+		return "", &ConstructorError{
+			Message: "number must be at least zero",
+			Span:    span,
+		}
+	}
+	if n > 0x10FFFF {
+		return "", &ConstructorError{
+			Message: fmt.Sprintf("0x%x is not a valid codepoint", n),
+			Span:    span,
+		}
+	}
+	return Str(string(rune(n))), nil
+}
+
+// StrToUnicode returns the Unicode codepoint of a single-character string.
+func StrToUnicode(s Str, span syntax.Span) (Int, error) {
+	str := string(s)
+	if utf8.RuneCountInString(str) != 1 {
+		return 0, &ConstructorError{
+			Message: "expected exactly one character",
+			Span:    span,
+		}
+	}
+	r, _ := utf8.DecodeRuneInString(str)
+	return Int(r), nil
+}
+
+// Str inspection methods
 
 // graphemeClusters returns all grapheme clusters in a string.
 // This is the fundamental unit of string indexing in Typst.

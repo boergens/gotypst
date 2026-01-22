@@ -25,8 +25,9 @@ func TestLibrary_Colors(t *testing.T) {
 			t.Errorf("Expected color %q to be defined", name)
 			continue
 		}
-		if _, ok := binding.Value.(ColorValue); !ok {
-			t.Errorf("Expected %q to be a ColorValue, got %T", name, binding.Value)
+		// Colors are now stored as Color interface values (e.g., Rgba)
+		if _, ok := binding.Value.(Color); !ok {
+			t.Errorf("Expected %q to be a Color, got %T", name, binding.Value)
 		}
 	}
 }
@@ -196,7 +197,7 @@ func TestLibrary_ColorValues(t *testing.T) {
 
 	// Test specific color values
 	tests := []struct {
-		name string
+		name       string
 		r, g, b, a uint8
 	}{
 		{"black", 0, 0, 0, 255},
@@ -212,14 +213,16 @@ func TestLibrary_ColorValues(t *testing.T) {
 			t.Errorf("color %q not found", tc.name)
 			continue
 		}
-		cv, ok := binding.Value.(ColorValue)
+		// Colors are stored as Rgba (implements Color interface)
+		rgba, ok := binding.Value.(Rgba)
 		if !ok {
-			t.Errorf("%q is not a ColorValue", tc.name)
+			t.Errorf("%q is not an Rgba: %T", tc.name, binding.Value)
 			continue
 		}
-		if cv.Color.R != tc.r || cv.Color.G != tc.g || cv.Color.B != tc.b || cv.Color.A != tc.a {
+		r, g, b, a := rgba.ToBytes()
+		if r != tc.r || g != tc.g || b != tc.b || a != tc.a {
 			t.Errorf("%q = rgba(%d,%d,%d,%d), expected rgba(%d,%d,%d,%d)",
-				tc.name, cv.Color.R, cv.Color.G, cv.Color.B, cv.Color.A,
+				tc.name, r, g, b, a,
 				tc.r, tc.g, tc.b, tc.a)
 		}
 	}

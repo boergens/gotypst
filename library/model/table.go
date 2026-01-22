@@ -1,65 +1,59 @@
-package eval
+// Table element types for Typst.
+// Translated from typst-library/src/model/table.rs
 
-// ----------------------------------------------------------------------------
-// Table Element
-// Matches Rust: typst-library/src/model/table.rs
-// ----------------------------------------------------------------------------
+package model
 
-// TableElement represents a table with cells arranged in a grid.
+import "github.com/boergens/gotypst/library/foundations"
+
+// TableElem represents a table with cells arranged in a grid.
 // Cells flow left-to-right, top-to-bottom.
-type TableElement struct {
-	// Columns specifies the column sizing. Each element can be:
-	// - IntValue: treated as auto-sized columns (count)
-	// - LengthValue: fixed width
-	// - RelativeValue: percentage of container
-	// - FractionValue: fractional unit
-	// - ArrayValue: array of the above
-	Columns Value
-	// Rows specifies the row sizing (same format as Columns).
-	Rows Value
+type TableElem struct {
+	// Columns specifies the column sizing.
+	Columns foundations.Value
+	// Rows specifies the row sizing.
+	Rows foundations.Value
 	// Gutter is shorthand for column-gutter and row-gutter.
-	Gutter Value
+	Gutter foundations.Value
 	// ColumnGutter specifies gaps between columns.
-	ColumnGutter Value
+	ColumnGutter foundations.Value
 	// RowGutter specifies gaps between rows.
-	RowGutter Value
+	RowGutter foundations.Value
 	// Inset is the padding inside cells (default: 5pt).
-	Inset Value
+	Inset foundations.Value
 	// Align specifies cell content alignment.
-	Align Value
+	Align foundations.Value
 	// Fill is the background fill for cells.
-	Fill Value
+	Fill foundations.Value
 	// Stroke is the border stroke for cells (default: 1pt + black).
-	Stroke Value
+	Stroke foundations.Value
 	// Children contains the table cell contents and explicit cells.
 	Children []TableChild
 }
 
-func (*TableElement) IsContentElement() {}
+func (*TableElem) IsContentElement() {}
 
 // TableChild represents an item in the table's children.
-// Can be content, cell, header, footer, hline, or vline.
-// Matches Rust's TableChild enum.
+// Corresponds to Rust's TableChild enum.
 type TableChild struct {
 	// Content is set for plain content children.
-	Content *Content
+	Content *foundations.Content
 	// Cell is set for explicit table.cell() children.
-	Cell *TableCellElement
+	Cell *TableCellElem
 	// Header is set for table.header() children.
-	Header *TableHeaderElement
+	Header *TableHeaderElem
 	// Footer is set for table.footer() children.
-	Footer *TableFooterElement
+	Footer *TableFooterElem
 	// HLine is set for table.hline() children.
-	HLine *TableHLineElement
+	HLine *TableHLineElem
 	// VLine is set for table.vline() children.
-	VLine *TableVLineElement
+	VLine *TableVLineElem
 }
 
-// TableCellElement represents an explicit table cell with position/span overrides.
-// Matches Rust's TableCell struct.
-type TableCellElement struct {
+// TableCellElem represents an explicit table cell with position/span overrides.
+// Corresponds to Rust's TableCell struct.
+type TableCellElem struct {
 	// Body is the cell's content.
-	Body Content
+	Body foundations.Content
 	// X is the column position (0-indexed). If nil, auto-positioned.
 	X *int
 	// Y is the row position (0-indexed). If nil, auto-positioned.
@@ -69,22 +63,22 @@ type TableCellElement struct {
 	// Rowspan is the number of rows this cell spans (default: 1).
 	Rowspan int
 	// Inset overrides the table's inset for this cell.
-	Inset Value
+	Inset foundations.Value
 	// Align overrides the table's alignment for this cell.
-	Align Value
+	Align foundations.Value
 	// Fill overrides the table's fill for this cell.
-	Fill Value
+	Fill foundations.Value
 	// Stroke overrides the table's stroke for this cell.
-	Stroke Value
+	Stroke foundations.Value
 	// Breakable controls whether rows can break across pages.
-	Breakable Value
+	Breakable foundations.Value
 }
 
-func (*TableCellElement) IsContentElement() {}
+func (*TableCellElem) IsContentElement() {}
 
-// TableHeaderElement represents a repeatable table header.
-// Matches Rust's TableHeader struct.
-type TableHeaderElement struct {
+// TableHeaderElem represents a repeatable table header.
+// Corresponds to Rust's TableHeader struct.
+type TableHeaderElem struct {
 	// Repeat indicates whether this header should repeat across pages (default: true).
 	Repeat bool
 	// Level is the header level (must be at least 1, default: 1).
@@ -93,57 +87,57 @@ type TableHeaderElement struct {
 	Children []TableItem
 }
 
-func (*TableHeaderElement) IsContentElement() {}
+func (*TableHeaderElem) IsContentElement() {}
 
-// TableFooterElement represents a repeatable table footer.
-// Matches Rust's TableFooter struct.
-type TableFooterElement struct {
+// TableFooterElem represents a repeatable table footer.
+// Corresponds to Rust's TableFooter struct.
+type TableFooterElem struct {
 	// Repeat indicates whether this footer should repeat across pages (default: true).
 	Repeat bool
 	// Children contains the cells and lines within the footer.
 	Children []TableItem
 }
 
-func (*TableFooterElement) IsContentElement() {}
+func (*TableFooterElem) IsContentElement() {}
 
-// TableHLineElement represents a horizontal line in the table.
-// Matches Rust's TableHLine struct.
-type TableHLineElement struct {
+// TableHLineElem represents a horizontal line in the table.
+// Corresponds to Rust's TableHLine struct.
+type TableHLineElem struct {
 	// Y is the row above which the line is placed (0-indexed). Nil means auto.
 	Y *int
 	// Start is the column at which the line starts (0-indexed, inclusive).
 	Start int
-	// End is the column before which the line ends (0-indexed, exclusive). Nil means to end of table.
+	// End is the column before which the line ends (0-indexed, exclusive). Nil means to end.
 	End *int
 	// Stroke is the line's stroke. Nil means use default stroke.
-	Stroke Value
+	Stroke foundations.Value
 	// Position is where the line is placed: "top" or "bottom" relative to the row.
 	Position string
 }
 
-func (*TableHLineElement) IsContentElement() {}
+func (*TableHLineElem) IsContentElement() {}
 
-// TableVLineElement represents a vertical line in the table.
-// Matches Rust's TableVLine struct.
-type TableVLineElement struct {
+// TableVLineElem represents a vertical line in the table.
+// Corresponds to Rust's TableVLine struct.
+type TableVLineElem struct {
 	// X is the column before which the line is placed (0-indexed). Nil means auto.
 	X *int
 	// Start is the row at which the line starts (0-indexed, inclusive).
 	Start int
-	// End is the row on top of which the line ends (0-indexed, exclusive). Nil means to end of table.
+	// End is the row on top of which the line ends (0-indexed, exclusive). Nil means to end.
 	End *int
 	// Stroke is the line's stroke. Nil means use default stroke.
-	Stroke Value
+	Stroke foundations.Value
 	// Position is where the line is placed: "start" or "end" relative to the column.
 	Position string
 }
 
-func (*TableVLineElement) IsContentElement() {}
+func (*TableVLineElem) IsContentElement() {}
 
 // TableItem represents a cell or line within a header or footer.
-// Matches Rust's TableItem enum.
+// Corresponds to Rust's TableItem enum.
 type TableItem struct {
-	Cell  *TableCellElement
-	HLine *TableHLineElement
-	VLine *TableVLineElement
+	Cell  *TableCellElem
+	HLine *TableHLineElem
+	VLine *TableVLineElem
 }

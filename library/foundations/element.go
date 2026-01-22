@@ -337,11 +337,6 @@ func inferTypstType(t reflect.Type) Type {
 	return TypeDyn
 }
 
-// NewStyles creates a new empty Styles.
-func NewStyles() *Styles {
-	return &Styles{}
-}
-
 // StyleProperty identifies a property that can be styled.
 type StyleProperty struct {
 	Element string

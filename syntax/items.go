@@ -79,6 +79,14 @@ func (a *NamedArg) Expr() Expr {
 	return nil
 }
 
+// NamedArgFromNode casts a syntax node to a NamedArg.
+func NamedArgFromNode(node *SyntaxNode) *NamedArg {
+	if node == nil || node.Kind() != Named {
+		return nil
+	}
+	return &NamedArg{node: node}
+}
+
 // SpreadArg represents a spread argument: f(..args).
 type SpreadArg struct {
 	node *SyntaxNode
@@ -428,6 +436,26 @@ func (i *ImportItem) NewName() *IdentExpr {
 				}
 			}
 		}
+	}
+	return nil
+}
+
+// BoundName returns the name this import item binds to.
+// This is either the new name (if renamed) or the original name (last path segment).
+func (i *ImportItem) BoundName() *IdentExpr {
+	// If renamed, use the new name.
+	if newName := i.NewName(); newName != nil {
+		return newName
+	}
+	// Otherwise, use the last identifier in the path.
+	var lastIdent *SyntaxNode
+	for _, child := range i.node.Children() {
+		if child.Kind() == Ident {
+			lastIdent = child
+		}
+	}
+	if lastIdent != nil {
+		return &IdentExpr{node: lastIdent}
 	}
 	return nil
 }

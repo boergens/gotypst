@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/boergens/gotypst/eval"
+	"github.com/boergens/gotypst/kit"
 	"github.com/boergens/gotypst/layout/pages"
 	"github.com/boergens/gotypst/pdf"
 	"github.com/boergens/gotypst/realize"
@@ -125,9 +126,9 @@ func compile(inputPath, outputPath, projectRoot string, fontPaths []string) erro
 	}
 
 	// Create the FileWorld
-	opts := []eval.FileWorldOption{}
+	opts := []kit.FileWorldOption{}
 	if len(fontPaths) > 0 {
-		opts = append(opts, eval.WithFontDirs(fontPaths...))
+		opts = append(opts, kit.WithFontDirs(fontPaths...))
 	}
 
 	// Get relative path from root
@@ -136,7 +137,7 @@ func compile(inputPath, outputPath, projectRoot string, fontPaths []string) erro
 		mainPath = absInput
 	}
 
-	world, err := eval.NewFileWorld(absRoot, mainPath, opts...)
+	world, err := kit.NewFileWorld(absRoot, mainPath, opts...)
 	if err != nil {
 		return fmt.Errorf("cannot create world: %w", err)
 	}
@@ -190,14 +191,21 @@ func buildStandardLibrary() *eval.Scope {
 
 // mustRebuildWorldWithLibrary creates a new FileWorld with the given library.
 // This is a workaround since FileWorld doesn't allow changing library after creation.
-func mustRebuildWorldWithLibrary(old *eval.FileWorld, lib *eval.Scope) *eval.FileWorld {
+func mustRebuildWorldWithLibrary(old *kit.FileWorld, lib *eval.Scope) *kit.FileWorld {
+	// Get the main file's virtual path
 	mainFile := old.MainFile()
+	rpath := mainFile.RootedPath()
+	mainPath := "."
+	if rpath != nil {
+		mainPath = rpath.VPath().AsRootedPath()
+	}
+
 	root := old.Root()
 	fontBook := old.FontBook()
 
-	world, err := eval.NewFileWorld(root, mainFile.Path,
-		eval.WithLibrary(lib),
-		eval.WithFontBook(fontBook),
+	world, err := kit.NewFileWorld(root, mainPath,
+		kit.WithLibrary(lib),
+		kit.WithFontBook(fontBook),
 	)
 	if err != nil {
 		// Should not happen if old world was valid
@@ -207,7 +215,7 @@ func mustRebuildWorldWithLibrary(old *eval.FileWorld, lib *eval.Scope) *eval.Fil
 }
 
 // evaluate evaluates the source and returns content.
-func evaluate(world *eval.FileWorld, source *syntax.Source) (*eval.Content, error) {
+func evaluate(world *kit.FileWorld, source *syntax.Source) (*eval.Content, error) {
 	// Create the evaluation engine
 	engine := eval.NewEngine(world)
 
@@ -262,7 +270,7 @@ func evalMarkup(vm *eval.Vm, markup *syntax.MarkupNode) (eval.Value, error) {
 
 // layout converts evaluated content to a paged document.
 // This is the main entry point that wires up realization and page collection.
-func layout(world *eval.FileWorld, content *eval.Content) (*pages.PagedDocument, error) {
+func layout(world *kit.FileWorld, content *eval.Content) (*pages.PagedDocument, error) {
 	// Create evaluation engine for realization
 	evalEngine := eval.NewEngine(world)
 

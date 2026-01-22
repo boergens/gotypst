@@ -84,7 +84,7 @@ loop:
 		// Join values
 		output, err = Join(output, value)
 		if err != nil {
-			return nil, wrapErrorAt(err, span)
+			return nil, atSpan(err, span)
 		}
 
 		if vm.Flow != nil {
@@ -289,7 +289,7 @@ func evalIdent(vm *Vm, e *syntax.IdentExpr) (foundations.Value, error) {
 	span := e.ToUntyped().Span()
 	binding := vm.Scopes.Get(e.Get())
 	if binding == nil {
-		return nil, &UnknownVariableError{Name: e.Get(), Span: span}
+		return nil, atSpan(fmt.Errorf("unknown variable: %s", e.Get()), span)
 	}
 	return binding.ReadChecked(vm.Engine, span), nil
 }
@@ -409,11 +409,7 @@ func evalDict(vm *Vm, e *syntax.DictExpr) (foundations.Value, error) {
 			}
 			keyStr, ok := keyValue.(foundations.Str)
 			if !ok {
-				return nil, &TypeError{
-					Expected: foundations.TypeStr,
-					Got:      keyValue.Type(),
-					Span:     keyExpr.ToUntyped().Span(),
-				}
+				return nil, atSpan(fmt.Errorf("expected string, found %s", keyValue.Type()), keyExpr.ToUntyped().Span())
 			}
 			value, err := evalExpr(vm, i.Expr())
 			if err != nil {
@@ -621,68 +617,3 @@ func Display(v foundations.Value) foundations.Content {
 	}
 }
 
-// wrapErrorAt wraps an error with span information.
-func wrapErrorAt(err error, span syntax.Span) error {
-	if err == nil {
-		return nil
-	}
-	// Check if error already has span info
-	if _, ok := err.(interface{ Span() syntax.Span }); ok {
-		return err
-	}
-	return &SpannedError{Err: err, ErrSpan: span}
-}
-
-// SpannedError wraps an error with a span.
-type SpannedError struct {
-	Err     error
-	ErrSpan syntax.Span
-}
-
-func (e *SpannedError) Error() string {
-	return e.Err.Error()
-}
-
-func (e *SpannedError) Span() syntax.Span {
-	return e.ErrSpan
-}
-
-func (e *SpannedError) Unwrap() error {
-	return e.Err
-}
-
-// ----------------------------------------------------------------------------
-// Error Types
-// ----------------------------------------------------------------------------
-
-// UnknownVariableError is returned when referencing an undefined variable.
-type UnknownVariableError struct {
-	Name string
-	Span syntax.Span
-}
-
-func (e *UnknownVariableError) Error() string {
-	return fmt.Sprintf("unknown variable: %s", e.Name)
-}
-
-// TypeError is returned when a value has an unexpected type.
-type TypeError struct {
-	Expected foundations.Type
-	Got      foundations.Type
-	Span     syntax.Span
-}
-
-func (e *TypeError) Error() string {
-	return fmt.Sprintf("expected %s, found %s", e.Expected, e.Got)
-}
-
-// TypeMismatchError is returned when a type doesn't match.
-type TypeMismatchError struct {
-	Expected string
-	Got      string
-	Span     syntax.Span
-}
-
-func (e *TypeMismatchError) Error() string {
-	return fmt.Sprintf("expected %s, found %s", e.Expected, e.Got)
-}

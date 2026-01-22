@@ -1,3 +1,6 @@
+// Import evaluation for Typst.
+// Translated from typst-eval/src/import.rs
+
 package eval
 
 import (
@@ -5,18 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/boergens/gotypst/library/foundations"
 	"github.com/boergens/gotypst/syntax"
 )
 
 // evalModuleImport evaluates a module import expression.
 //
-// Import syntax:
-//   - import "file.typ"              → bind module as filename
-//   - import "file.typ" as x         → bind module as x
-//   - import "file.typ": *           → bind all exports
-//   - import "file.typ": a, b        → bind specific items
-//   - import func                    → import from function scope
-//   - import type                    → import from type scope
+// Matches Rust's impl Eval for ast::ModuleImport.
 func evalModuleImport(vm *Vm, e *syntax.ModuleImportExpr) (Value, error) {
 	sourceExpr := e.Source()
 	if sourceExpr == nil {
@@ -26,53 +24,216 @@ func evalModuleImport(vm *Vm, e *syntax.ModuleImportExpr) (Value, error) {
 		}
 	}
 
-	// Evaluate the source expression
+	sourceSpan := sourceExpr.ToUntyped().Span()
+
+	// Evaluate the source expression.
 	source, err := EvalExpr(vm, sourceExpr)
 	if err != nil {
 		return nil, err
 	}
 
-	span := e.ToUntyped().Span()
+	replacedSource := false
 
-	// Resolve the source to a module
-	module, err := resolveModuleSource(vm, source, span)
-	if err != nil {
-		return nil, err
+	// Handle different source types.
+	switch v := source.(type) {
+	case FuncValue:
+		// Check if function has a scope (only native functions do).
+		if v.Func == nil || v.Func.Scope() == nil {
+			return nil, &ImportError{
+				Message: "cannot import from user-defined functions",
+				Span:    sourceSpan,
+			}
+		}
+
+	case TypeValue:
+		// Types have scopes, nothing special to do.
+
+	case ModuleValue:
+		// Already a module, nothing to do.
+
+	case StrValue:
+		// String path - import file or package.
+		module, err := Import(vm.Engine, string(v), sourceSpan)
+		if err != nil {
+			return nil, err
+		}
+		source = ModuleValue{Module: module}
+		replacedSource = true
+
+	default:
+		return nil, &ImportError{
+			Message: fmt.Sprintf("expected path, module, function, or type, found %s", source.Type()),
+			Span:    sourceSpan,
+		}
 	}
 
-	// Handle import bindings based on the import pattern
-	imports := e.Imports()
+	// If there is a rename, import the source itself under that name.
 	newName := e.NewName()
+	if newName != nil {
+		// Warn on `import x as x` (same name).
+		if ident, ok := sourceExpr.(*syntax.IdentExpr); ok {
+			if ident.Get() == newName.Get() {
+				// TODO: emit warning "unnecessary import rename to same name"
+			}
+		}
 
-	if imports == nil && newName == nil {
-		// Bare import: import "file.typ" → bind as module name
-		vm.Define(module.Name, ModuleValue{Module: module})
-	} else if newName != nil {
-		// Renamed import: import "file.typ" as x → bind as x
-		vm.Define(newName.Get(), ModuleValue{Module: module})
-	} else {
-		// Import with items
-		switch imp := imports.(type) {
-		case *syntax.ImportsWildcard:
-			// Wildcard: import "file.typ": * → bind all exports
-			if err := importAllExports(vm, module, span); err != nil {
-				return nil, err
+		// Define renamed module on the scope.
+		vm.Define(newName, source)
+	}
+
+	// Get the scope from the source.
+	scope := valueScope(source)
+	if scope == nil {
+		return nil, &ImportError{
+			Message: fmt.Sprintf("cannot get scope from %s", source.Type()),
+			Span:    sourceSpan,
+		}
+	}
+
+	imports := e.Imports()
+	switch imp := imports.(type) {
+	case nil:
+		// No imports clause - bare import.
+		if newName == nil {
+			// Derive name from source expression.
+			name := deriveImportName(sourceExpr, replacedSource)
+			if name == "" {
+				return nil, &ImportError{
+					Message: "dynamic import requires an explicit name",
+					Hint:    "you can name the import with `as`",
+					Span:    sourceSpan,
+				}
 			}
-		case *syntax.ImportItemsNode:
-			// Specific items: import "file.typ": a, b → bind specific items
-			if err := importItems(vm, module, imp.Items(), span); err != nil {
-				return nil, err
+			vm.Scopes.Top().Bind(name, foundations.NewBinding(source, sourceSpan))
+		}
+
+	case *syntax.ImportsWildcard:
+		// Wildcard: import "file.typ": * → bind all exports.
+		scope.Iter(func(name string, binding foundations.Binding) {
+			vm.Scopes.Top().Bind(name, binding.Clone())
+		})
+
+	case *syntax.ImportItemsNode:
+		// Specific items: import "file.typ": a, b → bind specific items.
+		var errors []error
+		for _, item := range imp.Items() {
+			path := item.Path()
+			if len(path) == 0 {
+				continue
 			}
+
+			currentScope := scope
+			var binding *foundations.Binding
+
+			for i, componentName := range path {
+				componentSpan := sourceSpan // Use source span for string paths
+
+				binding = currentScope.Get(componentName)
+				if binding == nil {
+					errors = append(errors, &ImportError{
+						Message: fmt.Sprintf("unresolved import: %s", componentName),
+						Span:    componentSpan,
+					})
+					break
+				}
+
+				if i < len(path)-1 {
+					// Nested import - this must be a submodule.
+					value := binding.Read()
+					subScope := valueScope(value)
+					if subScope == nil {
+						var errMsg string
+						if fv, ok := value.(FuncValue); ok && fv.Func != nil && fv.Func.Scope() == nil {
+							errMsg = "cannot import from user-defined functions"
+						} else {
+							errMsg = fmt.Sprintf("expected module, function, or type, found %s", value.Type())
+						}
+						errors = append(errors, &ImportError{
+							Message: errMsg,
+							Span:    componentSpan,
+						})
+						binding = nil
+						break
+					}
+					currentScope = subScope
+				}
+			}
+
+			if binding != nil {
+				// Bind the item using its bound name.
+				boundName := item.BoundName()
+				if boundName != nil {
+					vm.Define(boundName, binding.Read())
+				}
+			}
+		}
+
+		if len(errors) > 0 {
+			// Return first error (could collect all).
+			return nil, errors[0]
 		}
 	}
 
 	return None, nil
 }
 
+// deriveImportName derives a name for a bare import from the source expression.
+func deriveImportName(sourceExpr syntax.Expr, replacedSource bool) string {
+	// For string literals, derive from path.
+	if str, ok := sourceExpr.(*syntax.StrExpr); ok {
+		path := str.Get()
+		return deriveNameFromPath(path)
+	}
+
+	// For identifiers, use the identifier name if not replaced.
+	if ident, ok := sourceExpr.(*syntax.IdentExpr); ok && !replacedSource {
+		return ident.Get()
+	}
+
+	// Dynamic imports need explicit names.
+	return ""
+}
+
+// deriveNameFromPath derives a module name from a file path.
+func deriveNameFromPath(path string) string {
+	// Handle package imports.
+	if strings.HasPrefix(path, "@") {
+		// @namespace/name:version -> name
+		path = strings.TrimPrefix(path, "@")
+		if idx := strings.Index(path, "/"); idx >= 0 {
+			path = path[idx+1:]
+		}
+		if idx := strings.Index(path, ":"); idx >= 0 {
+			path = path[:idx]
+		}
+		return makeValidIdent(path)
+	}
+
+	// Regular file path.
+	base := filepath.Base(path)
+	ext := filepath.Ext(base)
+	name := strings.TrimSuffix(base, ext)
+	return makeValidIdent(name)
+}
+
+// makeValidIdent converts a string to a valid identifier.
+func makeValidIdent(name string) string {
+	name = strings.ReplaceAll(name, "-", "_")
+	name = strings.ReplaceAll(name, " ", "_")
+	if name == "" {
+		return ""
+	}
+	// Check if it's a valid identifier.
+	// For now, just ensure it doesn't start with a digit.
+	if name[0] >= '0' && name[0] <= '9' {
+		name = "_" + name
+	}
+	return name
+}
+
 // evalModuleInclude evaluates a module include expression.
 //
-// Include returns the content of the included file, not the module.
-// Syntax: include "file.typ"
+// Matches Rust's impl Eval for ast::ModuleInclude.
 func evalModuleInclude(vm *Vm, e *syntax.ModuleIncludeExpr) (Value, error) {
 	sourceExpr := e.Source()
 	if sourceExpr == nil {
@@ -82,100 +243,64 @@ func evalModuleInclude(vm *Vm, e *syntax.ModuleIncludeExpr) (Value, error) {
 		}
 	}
 
-	// Evaluate the source expression
+	span := sourceExpr.ToUntyped().Span()
+
 	source, err := EvalExpr(vm, sourceExpr)
 	if err != nil {
 		return nil, err
 	}
 
-	span := e.ToUntyped().Span()
-
-	// Source must be a string path
-	path, ok := AsStr(source)
-	if !ok {
-		return nil, &ImportError{
-			Message: fmt.Sprintf("include source must be a string, got %s", source.Type()),
-			Span:    span,
-		}
-	}
-
-	// Import the file
-	module, err := importPath(vm, path, span)
-	if err != nil {
-		return nil, err
-	}
-
-	// Return the module's content
-	return ContentValue{Content: module.Content}, nil
-}
-
-// resolveModuleSource resolves an import source to a module.
-//
-// The source can be:
-//   - A string path (file or package)
-//   - A function (imports its scope)
-//   - A type (imports its scope)
-//   - A module (used as-is)
-func resolveModuleSource(vm *Vm, source Value, span syntax.Span) (*Module, error) {
+	var module *Module
 	switch v := source.(type) {
 	case StrValue:
-		// String path - import file or package
-		path := string(v)
-		return importPath(vm, path, span)
-
-	case FuncValue:
-		// Import from function scope
-		return functionToModule(v.Func, span)
-
-	case TypeValue:
-		// Import from type scope
-		return typeToModule(v.Inner, span)
+		module, err = Import(vm.Engine, string(v), span)
+		if err != nil {
+			return nil, err
+		}
 
 	case ModuleValue:
-		// Already a module
-		return v.Module, nil
+		module = v.Module
 
 	default:
 		return nil, &ImportError{
-			Message: fmt.Sprintf("cannot import from %s", source.Type()),
+			Message: fmt.Sprintf("expected path or module, found %s", source.Type()),
 			Span:    span,
 		}
 	}
+
+	return ContentValue{Content: module.Content}, nil
 }
 
-// importPath imports a file or package by path.
-func importPath(vm *Vm, path string, span syntax.Span) (*Module, error) {
-	if strings.HasPrefix(path, "@") {
+// Import imports a file or package by path.
+//
+// Matches Rust's import function.
+func Import(engine *foundations.Engine, from string, span syntax.Span) (*Module, error) {
+	if strings.HasPrefix(from, "@") {
 		// Package import: @namespace/name:version
-		return importPackage(vm, path, span)
+		spec, err := syntax.ParsePackageSpec(from)
+		if err != nil {
+			return nil, &ImportError{
+				Message: fmt.Sprintf("invalid package specification: %v", err),
+				Span:    span,
+			}
+		}
+		return importPackage(engine, spec, span)
 	}
 
-	// File import
-	return importFile(vm, path, span)
-}
-
-// importFile imports a file by its path.
-func importFile(vm *Vm, path string, span syntax.Span) (*Module, error) {
-	// Resolve the file ID
-	fileID, err := resolveFilePath(vm, path, span)
+	// File import - resolve relative to current file.
+	id, err := resolvePathToFileId(engine, from, span)
 	if err != nil {
 		return nil, err
 	}
+	return importFile(engine, id, span)
+}
 
-	// Check for cyclic imports
-	if vm.Engine.route.Contains(fileID) {
-		return nil, &CyclicImportError{
-			File: fileID,
-			Span: span,
-		}
-	}
-
-	// Push this file onto the route
-	vm.Engine.route.Push(fileID)
-	defer vm.Engine.route.Pop()
-
-	// Load the source
-	source, err := vm.WorldInternal().Source(fileID)
+// importFile imports a file by its ID.
+//
+// Matches Rust's import_file function.
+func importFile(engine *foundations.Engine, id syntax.FileId, span syntax.Span) (*Module, error) {
+	// Load the source file.
+	source, err := engine.World.Source(id)
 	if err != nil {
 		return nil, &ImportError{
 			Message: fmt.Sprintf("cannot read file: %v", err),
@@ -183,309 +308,187 @@ func importFile(vm *Vm, path string, span syntax.Span) (*Module, error) {
 		}
 	}
 
-	// Evaluate the file
-	return evalModule(vm, source, fileID)
+	// Prevent cyclic importing.
+	if engine.Route != nil && engine.Route.Contains(source.Id()) {
+		return nil, &ImportError{
+			Message: "cyclic import",
+			Span:    span,
+		}
+	}
+
+	// Evaluate the file.
+	return EvalSource(engine, source, span)
 }
 
-// importPackage imports a package by its specification.
-func importPackage(vm *Vm, spec string, span syntax.Span) (*Module, error) {
-	// Parse the package specification: @namespace/name:version
-	pkgSpec, err := parsePackageSpec(spec)
-	if err != nil {
-		return nil, &ImportError{
-			Message: err.Error(),
-			Span:    span,
-		}
-	}
-
-	// Resolve the package to a file ID
-	fileID, pkgName, err := resolvePackage(vm, pkgSpec, span)
+// importPackage imports an external package.
+//
+// Matches Rust's import_package function.
+func importPackage(engine *foundations.Engine, spec *syntax.PackageSpec, span syntax.Span) (*Module, error) {
+	name, id, err := resolvePackage(engine, spec, span)
 	if err != nil {
 		return nil, err
 	}
 
-	// Check for cyclic imports
-	if vm.Engine.route.Contains(fileID) {
-		return nil, &CyclicImportError{
-			File: fileID,
-			Span: span,
-		}
-	}
-
-	// Push this file onto the route
-	vm.Engine.route.Push(fileID)
-	defer vm.Engine.route.Pop()
-
-	// Load the source
-	source, err := vm.WorldInternal().Source(fileID)
-	if err != nil {
-		return nil, &ImportError{
-			Message: fmt.Sprintf("cannot read package: %v", err),
-			Span:    span,
-		}
-	}
-
-	// Evaluate the file
-	module, err := evalModule(vm, source, fileID)
+	module, err := importFile(engine, id, span)
 	if err != nil {
 		return nil, err
 	}
 
-	// Override module name with package name
-	module.Name = pkgName
-
+	// Override module name with package name.
+	module.Name = name
 	return module, nil
 }
 
-// resolveFilePath resolves a file path to a FileID.
-func resolveFilePath(vm *Vm, path string, span syntax.Span) (FileID, error) {
-	// Get the current file's directory for relative paths
-	currentFile := vm.Engine.route.CurrentFile()
-
-	var resolvedPath string
-	if filepath.IsAbs(path) {
-		resolvedPath = path
-	} else if currentFile != nil {
-		// Resolve relative to current file
-		dir := filepath.Dir(currentFile.Path)
-		resolvedPath = filepath.Join(dir, path)
-	} else {
-		// Resolve relative to main file
-		mainFile := vm.WorldInternal().MainFile()
-		dir := filepath.Dir(mainFile.Path)
-		resolvedPath = filepath.Join(dir, path)
-	}
-
-	// Clean the path
-	resolvedPath = filepath.Clean(resolvedPath)
-
-	return FileID{
-		Package: nil,
-		Path:    resolvedPath,
-	}, nil
-}
-
-// parsePackageSpec parses a package specification string.
-// Format: @namespace/name:version
-func parsePackageSpec(spec string) (*PackageSpec, error) {
-	if !strings.HasPrefix(spec, "@") {
-		return nil, fmt.Errorf("package specification must start with @")
-	}
-
-	spec = spec[1:] // Remove @
-
-	// Split by colon for version
-	parts := strings.SplitN(spec, ":", 2)
-	pathPart := parts[0]
-	var version Version
-
-	if len(parts) == 2 {
-		var err error
-		version, err = parseVersion(parts[1])
-		if err != nil {
-			return nil, fmt.Errorf("invalid version: %v", err)
-		}
-	}
-
-	// Split namespace and name
-	pathParts := strings.Split(pathPart, "/")
-	if len(pathParts) < 2 {
-		return nil, fmt.Errorf("package specification must have namespace/name format")
-	}
-
-	namespace := pathParts[0]
-	name := strings.Join(pathParts[1:], "/")
-
-	return &PackageSpec{
-		Namespace: namespace,
-		Name:      name,
-		Version:   version,
-	}, nil
-}
-
-// parseVersion parses a semantic version string.
-func parseVersion(s string) (Version, error) {
-	var v Version
-	parts := strings.Split(s, ".")
-
-	if len(parts) >= 1 {
-		if _, err := fmt.Sscanf(parts[0], "%d", &v.Major); err != nil {
-			return v, fmt.Errorf("invalid major version: %s", parts[0])
-		}
-	}
-	if len(parts) >= 2 {
-		if _, err := fmt.Sscanf(parts[1], "%d", &v.Minor); err != nil {
-			return v, fmt.Errorf("invalid minor version: %s", parts[1])
-		}
-	}
-	if len(parts) >= 3 {
-		if _, err := fmt.Sscanf(parts[2], "%d", &v.Patch); err != nil {
-			return v, fmt.Errorf("invalid patch version: %s", parts[2])
-		}
-	}
-
-	return v, nil
-}
-
-// resolvePackage resolves a package specification to a file ID and package name.
-func resolvePackage(vm *Vm, spec *PackageSpec, span syntax.Span) (FileID, string, error) {
-	// Create file ID for the package manifest
-	manifestID := FileID{
-		Package: spec,
-		Path:    "typst.toml",
-	}
-
-	// Load the manifest
-	manifestBytes, err := vm.WorldInternal().File(manifestID)
+// resolvePackage resolves the name and entrypoint of a package.
+//
+// Matches Rust's resolve_package function.
+func resolvePackage(engine *foundations.Engine, spec *syntax.PackageSpec, span syntax.Span) (string, syntax.FileId, error) {
+	// Create file ID for the package manifest.
+	manifestVPath, err := syntax.NewVirtualPath("typst.toml")
 	if err != nil {
-		return FileID{}, "", &ImportError{
+		return "", syntax.FileId{}, &ImportError{
+			Message: fmt.Sprintf("invalid manifest path: %v", err),
+			Span:    span,
+		}
+	}
+	manifestPath := syntax.NewRootedPath(
+		syntax.PackageRoot(*spec),
+		*manifestVPath,
+	)
+	manifestId := manifestPath.Intern()
+
+	// Load the manifest bytes.
+	bytes, err := engine.World.File(manifestId)
+	if err != nil {
+		return "", syntax.FileId{}, &ImportError{
 			Message: fmt.Sprintf("cannot read package manifest: %v", err),
 			Span:    span,
 		}
 	}
 
-	// Parse the manifest (simplified - real implementation would use TOML parser)
-	manifest, err := parsePackageManifest(manifestBytes)
+	// Parse the manifest.
+	manifest, err := parseManifest(string(bytes))
 	if err != nil {
-		return FileID{}, "", &ImportError{
-			Message: fmt.Sprintf("invalid package manifest: %v", err),
+		return "", syntax.FileId{}, &ImportError{
+			Message: fmt.Sprintf("package manifest is malformed: %v", err),
 			Span:    span,
 		}
 	}
 
-	// Validate the package spec
-	if err := validatePackageManifest(manifest, spec); err != nil {
-		return FileID{}, "", &ImportError{
+	// Validate against spec.
+	if err := validateManifest(manifest, spec); err != nil {
+		return "", syntax.FileId{}, &ImportError{
 			Message: err.Error(),
 			Span:    span,
 		}
 	}
 
-	// Return the entry point file ID
-	entryPoint := manifest.EntryPoint
-	if entryPoint == "" {
-		entryPoint = "lib.typ"
+	// Get the entry point.
+	entrypoint := manifest.Entrypoint
+	if entrypoint == "" {
+		entrypoint = "lib.typ"
 	}
 
-	return FileID{
-		Package: spec,
-		Path:    entryPoint,
-	}, manifest.Name, nil
-}
-
-// PackageManifest represents the typst.toml manifest file.
-type PackageManifest struct {
-	Name        string
-	Version     Version
-	EntryPoint  string
-	Description string
-	Authors     []string
-	License     string
-}
-
-// parsePackageManifest parses a package manifest from bytes.
-// This is a simplified implementation - real version would use proper TOML parsing.
-func parsePackageManifest(data []byte) (*PackageManifest, error) {
-	manifest := &PackageManifest{
-		EntryPoint: "lib.typ",
+	entryVPath, err := syntax.NewVirtualPath(entrypoint)
+	if err != nil {
+		return "", syntax.FileId{}, &ImportError{
+			Message: fmt.Sprintf("invalid entrypoint path: %v", err),
+			Span:    span,
+		}
 	}
+	entryPath := syntax.NewRootedPath(
+		syntax.PackageRoot(*spec),
+		*entryVPath,
+	)
+	return manifest.Name, entryPath.Intern(), nil
+}
 
-	content := string(data)
-	lines := strings.Split(content, "\n")
+// resolvePathToFileId resolves a path string to a FileId.
+func resolvePathToFileId(engine *foundations.Engine, path string, span syntax.Span) (syntax.FileId, error) {
+	// Get the current file's ID from the span.
+	currentId := span.Id()
 
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "[") {
-			continue
-		}
-
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-		value = strings.Trim(value, "\"")
-
-		switch key {
-		case "name":
-			manifest.Name = value
-		case "version":
-			v, err := parseVersion(value)
-			if err != nil {
-				return nil, err
+	var resolvedPath string
+	if filepath.IsAbs(path) {
+		resolvedPath = path
+	} else if currentId != nil {
+		// Resolve relative to current file.
+		rootedPath := currentId.Get()
+		if rootedPath != nil {
+			vpath := rootedPath.VPath()
+			if vpath != nil {
+				currentVPath := vpath.String()
+				dir := filepath.Dir(currentVPath)
+				resolvedPath = filepath.Join(dir, path)
+			} else {
+				resolvedPath = path
 			}
-			manifest.Version = v
-		case "entrypoint":
-			manifest.EntryPoint = value
-		case "description":
-			manifest.Description = value
-		case "license":
-			manifest.License = value
+		} else {
+			resolvedPath = path
+		}
+	} else {
+		resolvedPath = path
+	}
+
+	// Clean the path.
+	resolvedPath = filepath.Clean(resolvedPath)
+
+	// Create a file ID for the resolved path (project-local file).
+	vpath, err := syntax.NewVirtualPath(resolvedPath)
+	if err != nil {
+		return syntax.FileId{}, &ImportError{
+			Message: fmt.Sprintf("invalid path: %v", err),
+			Span:    span,
 		}
 	}
-
-	if manifest.Name == "" {
-		return nil, fmt.Errorf("package manifest missing name")
-	}
-
-	return manifest, nil
+	rootedPath := syntax.NewRootedPath(
+		syntax.ProjectRoot(),
+		*vpath,
+	)
+	return rootedPath.Intern(), nil
 }
 
-// validatePackageManifest validates that the manifest matches the package spec.
-func validatePackageManifest(manifest *PackageManifest, spec *PackageSpec) error {
-	if manifest.Name != spec.Name {
-		return fmt.Errorf("package name mismatch: expected %s, got %s", spec.Name, manifest.Name)
-	}
-
-	// Version checking (if specified)
-	if spec.Version.Major > 0 || spec.Version.Minor > 0 || spec.Version.Patch > 0 {
-		if manifest.Version.Major != spec.Version.Major {
-			return fmt.Errorf("package major version mismatch: expected %d, got %d",
-				spec.Version.Major, manifest.Version.Major)
-		}
-		// Minor version must be >= requested
-		if manifest.Version.Minor < spec.Version.Minor {
-			return fmt.Errorf("package minor version too old: expected >= %d.%d, got %d.%d",
-				spec.Version.Major, spec.Version.Minor,
-				manifest.Version.Major, manifest.Version.Minor)
-		}
-	}
-
-	return nil
-}
-
-// evalModule evaluates a source file and returns a module.
-func evalModule(vm *Vm, source *syntax.Source, fileID FileID) (*Module, error) {
-	// Parse the source if needed
+// EvalSource evaluates a source file and returns a module.
+//
+// This is a simplified version that creates a module from source.
+func EvalSource(engine *foundations.Engine, source *syntax.Source, span syntax.Span) (*Module, error) {
 	root := source.Root()
 	if root == nil {
 		return nil, &ImportError{
 			Message: "source has no root",
-			Span:    syntax.Span{},
+			Span:    span,
 		}
 	}
 
-	// Check for parser errors
+	// Check for parser errors.
 	if errs := root.Errors(); len(errs) > 0 {
-		// Report the first error
 		return nil, &ImportError{
 			Message: fmt.Sprintf("parse error: %v", errs[0]),
-			Span:    syntax.Span{},
+			Span:    span,
 		}
 	}
 
-	// Create a new VM for module evaluation
-	scopes := NewScopes(vm.WorldInternal().Library())
-	moduleVm := NewVm(vm.Engine, NewContext(), scopes, root.Span())
+	// Create a new context for module evaluation.
+	context := foundations.NewContext()
 
-	// Evaluate the markup content
+	// Create scopes with the standard library.
+	scopes := foundations.NewScopes(engine.World.Library())
+
+	// Create a new VM for module evaluation.
+	moduleVm := NewVm(engine, context, scopes, root.Span())
+
+	// Push this file onto the route if we have one.
+	if engine.Route != nil {
+		engine.Route.Push(source.Id())
+		defer engine.Route.Pop()
+	}
+
+	// Evaluate the markup content.
 	markup := syntax.MarkupNodeFromNode(root)
 	if markup == nil {
 		return nil, &ImportError{
 			Message: "source root is not markup",
-			Span:    syntax.Span{},
+			Span:    span,
 		}
 	}
 
@@ -494,7 +497,7 @@ func evalModule(vm *Vm, source *syntax.Source, fileID FileID) (*Module, error) {
 		return nil, err
 	}
 
-	// Check for forbidden flow events at top level
+	// Check for forbidden flow events at top level.
 	if moduleVm.HasFlow() {
 		flow := moduleVm.Flow
 		switch flow.(type) {
@@ -516,14 +519,14 @@ func evalModule(vm *Vm, source *syntax.Source, fileID FileID) (*Module, error) {
 		}
 	}
 
-	// Extract content
+	// Extract content.
 	var moduleContent Content
 	if cv, ok := content.(ContentValue); ok {
 		moduleContent = cv.Content
 	}
 
-	// Create the module with the exported scope
-	moduleName := deriveModuleName(fileID.Path)
+	// Create the module with the exported scope.
+	moduleName := deriveModuleName(source.Id())
 	module := &Module{
 		Name:    moduleName,
 		Scope:   scopes.Top(),
@@ -533,184 +536,109 @@ func evalModule(vm *Vm, source *syntax.Source, fileID FileID) (*Module, error) {
 	return module, nil
 }
 
-// deriveModuleName derives a module name from a file path.
-func deriveModuleName(path string) string {
-	base := filepath.Base(path)
+// deriveModuleName derives a module name from a file ID.
+func deriveModuleName(id syntax.FileId) string {
+	rootedPath := id.Get()
+	if rootedPath == nil {
+		return "module"
+	}
+
+	vpath := rootedPath.VPath()
+	if vpath == nil {
+		return "module"
+	}
+
+	pathStr := vpath.String()
+	if pathStr == "" {
+		return "module"
+	}
+
+	base := filepath.Base(pathStr)
 	ext := filepath.Ext(base)
 	name := strings.TrimSuffix(base, ext)
 
-	// Convert to valid identifier
+	// Convert to valid identifier.
 	name = strings.ReplaceAll(name, "-", "_")
 	name = strings.ReplaceAll(name, " ", "_")
+
+	if name == "" {
+		return "module"
+	}
 
 	return name
 }
 
-// functionToModule converts a function's scope to a module.
-func functionToModule(fn *Func, span syntax.Span) (*Module, error) {
-	if fn == nil {
-		return nil, &ImportError{
-			Message: "cannot import from nil function",
-			Span:    span,
+// valueScope returns the scope of a value, if it has one.
+func valueScope(v Value) *Scope {
+	switch val := v.(type) {
+	case FuncValue:
+		if val.Func != nil {
+			return val.Func.Scope()
+		}
+	case TypeValue:
+		return val.Inner.Scope()
+	case ModuleValue:
+		if val.Module != nil {
+			return val.Module.Scope
 		}
 	}
-
-	// Get the function's scope
-	scope := NewScope()
-
-	// For closure functions, we can expose the captured scope
-	if fn.Repr != nil {
-		if cf, ok := fn.Repr.(ClosureFunc); ok && cf.Closure != nil {
-			if cf.Closure.Captured != nil {
-				scope = cf.Closure.Captured.Clone()
-			}
-		}
-	}
-
-	// Create a module with the function name
-	name := "function"
-	if fn.Name != nil {
-		name = *fn.Name
-	}
-
-	return &Module{
-		Name:    name,
-		Scope:   scope,
-		Content: Content{},
-	}, nil
-}
-
-// typeToModule converts a type's scope to a module.
-func typeToModule(t Type, span syntax.Span) (*Module, error) {
-	// Types have associated methods/constructors that form their "scope"
-	scope := NewScope()
-
-	// For now, return an empty module - type scopes would be populated
-	// by the standard library
-	return &Module{
-		Name:    t.Ident(),
-		Scope:   scope,
-		Content: Content{},
-	}, nil
-}
-
-// importAllExports binds all exports from a module to the current scope.
-func importAllExports(vm *Vm, module *Module, span syntax.Span) error {
-	if module.Scope == nil {
-		return nil
-	}
-
-	// Iterate over all bindings in the module's scope
-	for name, binding := range module.Scope.All() {
-		// Skip private bindings (those starting with underscore)
-		if strings.HasPrefix(name, "_") {
-			continue
-		}
-
-		// Define in the current scope
-		vm.Bind(name, binding)
-	}
-
 	return nil
 }
 
-// importItems binds specific items from a module to the current scope.
-func importItems(vm *Vm, module *Module, items []*syntax.ImportItem, span syntax.Span) error {
-	if module.Scope == nil {
-		return &ImportError{
-			Message: "module has no exports",
-			Span:    span,
-		}
+// Manifest represents a package manifest.
+type Manifest struct {
+	Name       string
+	Version    string
+	Entrypoint string
+}
+
+// parseManifest parses a TOML package manifest.
+// This is a simplified parser - real implementation would use a TOML library.
+func parseManifest(content string) (*Manifest, error) {
+	manifest := &Manifest{
+		Entrypoint: "lib.typ",
 	}
 
-	for _, item := range items {
-		// Get the path (can be dotted for nested access)
-		path := item.Path()
-		if len(path) == 0 {
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "[") {
 			continue
 		}
 
-		// Resolve the value through the path
-		value, err := resolveImportPath(module, path, span)
-		if err != nil {
-			return err
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
 		}
 
-		// Determine the binding name
-		bindName := path[len(path)-1] // Default: last element of path
-		if newName := item.NewName(); newName != nil {
-			bindName = newName.Get()
-		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		value = strings.Trim(value, "\"")
 
-		// Define in the current scope
-		vm.Define(bindName, value)
+		switch key {
+		case "name":
+			manifest.Name = value
+		case "version":
+			manifest.Version = value
+		case "entrypoint":
+			manifest.Entrypoint = value
+		}
 	}
 
-	return nil
+	if manifest.Name == "" {
+		return nil, fmt.Errorf("missing name")
+	}
+
+	return manifest, nil
 }
 
-// resolveImportPath resolves a dotted path in a module's scope.
-func resolveImportPath(module *Module, path []string, span syntax.Span) (Value, error) {
-	if len(path) == 0 {
-		return nil, &ImportError{
-			Message: "empty import path",
-			Span:    span,
-		}
+// validateManifest validates that the manifest matches the package spec.
+func validateManifest(manifest *Manifest, spec *syntax.PackageSpec) error {
+	if manifest.Name != spec.Name {
+		return fmt.Errorf("package name mismatch: expected %s, got %s", spec.Name, manifest.Name)
 	}
-
-	// Start with the first element
-	name := path[0]
-	binding := module.Scope.Get(name)
-	if binding == nil {
-		return nil, &ImportError{
-			Message: fmt.Sprintf("'%s' is not exported from module '%s'", name, module.Name),
-			Span:    span,
-		}
-	}
-
-	value := binding.Value
-
-	// Traverse the rest of the path
-	for i := 1; i < len(path); i++ {
-		fieldName := path[i]
-
-		switch v := value.(type) {
-		case ModuleValue:
-			if v.Module == nil || v.Module.Scope == nil {
-				return nil, &ImportError{
-					Message: fmt.Sprintf("cannot access '%s' in module", fieldName),
-					Span:    span,
-				}
-			}
-			nextBinding := v.Module.Scope.Get(fieldName)
-			if nextBinding == nil {
-				return nil, &ImportError{
-					Message: fmt.Sprintf("'%s' is not exported from module", fieldName),
-					Span:    span,
-				}
-			}
-			value = nextBinding.Value
-
-		case *DictValue, DictValue:
-			dict, _ := AsDict(value)
-			if val, ok := dict.Get(fieldName); ok {
-				value = val
-			} else {
-				return nil, &ImportError{
-					Message: fmt.Sprintf("field '%s' not found", fieldName),
-					Span:    span,
-				}
-			}
-
-		default:
-			return nil, &ImportError{
-				Message: fmt.Sprintf("cannot access '%s' on %s", fieldName, value.Type()),
-				Span:    span,
-			}
-		}
-	}
-
-	return value, nil
+	// Version validation could be added here.
+	return nil
 }
 
 // ----------------------------------------------------------------------------
@@ -720,9 +648,13 @@ func resolveImportPath(module *Module, path []string, span syntax.Span) (Value, 
 // ImportError represents an error during import.
 type ImportError struct {
 	Message string
+	Hint    string
 	Span    syntax.Span
 }
 
 func (e *ImportError) Error() string {
+	if e.Hint != "" {
+		return fmt.Sprintf("%s (hint: %s)", e.Message, e.Hint)
+	}
 	return e.Message
 }
