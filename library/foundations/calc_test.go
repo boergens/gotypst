@@ -32,7 +32,7 @@ func TestAbs(t *testing.T) {
 				t.Errorf("Abs() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !equal(got, tt.want) {
+			if !tt.wantErr && !Equal(got, tt.want) {
 				t.Errorf("Abs() = %v, want %v", got, tt.want)
 			}
 		})
@@ -206,7 +206,7 @@ func TestRoot(t *testing.T) {
 
 // --- Helper Functions ---
 
-// approxEqual checks if two floats are approximately equal.
+// approxEqual checks if two floats are approximately Equal.
 func approxEqual(a, b float64) bool {
 	const epsilon = 1e-10
 	if a == b {
@@ -219,7 +219,7 @@ func approxEqual(a, b float64) bool {
 	return diff/math.Max(math.Abs(a), math.Abs(b)) < epsilon
 }
 
-// valueApproxEqual checks if two Values are approximately equal.
+// valueApproxEqual checks if two Values are approximately Equal.
 // For floats, uses approximate comparison; for ints, exact comparison.
 func valueApproxEqual(a, b Value) bool {
 	switch av := a.(type) {
@@ -238,5 +238,5 @@ func valueApproxEqual(a, b Value) bool {
 			return approxEqual(float64(av), float64(bv))
 		}
 	}
-	return equal(a, b)
+	return Equal(a, b)
 }

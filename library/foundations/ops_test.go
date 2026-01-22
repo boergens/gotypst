@@ -30,7 +30,7 @@ func TestPos(t *testing.T) {
 				t.Errorf("Pos() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !equal(got, tt.want) {
+			if !tt.wantErr && !Equal(got, tt.want) {
 				t.Errorf("Pos() = %v, want %v", got, tt.want)
 			}
 		})
@@ -60,7 +60,7 @@ func TestNeg(t *testing.T) {
 				t.Errorf("Neg() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !equal(got, tt.want) {
+			if !tt.wantErr && !Equal(got, tt.want) {
 				t.Errorf("Neg() = %v, want %v", got, tt.want)
 			}
 		})
@@ -87,7 +87,7 @@ func TestNot(t *testing.T) {
 				t.Errorf("Not() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !equal(got, tt.want) {
+			if !tt.wantErr && !Equal(got, tt.want) {
 				t.Errorf("Not() = %v, want %v", got, tt.want)
 			}
 		})
@@ -121,7 +121,7 @@ func TestAdd(t *testing.T) {
 				t.Errorf("Add() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !equal(got, tt.want) {
+			if !tt.wantErr && !Equal(got, tt.want) {
 				t.Errorf("Add() = %v, want %v", got, tt.want)
 			}
 		})
@@ -151,7 +151,7 @@ func TestSub(t *testing.T) {
 				t.Errorf("Sub() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !equal(got, tt.want) {
+			if !tt.wantErr && !Equal(got, tt.want) {
 				t.Errorf("Sub() = %v, want %v", got, tt.want)
 			}
 		})
@@ -185,7 +185,7 @@ func TestMul(t *testing.T) {
 				t.Errorf("Mul() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !equal(got, tt.want) {
+			if !tt.wantErr && !Equal(got, tt.want) {
 				t.Errorf("Mul() = %v, want %v", got, tt.want)
 			}
 		})
@@ -216,7 +216,7 @@ func TestDiv(t *testing.T) {
 				t.Errorf("Div() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !equal(got, tt.want) {
+			if !tt.wantErr && !Equal(got, tt.want) {
 				t.Errorf("Div() = %v, want %v", got, tt.want)
 			}
 		})
@@ -247,7 +247,7 @@ func TestAnd(t *testing.T) {
 				t.Errorf("And() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !equal(got, tt.want) {
+			if !tt.wantErr && !Equal(got, tt.want) {
 				t.Errorf("And() = %v, want %v", got, tt.want)
 			}
 		})
@@ -276,7 +276,7 @@ func TestOr(t *testing.T) {
 				t.Errorf("Or() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !equal(got, tt.want) {
+			if !tt.wantErr && !Equal(got, tt.want) {
 				t.Errorf("Or() = %v, want %v", got, tt.want)
 			}
 		})
@@ -315,7 +315,7 @@ func TestEq(t *testing.T) {
 				t.Errorf("Eq() unexpected error = %v", err)
 				return
 			}
-			if !equal(got, tt.want) {
+			if !Equal(got, tt.want) {
 				t.Errorf("Eq() = %v, want %v", got, tt.want)
 			}
 		})
@@ -340,7 +340,7 @@ func TestNeq(t *testing.T) {
 				t.Errorf("Neq() unexpected error = %v", err)
 				return
 			}
-			if !equal(got, tt.want) {
+			if !Equal(got, tt.want) {
 				t.Errorf("Neq() = %v, want %v", got, tt.want)
 			}
 		})
@@ -357,7 +357,7 @@ func TestLt(t *testing.T) {
 	}{
 		{"int < int true", Int(3), Int(5), Bool(true), false},
 		{"int < int false", Int(5), Int(3), Bool(false), false},
-		{"int < int equal", Int(5), Int(5), Bool(false), false},
+		{"int < int Equal", Int(5), Int(5), Bool(false), false},
 		{"int < float", Int(3), Float(3.5), Bool(true), false},
 		{"float < int", Float(2.5), Int(3), Bool(true), false},
 		{"string < string", Str("abc"), Str("abd"), Bool(true), false},
@@ -371,7 +371,7 @@ func TestLt(t *testing.T) {
 				t.Errorf("Lt() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !equal(got, tt.want) {
+			if !tt.wantErr && !Equal(got, tt.want) {
 				t.Errorf("Lt() = %v, want %v", got, tt.want)
 			}
 		})
@@ -386,7 +386,7 @@ func TestLeq(t *testing.T) {
 		want Value
 	}{
 		{"int <= int true less", Int(3), Int(5), Bool(true)},
-		{"int <= int true equal", Int(5), Int(5), Bool(true)},
+		{"int <= int true Equal", Int(5), Int(5), Bool(true)},
 		{"int <= int false", Int(6), Int(5), Bool(false)},
 	}
 
@@ -397,7 +397,7 @@ func TestLeq(t *testing.T) {
 				t.Errorf("Leq() unexpected error = %v", err)
 				return
 			}
-			if !equal(got, tt.want) {
+			if !Equal(got, tt.want) {
 				t.Errorf("Leq() = %v, want %v", got, tt.want)
 			}
 		})
@@ -413,7 +413,7 @@ func TestGt(t *testing.T) {
 	}{
 		{"int > int true", Int(5), Int(3), Bool(true)},
 		{"int > int false", Int(3), Int(5), Bool(false)},
-		{"int > int equal", Int(5), Int(5), Bool(false)},
+		{"int > int Equal", Int(5), Int(5), Bool(false)},
 	}
 
 	for _, tt := range tests {
@@ -423,7 +423,7 @@ func TestGt(t *testing.T) {
 				t.Errorf("Gt() unexpected error = %v", err)
 				return
 			}
-			if !equal(got, tt.want) {
+			if !Equal(got, tt.want) {
 				t.Errorf("Gt() = %v, want %v", got, tt.want)
 			}
 		})
@@ -438,7 +438,7 @@ func TestGeq(t *testing.T) {
 		want Value
 	}{
 		{"int >= int true greater", Int(5), Int(3), Bool(true)},
-		{"int >= int true equal", Int(5), Int(5), Bool(true)},
+		{"int >= int true Equal", Int(5), Int(5), Bool(true)},
 		{"int >= int false", Int(3), Int(5), Bool(false)},
 	}
 
@@ -449,7 +449,7 @@ func TestGeq(t *testing.T) {
 				t.Errorf("Geq() unexpected error = %v", err)
 				return
 			}
-			if !equal(got, tt.want) {
+			if !Equal(got, tt.want) {
 				t.Errorf("Geq() = %v, want %v", got, tt.want)
 			}
 		})
@@ -483,7 +483,7 @@ func TestIn(t *testing.T) {
 				t.Errorf("In() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !equal(got, tt.want) {
+			if !tt.wantErr && !Equal(got, tt.want) {
 				t.Errorf("In() = %v, want %v", got, tt.want)
 			}
 		})
@@ -508,7 +508,7 @@ func TestNotIn(t *testing.T) {
 				t.Errorf("NotIn() unexpected error = %v", err)
 				return
 			}
-			if !equal(got, tt.want) {
+			if !Equal(got, tt.want) {
 				t.Errorf("NotIn() = %v, want %v", got, tt.want)
 			}
 		})
@@ -538,7 +538,7 @@ func TestJoin(t *testing.T) {
 				t.Errorf("Join() unexpected error = %v", err)
 				return
 			}
-			if !equal(got, tt.want) {
+			if !Equal(got, tt.want) {
 				t.Errorf("Join() = %v, want %v", got, tt.want)
 			}
 		})
@@ -587,13 +587,13 @@ func TestDictMerge(t *testing.T) {
 	}
 
 	merged := result.(*Dict)
-	if v, _ := merged.Get("a"); !equal(v, Int(1)) {
+	if v, _ := merged.Get("a"); !Equal(v, Int(1)) {
 		t.Errorf("expected a=1, got %v", v)
 	}
-	if v, _ := merged.Get("b"); !equal(v, Int(3)) {
+	if v, _ := merged.Get("b"); !Equal(v, Int(3)) {
 		t.Errorf("expected b=3 (overwritten), got %v", v)
 	}
-	if v, _ := merged.Get("c"); !equal(v, Int(4)) {
+	if v, _ := merged.Get("c"); !Equal(v, Int(4)) {
 		t.Errorf("expected c=4, got %v", v)
 	}
 }
