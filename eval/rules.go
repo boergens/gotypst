@@ -1,327 +1,125 @@
+// Rule evaluation for Typst set and show rules.
+// Translated from typst-eval/src/rules.rs
+
 package eval
 
 import (
 	"fmt"
 
+	"github.com/boergens/gotypst/library/foundations"
 	"github.com/boergens/gotypst/syntax"
 )
-
-// ----------------------------------------------------------------------------
-// Rule Types
-// ----------------------------------------------------------------------------
-
-// Recipe represents a show rule recipe that defines how to transform content.
-type Recipe struct {
-	// Selector optionally restricts which content the recipe applies to.
-	Selector *Selector
-
-	// Transform defines how to transform matching content.
-	Transform Transformation
-
-	// Span is the source location of the recipe.
-	Span syntax.Span
-}
-
-// NewRecipe creates a new recipe with the given components.
-func NewRecipe(selector *Selector, transform Transformation, span syntax.Span) *Recipe {
-	return &Recipe{
-		Selector:  selector,
-		Transform: transform,
-		Span:      span,
-	}
-}
-
-// Selector represents a selector for matching content in show rules.
-type Selector interface {
-	isSelector()
-}
-
-// ElemSelector matches content of a specific element type.
-type ElemSelector struct {
-	// Element is the element type to match.
-	Element Element
-
-	// Where is an optional filter function.
-	Where *Func
-}
-
-func (ElemSelector) isSelector() {}
-
-// LabelSelector matches content with a specific label.
-type LabelSelector struct {
-	Label string
-}
-
-func (LabelSelector) isSelector() {}
-
-// TextSelector matches text content using a pattern.
-type TextSelector struct {
-	// Text is the text pattern to match (string or regex).
-	Text string
-	// IsRegex indicates if Text is a regular expression.
-	IsRegex bool
-}
-
-func (TextSelector) isSelector() {}
-
-// FuncSelector matches content based on a predicate function.
-type FuncSelector struct {
-	Func *Func
-}
-
-func (FuncSelector) isSelector() {}
-
-// OrSelector matches content that matches any of the selectors.
-type OrSelector struct {
-	Selectors []Selector
-}
-
-func (OrSelector) isSelector() {}
-
-// AndSelector matches content that matches all selectors.
-type AndSelector struct {
-	Selectors []Selector
-}
-
-func (AndSelector) isSelector() {}
-
-// BeforeSelector matches content before another selector matches.
-type BeforeSelector struct {
-	Selector Selector
-	End      Selector
-}
-
-func (BeforeSelector) isSelector() {}
-
-// AfterSelector matches content after another selector matches.
-type AfterSelector struct {
-	Selector Selector
-	Start    Selector
-}
-
-func (AfterSelector) isSelector() {}
-
-// Element represents an element type (e.g., text, heading, par).
-type Element struct {
-	// Name is the element name.
-	Name string
-}
-
-// ShowableSelector wraps a Selector for show rule usage.
-// This type exists for type-safe casting from values.
-type ShowableSelector struct {
-	Selector Selector
-}
-
-// Transformation represents how content should be transformed in a show rule.
-type Transformation interface {
-	isTransformation()
-}
-
-// StyleTransformation applies styles to content.
-type StyleTransformation struct {
-	Styles *Styles
-}
-
-func (StyleTransformation) isTransformation() {}
-
-// FuncTransformation applies a function to transform content.
-type FuncTransformation struct {
-	Func *Func
-}
-
-func (FuncTransformation) isTransformation() {}
-
-// ContentTransformation replaces content directly.
-type ContentTransformation struct {
-	Content Content
-}
-
-func (ContentTransformation) isTransformation() {}
-
-// NoneTransformation hides the matched content.
-type NoneTransformation struct{}
-
-func (NoneTransformation) isTransformation() {}
 
 // ----------------------------------------------------------------------------
 // Set Rule Evaluation
 // ----------------------------------------------------------------------------
 
-// evalSetRule evaluates a set rule expression.
-// Set rules configure element defaults: `set text(fill: red)`.
-func evalSetRule(vm *Vm, e *syntax.SetRuleExpr) (Value, error) {
+// evalSetRuleToStyles evaluates a set rule and returns Styles.
+// This is the internal function that returns the styles directly.
+// Matches Rust: impl Eval for ast::SetRule (Output = Styles)
+func evalSetRuleToStyles(vm *Vm, e *syntax.SetRuleExpr) (*foundations.Styles, error) {
 	// Check optional condition
 	if condExpr := e.Condition(); condExpr != nil {
-		condVal, err := EvalExpr(vm, condExpr)
+		condVal, err := evalExpr(vm, condExpr)
 		if err != nil {
 			return nil, err
 		}
-		// Cast to bool
-		cond, ok := condVal.(BoolValue)
+		cond, ok := condVal.(foundations.Bool)
 		if !ok {
-			return nil, &TypeMismatchError{
-				Expected: "bool",
-				Got:      condVal.Type().String(),
+			return nil, &TypeError{
+				Expected: foundations.TypeBool,
+				Got:      condVal.Type(),
 				Span:     condExpr.ToUntyped().Span(),
 			}
 		}
 		// If condition is false, return empty styles
 		if !cond {
-			return StylesValue{Styles: &Styles{}}, nil
+			return foundations.NewStyles(), nil
 		}
 	}
 
-	// Get the target expression (the function identifier).
-	// In Typst syntax, `set text(fill: red)` has the target as `text` (Ident).
-	calleeExpr := e.Target()
-	if calleeExpr == nil {
+	// Evaluate the target expression (the function)
+	targetExpr := e.Target()
+	if targetExpr == nil {
 		return nil, &SetRuleError{
 			Message: "set rule missing target",
 			Span:    e.ToUntyped().Span(),
 		}
 	}
 
-	// Evaluate the callee to get the function
-	calleeVal, err := EvalExpr(vm, calleeExpr)
+	targetVal, err := evalExpr(vm, targetExpr)
 	if err != nil {
 		return nil, err
 	}
 
-	// Cast to function, with hint if shadowed
-	funcVal, ok := calleeVal.(FuncValue)
+	// Cast to function
+	funcVal, ok := targetVal.(foundations.FuncValue)
 	if !ok {
 		err := &TypeMismatchError{
 			Expected: "function",
-			Got:      calleeVal.Type().String(),
-			Span:     calleeExpr.ToUntyped().Span(),
+			Got:      targetVal.Type().String(),
+			Span:     targetExpr.ToUntyped().Span(),
 		}
-		return nil, hintIfShadowedStd(vm, calleeExpr, err)
+		return nil, hintIfShadowedStd(vm, targetExpr, err)
 	}
 
-	// Verify it's an element function (can be used in set rules)
-	elem := funcToElement(funcVal.Func)
+	// Get the element from the function
+	elem := funcVal.Func.ToElement()
 	if elem == nil {
 		return nil, &SetRuleError{
 			Message: "only element functions can be used in set rules",
-			Span:    calleeExpr.ToUntyped().Span(),
+			Span:    targetExpr.ToUntyped().Span(),
 		}
 	}
 
-	// Evaluate arguments from the set rule
-	argsNode := e.Args()
-	args, err := evalArgs(vm, argsNode)
+	// Evaluate arguments
+	args, err := evalArgs(vm, e.Args())
 	if err != nil {
 		return nil, err
 	}
-	args.Span = e.ToUntyped().Span()
+	args = args.WithSpan(e.ToUntyped().Span())
 
-	// Apply set rule to get styles
-	styles, err := applySetRule(vm.Engine, elem, args)
+	// Apply set rule to element
+	styles, err := elem.Set(vm.Engine, args)
 	if err != nil {
 		return nil, err
 	}
 
-	// Return styles scoped to the rule's span
-	styles = scopeStyles(styles, e.ToUntyped().Span())
-	return StylesValue{Styles: styles}, nil
+	// Mark styles as liftable and add span
+	return styles.WithSpan(e.ToUntyped().Span()).Liftable(), nil
 }
 
-// funcToElement extracts the Element from a function if it's an element function.
-// Returns nil if the function is not an element function.
-func funcToElement(f *Func) *Element {
-	if f == nil {
-		return nil
+// evalSetRule evaluates a set rule expression and returns a StylesValue.
+// This is the public function that returns a Value.
+func evalSetRule(vm *Vm, e *syntax.SetRuleExpr) (foundations.Value, error) {
+	styles, err := evalSetRuleToStyles(vm, e)
+	if err != nil {
+		return nil, err
 	}
-	// Element functions are identified by having IsElement = true
-	// For now, we check by name against known elements
-	if f.Name != nil {
-		name := *f.Name
-		// Known element functions
-		elementNames := map[string]bool{
-			"text": true, "par": true, "heading": true,
-			"list": true, "enum": true, "terms": true,
-			"raw": true, "strong": true, "emph": true,
-			"link": true, "ref": true, "footnote": true,
-			"cite": true, "quote": true, "figure": true,
-			"table": true, "image": true, "rect": true,
-			"circle": true, "ellipse": true, "line": true,
-			"polygon": true, "path": true, "block": true,
-			"box": true, "stack": true, "grid": true,
-			"columns": true, "place": true, "align": true,
-			"pad": true, "repeat": true, "move": true,
-			"rotate": true, "scale": true, "hide": true,
-			"page": true, "pagebreak": true, "colbreak": true,
-			"linebreak": true, "parbreak": true, "v": true,
-			"h": true, "equation": true, "math.frac": true,
-			"math.root": true, "math.attach": true, "math.lr": true,
-			"outline": true, "bibliography": true, "numbering": true,
-		}
-		if elementNames[name] {
-			return &Element{Name: name}
-		}
-	}
-	return nil
-}
-
-// applySetRule applies a set rule to an element, returning the resulting styles.
-// Set rules produce liftable styles that can propagate to page level.
-func applySetRule(engine *Engine, elem *Element, args *Args) (*Styles, error) {
-	// Create a style rule from the element and arguments
-	// Set rules are liftable - they can propagate into page headers/footers
-	rule := StyleRule{
-		Func: &Func{
-			Name: &elem.Name,
-			Span: args.Span,
-		},
-		Args:     args,
-		Span:     args.Span,
-		Liftable: true, // Set rules produce liftable styles
-	}
-
-	return &Styles{
-		Rules: []StyleRule{rule},
-	}, nil
-}
-
-// scopeStyles marks styles with span information and ensures they are liftable.
-// In Typst, set rules produce styles that can "lift" to page level, meaning they
-// propagate into page headers/footers. This is distinct from constructor-applied
-// styles which do not lift.
-func scopeStyles(styles *Styles, span syntax.Span) *Styles {
-	if styles == nil {
-		return nil
-	}
-	// Apply span to all rules that don't have one
-	for i := range styles.Rules {
-		if styles.Rules[i].Span.IsDetached() {
-			styles.Rules[i].Span = span
-		}
-	}
-	return styles
+	return foundations.StylesValue{Styles: styles}, nil
 }
 
 // ----------------------------------------------------------------------------
 // Show Rule Evaluation
 // ----------------------------------------------------------------------------
 
-// evalShowRule evaluates a show rule expression.
-// Show rules transform content: `show heading: it => emph(it.body)`.
-func evalShowRule(vm *Vm, e *syntax.ShowRuleExpr) (Value, error) {
+// evalShowRuleToRecipe evaluates a show rule and returns a Recipe.
+// This is the internal function that returns the recipe directly.
+// Matches Rust: impl Eval for ast::ShowRule (Output = Recipe)
+func evalShowRuleToRecipe(vm *Vm, e *syntax.ShowRuleExpr) (*foundations.Recipe, error) {
 	// Evaluate optional selector
-	var selector *Selector
+	var selector foundations.Selector
 	if selExpr := e.Selector(); selExpr != nil {
-		selVal, err := EvalExpr(vm, selExpr)
+		selVal, err := evalExpr(vm, selExpr)
 		if err != nil {
 			return nil, err
 		}
 
-		// Cast to ShowableSelector
-		sel, err := castToShowableSelector(selVal, selExpr)
+		showableSel, err := castToShowableSelector(selVal, selExpr)
 		if err != nil {
 			return nil, hintIfShadowedStd(vm, selExpr, err)
 		}
-		selector = &sel.Selector
+		selector = showableSel.Selector
 	}
 
 	// Evaluate transform expression
@@ -333,19 +131,17 @@ func evalShowRule(vm *Vm, e *syntax.ShowRuleExpr) (Value, error) {
 		}
 	}
 
-	var transform Transformation
+	var transform foundations.Transformation
 
 	// Special case: if transform is a set rule, convert to StyleTransformation
 	if setRule, ok := transformExpr.(*syntax.SetRuleExpr); ok {
-		stylesVal, err := evalSetRule(vm, setRule)
+		styles, err := evalSetRuleToStyles(vm, setRule)
 		if err != nil {
 			return nil, err
 		}
-		styles := stylesVal.(StylesValue).Styles
-		transform = StyleTransformation{Styles: styles}
+		transform = foundations.StyleTransformation{Styles: styles}
 	} else {
-		// Evaluate normally and cast to Transformation
-		transVal, err := EvalExpr(vm, transformExpr)
+		transVal, err := evalExpr(vm, transformExpr)
 		if err != nil {
 			return nil, err
 		}
@@ -357,63 +153,71 @@ func evalShowRule(vm *Vm, e *syntax.ShowRuleExpr) (Value, error) {
 	}
 
 	// Create recipe
-	recipe := NewRecipe(selector, transform, e.ToUntyped().Span())
+	recipe := foundations.NewRecipe(selector, transform, e.ToUntyped().Span())
 
 	// Validation warnings
 	checkShowPageRule(vm, recipe)
 	checkShowParSetBlock(vm, recipe)
 
-	// Return recipe wrapped in styles
-	// (Show rules produce styles containing recipes)
-	return StylesValue{
-		Styles: &Styles{
-			Recipes: []*Recipe{recipe},
-		},
-	}, nil
+	return recipe, nil
 }
 
+// evalShowRule evaluates a show rule expression and returns a StylesValue.
+// This is the public function that returns a Value.
+func evalShowRule(vm *Vm, e *syntax.ShowRuleExpr) (foundations.Value, error) {
+	recipe, err := evalShowRuleToRecipe(vm, e)
+	if err != nil {
+		return nil, err
+	}
+
+	// Wrap recipe in styles
+	styles := foundations.NewStyles()
+	styles.AddRecipe(recipe)
+	return foundations.StylesValue{Styles: styles}, nil
+}
+
+// ----------------------------------------------------------------------------
+// Type Casting
+// ----------------------------------------------------------------------------
+
 // castToShowableSelector casts a value to a ShowableSelector.
-func castToShowableSelector(val Value, expr syntax.Expr) (*ShowableSelector, error) {
+func castToShowableSelector(val foundations.Value, expr syntax.Expr) (*foundations.ShowableSelector, error) {
 	span := expr.ToUntyped().Span()
 
 	switch v := val.(type) {
-	case FuncValue:
-		// Function selector
-		elem := funcToElement(v.Func)
-		if elem != nil {
-			return &ShowableSelector{
-				Selector: ElemSelector{Element: *elem},
-			}, nil
+	case foundations.FuncValue:
+		// Function selector - must be an element function
+		if v.Func != nil {
+			if elem := v.Func.ToElement(); elem != nil {
+				return &foundations.ShowableSelector{
+					Selector: foundations.ElemSelector{Element: *elem},
+				}, nil
+			}
 		}
-		// Function as predicate
-		return &ShowableSelector{
-			Selector: FuncSelector{Func: v.Func},
+		return nil, &TypeMismatchError{
+			Expected: "element function",
+			Got:      "function",
+			Span:     span,
+		}
+
+	case foundations.LabelValue:
+		return &foundations.ShowableSelector{
+			Selector: foundations.LabelSelector{Label: string(v)},
 		}, nil
 
-	case LabelValue:
-		return &ShowableSelector{
-			Selector: LabelSelector{Label: string(v)},
+	case foundations.Str:
+		return &foundations.ShowableSelector{
+			Selector: foundations.RegexSelector{Pattern: string(v)},
 		}, nil
 
-	case StrValue:
-		return &ShowableSelector{
-			Selector: TextSelector{Text: string(v)},
-		}, nil
-
-	case RegexValue:
-		return &ShowableSelector{
-			Selector: TextSelector{Text: v.Pattern, IsRegex: true},
-		}, nil
-
-	case TypeValue:
-		// Type as element selector
-		return &ShowableSelector{
-			Selector: ElemSelector{Element: Element{Name: v.Inner.String()}},
+	case foundations.TypeValue:
+		return &foundations.ShowableSelector{
+			Selector: foundations.ElemSelector{Element: foundations.Element{Name: v.Inner.String()}},
 		}, nil
 
 	default:
 		return nil, &TypeMismatchError{
-			Expected: "selector (function, label, string, regex, or type)",
+			Expected: "selector (function, label, string, or type)",
 			Got:      val.Type().String(),
 			Span:     span,
 		}
@@ -421,19 +225,19 @@ func castToShowableSelector(val Value, expr syntax.Expr) (*ShowableSelector, err
 }
 
 // castToTransformation casts a value to a Transformation.
-func castToTransformation(val Value, span syntax.Span) (Transformation, error) {
+func castToTransformation(val foundations.Value, span syntax.Span) (foundations.Transformation, error) {
 	switch v := val.(type) {
-	case FuncValue:
-		return FuncTransformation{Func: v.Func}, nil
+	case foundations.FuncValue:
+		return foundations.FuncTransformation{Func: v.Func}, nil
 
-	case ContentValue:
-		return ContentTransformation{Content: v.Content}, nil
+	case foundations.ContentValue:
+		return foundations.ContentTransformation{Content: v.Content}, nil
 
-	case NoneValue:
-		return NoneTransformation{}, nil
+	case foundations.NoneValue:
+		return foundations.NoneTransformation{}, nil
 
-	case StylesValue:
-		return StyleTransformation{Styles: v.Styles}, nil
+	case foundations.StylesValue:
+		return foundations.StyleTransformation{Styles: v.Styles}, nil
 
 	default:
 		return nil, &TypeMismatchError{
@@ -449,18 +253,19 @@ func castToTransformation(val Value, span syntax.Span) (Transformation, error) {
 // ----------------------------------------------------------------------------
 
 // checkShowPageRule warns if a show rule targets pages.
-func checkShowPageRule(vm *Vm, recipe *Recipe) {
+// Matches Rust: fn check_show_page_rule(vm: &mut Vm, recipe: &Recipe)
+func checkShowPageRule(vm *Vm, recipe *foundations.Recipe) {
 	if recipe.Selector == nil {
 		return
 	}
-	elemSel, ok := (*recipe.Selector).(ElemSelector)
+	elemSel, ok := recipe.Selector.(foundations.ElemSelector)
 	if !ok {
 		return
 	}
 	if elemSel.Element.Name == "page" {
-		vm.Engine.sink.Warn(SourceDiagnostic{
+		vm.Engine.Sink.Warn(foundations.SourceDiagnostic{
 			Span:     recipe.Span,
-			Severity: SeverityWarning,
+			Severity: foundations.SeverityWarning,
 			Message:  "`show page` is not supported and has no effect",
 			Hints:    []string{"customize pages with `set page(..)` instead"},
 		})
@@ -468,11 +273,12 @@ func checkShowPageRule(vm *Vm, recipe *Recipe) {
 }
 
 // checkShowParSetBlock warns about deprecated show par: set block patterns.
-func checkShowParSetBlock(vm *Vm, recipe *Recipe) {
+// Matches Rust: fn check_show_par_set_block(vm: &mut Vm, recipe: &Recipe)
+func checkShowParSetBlock(vm *Vm, recipe *foundations.Recipe) {
 	if recipe.Selector == nil {
 		return
 	}
-	elemSel, ok := (*recipe.Selector).(ElemSelector)
+	elemSel, ok := recipe.Selector.(foundations.ElemSelector)
 	if !ok {
 		return
 	}
@@ -480,37 +286,28 @@ func checkShowParSetBlock(vm *Vm, recipe *Recipe) {
 		return
 	}
 
-	// Check if transform is a style transformation with block spacing
-	styleTrans, ok := recipe.Transform.(StyleTransformation)
+	// Check if transform is a style transformation with block above/below
+	styleTrans, ok := recipe.Transform.(foundations.StyleTransformation)
 	if !ok {
 		return
 	}
 
-	// Check if styles contain block.above or block.below
-	for _, rule := range styleTrans.Styles.Rules {
-		if rule.Func != nil && rule.Func.Name != nil && *rule.Func.Name == "block" {
-			// Check for above/below args
-			if rule.Args != nil {
-				if rule.Args.HasNamed("above") || rule.Args.HasNamed("below") || rule.Args.HasNamed("spacing") {
-					vm.Engine.sink.Warn(SourceDiagnostic{
-						Span:     recipe.Span,
-						Severity: SeverityWarning,
-						Message:  "`show par: set block(spacing: ..)` has no effect anymore",
-						Hints: []string{
-							"write `set par(spacing: ..)` instead",
-							"this is specific to paragraphs as they are not considered blocks anymore",
-						},
-					})
-					return
-				}
-			}
-		}
+	if styleTrans.Styles.HasBlockAbove() || styleTrans.Styles.HasBlockBelow() {
+		vm.Engine.Sink.Warn(foundations.SourceDiagnostic{
+			Span:     recipe.Span,
+			Severity: foundations.SeverityWarning,
+			Message:  "`show par: set block(spacing: ..)` has no effect anymore",
+			Hints: []string{
+				"write `set par(spacing: ..)` instead",
+				"this is specific to paragraphs as they are not considered blocks anymore",
+			},
+		})
 	}
 }
 
-// hintIfShadowedStd adds a hint to an error if the identifier shadows a standard library function.
+// hintIfShadowedStd adds a hint if an identifier shadows a standard library function.
+// Matches Rust: fn hint_if_shadowed_std(vm: &Vm, expr: &ast::Expr, err: EcoString) -> EcoString
 func hintIfShadowedStd(vm *Vm, expr syntax.Expr, err error) error {
-	// Check if the expression is an identifier
 	ident, ok := expr.(*syntax.IdentExpr)
 	if !ok {
 		return err
@@ -519,12 +316,11 @@ func hintIfShadowedStd(vm *Vm, expr syntax.Expr, err error) error {
 	name := ident.Get()
 
 	// Check if there's a standard library function with this name
-	if vm.WorldInternal() != nil {
-		lib := vm.WorldInternal().Library()
+	if vm.Engine != nil && vm.Engine.World != nil {
+		lib := vm.Engine.World.Library()
 		if lib != nil {
 			if binding := lib.Get(name); binding != nil {
 				// The name exists in the standard library but was shadowed
-				// Add a hint to the error
 				if tmErr, ok := err.(*TypeMismatchError); ok {
 					return &TypeMismatchErrorWithHint{
 						TypeMismatchError: *tmErr,
@@ -539,31 +335,7 @@ func hintIfShadowedStd(vm *Vm, expr syntax.Expr, err error) error {
 }
 
 // ----------------------------------------------------------------------------
-// Styles Extensions
-// ----------------------------------------------------------------------------
-
-// WithRecipes returns a copy of styles with recipes added.
-func (s *Styles) WithRecipes(recipes []*Recipe) *Styles {
-	return &Styles{
-		Rules:   s.Rules,
-		Recipes: recipes,
-	}
-}
-
-// HasRule checks if styles have a rule for a specific function/property.
-func (s *Styles) HasRule(funcName string, propName string) bool {
-	for _, rule := range s.Rules {
-		if rule.Func != nil && rule.Func.Name != nil && *rule.Func.Name == funcName {
-			if rule.Args != nil && rule.Args.HasNamed(propName) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// ----------------------------------------------------------------------------
-// Additional Error Types
+// Error Types
 // ----------------------------------------------------------------------------
 
 // SetRuleError is returned when a set rule is invalid.
