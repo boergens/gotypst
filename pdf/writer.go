@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/boergens/gotypst/layout"
 	"github.com/boergens/gotypst/layout/inline"
 	"github.com/boergens/gotypst/layout/pages"
 )
@@ -375,13 +374,23 @@ func (w *Writer) processPage(page *pages.Page, pagesRef Ref) (Ref, map[string]Re
 	var content bytes.Buffer
 	imageRefs := make(map[string]Ref)
 	imageCounter := 0
-	pageHeight := page.Frame.Size.Height
+	pageHeight := float64(page.Frame.Size.Height)
 
-	// Process frame items
-	err := w.processFrame(&page.Frame, &content, imageRefs, &imageCounter, 0, 0, pageHeight)
+	// Apply coordinate system transform: flip Y axis so origin is top-left
+	// Transform matrix: [1 0 0 -1 0 pageHeight] means:
+	//   - scale Y by -1 (flip)
+	//   - translate by pageHeight (move origin to top)
+	// This converts from Typst's top-left origin to PDF's bottom-left origin
+	fmt.Fprintf(&content, "q\n")                              // Save initial state
+	fmt.Fprintf(&content, "1 0 0 -1 0 %g cm\n", pageHeight)   // Flip Y coordinate system
+
+	// Process frame items using transform-based positioning
+	err := w.processFrameWithTransforms(&page.Frame, &content, imageRefs, &imageCounter)
 	if err != nil {
 		return Ref{}, nil, err
 	}
+
+	fmt.Fprintf(&content, "Q\n") // Restore initial state
 
 	// Create content stream
 	stream := Stream{
@@ -396,28 +405,33 @@ func (w *Writer) processPage(page *pages.Page, pagesRef Ref) (Ref, map[string]Re
 	return contentRef, imageRefs, nil
 }
 
-// processFrame recursively processes frame items and generates PDF operators.
-func (w *Writer) processFrame(frame *pages.Frame, content *bytes.Buffer, imageRefs map[string]Ref, imageCounter *int, offsetX, offsetY layout.Abs, pageHeight layout.Abs) error {
+// processFrameWithTransforms recursively processes frame items using PDF transforms.
+// This follows the Rust approach: use q/Q for state save/restore and cm for positioning.
+// The page-level transform has already flipped Y, so we use Typst coordinates directly.
+func (w *Writer) processFrameWithTransforms(frame *pages.Frame, content *bytes.Buffer, imageRefs map[string]Ref, imageCounter *int) error {
 	for _, item := range frame.Items {
-		x := offsetX + item.Pos.X
-		y := offsetY + item.Pos.Y
+		x := float64(item.Pos.X)
+		y := float64(item.Pos.Y)
 
 		switch v := item.Item.(type) {
 		case pages.GroupItem:
-			// Recurse into nested frame
-			if err := w.processFrame(&v.Frame, content, imageRefs, imageCounter, x, y, pageHeight); err != nil {
+			// Save state, translate to item position, recurse, restore
+			fmt.Fprintf(content, "q\n")                    // Save graphics state
+			fmt.Fprintf(content, "1 0 0 1 %g %g cm\n", x, y) // Translate to position
+			if err := w.processFrameWithTransforms(&v.Frame, content, imageRefs, imageCounter); err != nil {
 				return err
 			}
+			fmt.Fprintf(content, "Q\n") // Restore graphics state
 
 		case pages.InlineItem:
-			// Render inline text content using the renderer
-			cs := NewContentStream()
-			w.renderer.pageHeight = pageHeight
-			if frame, ok := v.Frame.(*inline.FinalFrame); ok {
-				pos := layout.Point{X: x, Y: y}
-				w.renderer.RenderInlineFrame(cs, frame, pos)
+			// Render inline text content
+			// TODO: Update renderer to use transform-based approach
+			fmt.Fprintf(content, "q\n")
+			fmt.Fprintf(content, "1 0 0 1 %g %g cm\n", x, y)
+			if finalFrame, ok := v.Frame.(*inline.FinalFrame); ok {
+				w.renderInlineFrameLocal(content, finalFrame)
 			}
-			content.Write(cs.Bytes())
+			fmt.Fprintf(content, "Q\n")
 
 		case pages.ImageItem:
 			// Get or create image XObject
@@ -431,60 +445,85 @@ func (w *Writer) processFrame(frame *pages.Frame, content *bytes.Buffer, imageRe
 			*imageCounter++
 			imageRefs[imgName] = imgRef
 
-			// Generate image placement operator
-			// PDF images are placed with a transformation matrix
-			// cm operator: a b c d e f -> [a b c d e f] transformation matrix
-			// For images: [width 0 0 height x y] cm
-			// Y coordinate needs to be flipped for PDF coordinate system
+			// Images in PDF are 1x1 unit, scaled by transform
+			// With Y already flipped, we translate to position and scale
 			width := float64(v.Size.Width)
 			height := float64(v.Size.Height)
-			xPos := float64(x)
-			// PDF origin is bottom-left, Typst origin is top-left
-			// We need to account for this in the page rendering
-			yPos := float64(y)
 
-			fmt.Fprintf(content, "q\n")                                             // Save graphics state
-			fmt.Fprintf(content, "%g 0 0 %g %g %g cm\n", width, height, xPos, yPos) // Transform matrix
-			fmt.Fprintf(content, "/%s Do\n", imgName)                               // Draw image
-			fmt.Fprintf(content, "Q\n")                                             // Restore graphics state
+			fmt.Fprintf(content, "q\n")                                   // Save graphics state
+			fmt.Fprintf(content, "1 0 0 1 %g %g cm\n", x, y)              // Translate to position
+			fmt.Fprintf(content, "%g 0 0 %g 0 0 cm\n", width, height)     // Scale to size
+			fmt.Fprintf(content, "/%s Do\n", imgName)                     // Draw image
+			fmt.Fprintf(content, "Q\n")                                   // Restore graphics state
 
 		case pages.TagItem:
 			// Tags don't produce PDF content
 
 		case pages.TextItem:
-			// Render simple text
-			// PDF origin is bottom-left, so we need to flip Y coordinate
+			// Render text at local position
+			// Since Y is already flipped at page level, we use coordinates directly
+			// But text baseline needs adjustment: text is drawn from baseline up
 			fontSize := float64(v.FontSize)
-			xPos := float64(x)
-			// Y position needs to account for page height and baseline
-			yPos := float64(frame.Size.Height - y - v.FontSize)
 
 			fmt.Fprintf(content, "BT\n")                            // Begin text
 			fmt.Fprintf(content, "/F1 %g Tf\n", fontSize)           // Set font and size
-			fmt.Fprintf(content, "%g %g Td\n", xPos, yPos)          // Position
+			// Position text: x is direct, y needs baseline offset (text draws upward from baseline)
+			// In flipped coordinates, we add fontSize to move baseline down
+			fmt.Fprintf(content, "%g %g Td\n", x, y+fontSize)       // Position at baseline
 			fmt.Fprintf(content, "(%s) Tj\n", escapeString(v.Text)) // Show text
 			fmt.Fprintf(content, "ET\n")                            // End text
 
 		case pages.ShapedTextItem:
 			// ShapedTextItem support - render using fallback for now
-			// Full support requires font subsetting integration
 			if len(v.Glyphs) == 0 {
 				continue
 			}
 
 			fontSize := float64(v.FontSize)
-			xPos := float64(x)
-			yPos := float64(frame.Size.Height - y - v.FontSize)
 
 			fmt.Fprintf(content, "BT\n")
 			fmt.Fprintf(content, "/F1 %g Tf\n", fontSize)
-			fmt.Fprintf(content, "%g %g Td\n", xPos, yPos)
-			// Render as placeholder - actual glyph rendering needs font subsetting
-			fmt.Fprintf(content, "( ) Tj\n")
+			fmt.Fprintf(content, "%g %g Td\n", x, y+fontSize)
+			fmt.Fprintf(content, "( ) Tj\n") // Placeholder
 			fmt.Fprintf(content, "ET\n")
 		}
 	}
 	return nil
+}
+
+// renderInlineFrameLocal renders an inline frame at the current transform position.
+func (w *Writer) renderInlineFrameLocal(content *bytes.Buffer, frame *inline.FinalFrame) {
+	for _, entry := range frame.Items {
+		x := float64(entry.Pos.X)
+		y := float64(entry.Pos.Y)
+
+		switch item := entry.Item.(type) {
+		case inline.FinalTextItem:
+			if item.Text == nil || item.Text.Glyphs.Len() == 0 {
+				continue
+			}
+			// Get font size from first glyph
+			glyphs := item.Text.Glyphs.Kept()
+			if len(glyphs) == 0 {
+				continue
+			}
+			fontSize := float64(glyphs[0].Size)
+			baseline := float64(frame.Baseline)
+
+			fmt.Fprintf(content, "BT\n")
+			fmt.Fprintf(content, "/F1 %g Tf\n", fontSize)
+			// Position: y is from top of frame, baseline is offset from top
+			fmt.Fprintf(content, "%g %g Td\n", x, y+baseline)
+
+			// Build text string from glyphs
+			var text bytes.Buffer
+			for i := range glyphs {
+				text.WriteRune(glyphs[i].Char)
+			}
+			fmt.Fprintf(content, "(%s) Tj\n", escapeString(text.String()))
+			fmt.Fprintf(content, "ET\n")
+		}
+	}
 }
 
 // escapeString escapes special characters for PDF string literals.
