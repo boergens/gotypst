@@ -8,7 +8,7 @@ package eval
 //
 // Element implementations are organized by Typst module:
 // - elem_model.go:     par, parbreak, heading, list, enum, link, table
-// - elem_layout.go:    stack, align, columns, box, block, pad
+// - elem_layout_*.go:  stack, align, columns, box, block, pad, grid, page
 // - elem_visualize.go: image
 // - text_funcs.go:     text, strong, emph, raw
 
@@ -30,13 +30,15 @@ func RegisterElementFunctions(scope *Scope) {
 	scope.DefineFunc("link", LinkFunc())
 	scope.DefineFunc("table", TableFunc())
 
-	// Layout module functions (from elem_layout.go)
+	// Layout module functions (from elem_layout_*.go)
 	scope.DefineFunc("stack", StackFunc())
 	scope.DefineFunc("align", AlignFunc())
 	scope.DefineFunc("columns", ColumnsFunc())
 	scope.DefineFunc("box", BoxFunc())
 	scope.DefineFunc("block", BlockFunc())
 	scope.DefineFunc("pad", PadFunc())
+	scope.DefineFunc("grid", GridFunc())
+	scope.DefineFunc("page", PageFunc())
 
 	// Visualize module functions (from elem_visualize.go)
 	scope.DefineFunc("image", ImageFunc())
@@ -75,6 +77,8 @@ func ElementFunctions() map[string]*Func {
 		"box":     BoxFunc(),
 		"block":   BlockFunc(),
 		"pad":     PadFunc(),
+		"grid":    GridFunc(),
+		"page":    PageFunc(),
 
 		// Visualize module
 		"image": ImageFunc(),
