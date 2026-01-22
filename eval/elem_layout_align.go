@@ -1,32 +1,30 @@
 package eval
 
 import (
+	"github.com/boergens/gotypst/library/foundations"
+	"github.com/boergens/gotypst/library/layout"
 	"github.com/boergens/gotypst/syntax"
 )
 
-// ----------------------------------------------------------------------------
-// Align Element
-// ----------------------------------------------------------------------------
-// Reference: typst-reference/crates/typst-library/src/layout/align.rs
+// Re-export layout types for backwards compatibility.
+type (
+	Alignment2D  = layout.Alignment2D
+	HAlignment   = layout.HAlignment
+	VAlignment   = layout.VAlignment
+	AlignElement = layout.AlignElement
+)
 
-// Alignment2D represents a 2D alignment value (horizontal and vertical).
-type Alignment2D struct {
-	// Horizontal alignment (left, center, right, or none for not specified).
-	Horizontal *string
-	// Vertical alignment (top, horizon, bottom, or none for not specified).
-	Vertical *string
-}
-
-// AlignElement represents an alignment container element.
-// It positions its content according to the specified alignment.
-type AlignElement struct {
-	// Alignment is the 2D alignment specification.
-	Alignment Alignment2D
-	// Body is the content to align.
-	Body Content
-}
-
-func (*AlignElement) IsContentElement() {}
+// Re-export alignment constants.
+const (
+	HAlignStart  = layout.HAlignStart
+	HAlignLeft   = layout.HAlignLeft
+	HAlignCenter = layout.HAlignCenter
+	HAlignRight  = layout.HAlignRight
+	HAlignEnd    = layout.HAlignEnd
+	VAlignTop    = layout.VAlignTop
+	VAlignHorizon = layout.VAlignHorizon
+	VAlignBottom = layout.VAlignBottom
+)
 
 // AlignFunc creates the align element function.
 func AlignFunc() *Func {
@@ -48,13 +46,7 @@ func AlignFunc() *Func {
 }
 
 // alignNative implements the align() function.
-// Creates an AlignElement to position content.
-//
-// Arguments:
-//   - alignment (positional, alignment): The alignment specification
-//   - body (positional, content): The content to align
-func alignNative(engine *Engine, context *Context, args *Args) (Value, error) {
-	// Get required alignment argument
+func alignNative(engine foundations.Engine, context foundations.Context, args *Args) (Value, error) {
 	alignArg, err := args.Expect("alignment")
 	if err != nil {
 		return nil, err
@@ -65,7 +57,6 @@ func alignNative(engine *Engine, context *Context, args *Args) (Value, error) {
 		return nil, err
 	}
 
-	// Get required body argument
 	bodyArg, err := args.Expect("body")
 	if err != nil {
 		return nil, err
@@ -82,14 +73,12 @@ func alignNative(engine *Engine, context *Context, args *Args) (Value, error) {
 		}
 	}
 
-	// Check for unexpected arguments
 	if err := args.Finish(); err != nil {
 		return nil, err
 	}
 
-	// Create the AlignElement wrapped in ContentValue
 	return ContentValue{Content: Content{
-		Elements: []ContentElement{&AlignElement{
+		Elements: []ContentElement{&layout.AlignElement{
 			Alignment: alignment,
 			Body:      body,
 		}},
@@ -97,16 +86,11 @@ func alignNative(engine *Engine, context *Context, args *Args) (Value, error) {
 }
 
 // parseAlignment parses an alignment value from a Value.
-// Supports: left, center, right, top, horizon, bottom, or 2D combinations.
-func parseAlignment(v Value, span syntax.Span) (Alignment2D, error) {
-	// Handle string alignment values
+func parseAlignment(v Value, span syntax.Span) (layout.Alignment2D, error) {
 	if s, ok := AsStr(v); ok {
 		return parseAlignmentString(s, span)
 	}
-
-	// Handle alignment value types (for when we have proper alignment types)
-	// For now, return an error for unsupported types
-	return Alignment2D{}, &TypeMismatchError{
+	return layout.Alignment2D{}, &TypeMismatchError{
 		Expected: "alignment",
 		Got:      v.Type().String(),
 		Span:     span,
@@ -114,36 +98,36 @@ func parseAlignment(v Value, span syntax.Span) (Alignment2D, error) {
 }
 
 // parseAlignmentString parses an alignment from a string.
-func parseAlignmentString(s string, span syntax.Span) (Alignment2D, error) {
-	var result Alignment2D
+func parseAlignmentString(s string, span syntax.Span) (layout.Alignment2D, error) {
+	var result layout.Alignment2D
 
 	switch s {
 	case "left":
-		h := "left"
+		h := layout.HAlignLeft
 		result.Horizontal = &h
 	case "center":
-		h := "center"
+		h := layout.HAlignCenter
 		result.Horizontal = &h
 	case "right":
-		h := "right"
+		h := layout.HAlignRight
 		result.Horizontal = &h
 	case "top":
-		v := "top"
+		v := layout.VAlignTop
 		result.Vertical = &v
 	case "horizon":
-		v := "horizon"
+		v := layout.VAlignHorizon
 		result.Vertical = &v
 	case "bottom":
-		v := "bottom"
+		v := layout.VAlignBottom
 		result.Vertical = &v
 	case "start":
-		h := "start"
+		h := layout.HAlignStart
 		result.Horizontal = &h
 	case "end":
-		h := "end"
+		h := layout.HAlignEnd
 		result.Horizontal = &h
 	default:
-		return Alignment2D{}, &TypeMismatchError{
+		return layout.Alignment2D{}, &TypeMismatchError{
 			Expected: "\"left\", \"center\", \"right\", \"top\", \"horizon\", \"bottom\", \"start\", or \"end\"",
 			Got:      "\"" + s + "\"",
 			Span:     span,

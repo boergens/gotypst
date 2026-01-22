@@ -1,40 +1,16 @@
 package eval
 
 import (
+	"github.com/boergens/gotypst/library/foundations"
+	"github.com/boergens/gotypst/library/layout"
 	"github.com/boergens/gotypst/syntax"
 )
 
-// ----------------------------------------------------------------------------
-// Box Element
-// ----------------------------------------------------------------------------
-// Reference: typst-reference/crates/typst-library/src/layout/container.rs
-
-// BoxElement represents an inline box container element.
-// It can size its content, apply fills/strokes, and clip overflow.
-type BoxElement struct {
-	// Width of the box (in points). If nil, auto-sizes to content.
-	Width *float64
-	// Height of the box (in points). If nil, auto-sizes to content.
-	Height *float64
-	// Baseline position (in points from bottom). If nil, uses content baseline.
-	Baseline *float64
-	// Fill color for the background. If nil, no fill.
-	Fill Value
-	// Stroke for the border. Can be length, color, or stroke dict. If nil, no stroke.
-	Stroke Value
-	// Radius for rounded corners. Can be single value or dictionary.
-	Radius Value
-	// Inset padding inside the box.
-	Inset Value
-	// Outset expansion outside the box.
-	Outset Value
-	// Whether to clip content that overflows the box.
-	Clip bool
-	// Body is the content inside the box.
-	Body Content
-}
-
-func (*BoxElement) IsContentElement() {}
+// Re-export container types for backwards compatibility.
+type (
+	BoxElement   = layout.BoxElement
+	BlockElement = layout.BlockElement
+)
 
 // BoxFunc creates the box element function.
 func BoxFunc() *Func {
@@ -77,8 +53,8 @@ func BoxFunc() *Func {
 //   - inset (named, various, default: none): Inner padding
 //   - outset (named, various, default: none): Outer expansion
 //   - clip (named, bool, default: false): Whether to clip overflow
-func boxNative(engine *Engine, context *Context, args *Args) (Value, error) {
-	elem := &BoxElement{}
+func boxNative(engine foundations.Engine, context foundations.Context, args *Args) (Value, error) {
+	elem := &layout.BoxElement{}
 
 	// Get optional body argument (positional or named)
 	bodyArg := args.Find("body")
@@ -220,41 +196,6 @@ func boxNative(engine *Engine, context *Context, args *Args) (Value, error) {
 // Block Element
 // ----------------------------------------------------------------------------
 
-// BlockElement represents a block-level container element.
-// It creates a new block in the document flow with optional sizing and styling.
-type BlockElement struct {
-	// Width of the block (in points). If nil, auto-sizes.
-	Width *float64
-	// Height of the block (in points). If nil, auto-sizes.
-	Height *float64
-	// Whether the block can break across pages.
-	Breakable *bool
-	// Fill color for the background.
-	Fill Value
-	// Stroke for the border.
-	Stroke Value
-	// Radius for rounded corners.
-	Radius Value
-	// Inset padding inside the block.
-	Inset Value
-	// Outset expansion outside the block.
-	Outset Value
-	// Spacing between adjacent blocks.
-	Spacing *float64
-	// Spacing above this block (overrides Spacing).
-	Above *float64
-	// Spacing below this block (overrides Spacing).
-	Below *float64
-	// Whether to clip content that overflows.
-	Clip bool
-	// Whether the block sticks to the next block.
-	Sticky bool
-	// Body is the content inside the block.
-	Body Content
-}
-
-func (*BlockElement) IsContentElement() {}
-
 // BlockFunc creates the block element function.
 func BlockFunc() *Func {
 	name := "block"
@@ -304,8 +245,8 @@ func BlockFunc() *Func {
 //   - below (named, length, default: auto): Spacing below this block
 //   - clip (named, bool, default: false): Whether to clip overflow
 //   - sticky (named, bool, default: false): Whether to stick to next block
-func blockNative(engine *Engine, context *Context, args *Args) (Value, error) {
-	elem := &BlockElement{}
+func blockNative(engine foundations.Engine, context foundations.Context, args *Args) (Value, error) {
+	elem := &layout.BlockElement{}
 
 	// Get optional body argument (positional or named)
 	bodyArg := args.Find("body")

@@ -1,41 +1,24 @@
 package eval
 
 import (
+	"github.com/boergens/gotypst/library/foundations"
+	"github.com/boergens/gotypst/library/layout"
 	"github.com/boergens/gotypst/syntax"
 )
 
-// ----------------------------------------------------------------------------
-// Stack Element
-// ----------------------------------------------------------------------------
-// Reference: typst-reference/crates/typst-library/src/layout/stack.rs
-
-// StackDirection represents the direction for stack layout.
-type StackDirection string
-
-const (
-	// StackLTR arranges children from left to right.
-	StackLTR StackDirection = "ltr"
-	// StackRTL arranges children from right to left.
-	StackRTL StackDirection = "rtl"
-	// StackTTB arranges children from top to bottom.
-	StackTTB StackDirection = "ttb"
-	// StackBTT arranges children from bottom to top.
-	StackBTT StackDirection = "btt"
+// Re-export stack types for backwards compatibility.
+type (
+	StackDirection = layout.StackDirection
+	StackElement   = layout.StackElement
 )
 
-// StackElement represents a stack layout element.
-// It arranges its children along an axis with optional spacing.
-type StackElement struct {
-	// Dir is the stacking direction (ltr, rtl, ttb, btt).
-	Dir StackDirection
-	// Spacing is the spacing between children (in points).
-	// If nil, uses default spacing (0pt).
-	Spacing *float64
-	// Children contains the content elements to stack.
-	Children []Content
-}
-
-func (*StackElement) IsContentElement() {}
+// Re-export stack direction constants.
+const (
+	StackLTR = layout.StackLTR
+	StackRTL = layout.StackRTL
+	StackTTB = layout.StackTTB
+	StackBTT = layout.StackBTT
+)
 
 // StackFunc creates the stack element function.
 func StackFunc() *Func {
@@ -58,15 +41,8 @@ func StackFunc() *Func {
 }
 
 // stackNative implements the stack() function.
-// Creates a StackElement with the given direction and children.
-//
-// Arguments:
-//   - dir (named, str, default: "ttb"): The stacking direction (ltr, rtl, ttb, btt)
-//   - spacing (named, length, default: none): The spacing between children
-//   - children (positional, variadic, content): The content elements to stack
-func stackNative(engine *Engine, context *Context, args *Args) (Value, error) {
-	// Get optional dir argument (default: "ttb")
-	dir := StackTTB
+func stackNative(engine foundations.Engine, context foundations.Context, args *Args) (Value, error) {
+	dir := layout.StackTTB
 	if dirArg := args.Find("dir"); dirArg != nil {
 		if !IsNone(dirArg.V) && !IsAuto(dirArg.V) {
 			dirStr, ok := AsStr(dirArg.V)
@@ -77,16 +53,15 @@ func stackNative(engine *Engine, context *Context, args *Args) (Value, error) {
 					Span:     dirArg.Span,
 				}
 			}
-			// Validate direction
 			switch dirStr {
 			case "ltr":
-				dir = StackLTR
+				dir = layout.StackLTR
 			case "rtl":
-				dir = StackRTL
+				dir = layout.StackRTL
 			case "ttb":
-				dir = StackTTB
+				dir = layout.StackTTB
 			case "btt":
-				dir = StackBTT
+				dir = layout.StackBTT
 			default:
 				return nil, &TypeMismatchError{
 					Expected: "\"ltr\", \"rtl\", \"ttb\", or \"btt\"",
@@ -97,7 +72,6 @@ func stackNative(engine *Engine, context *Context, args *Args) (Value, error) {
 		}
 	}
 
-	// Get optional spacing argument
 	var spacing *float64
 	if spacingArg := args.Find("spacing"); spacingArg != nil {
 		if !IsNone(spacingArg.V) && !IsAuto(spacingArg.V) {
@@ -114,14 +88,12 @@ func stackNative(engine *Engine, context *Context, args *Args) (Value, error) {
 		}
 	}
 
-	// Collect remaining positional arguments as children
 	var children []Content
 	for {
 		childArg := args.Eat()
 		if childArg == nil {
 			break
 		}
-
 		if cv, ok := childArg.V.(ContentValue); ok {
 			children = append(children, cv.Content)
 		} else {
@@ -133,14 +105,12 @@ func stackNative(engine *Engine, context *Context, args *Args) (Value, error) {
 		}
 	}
 
-	// Check for unexpected arguments
 	if err := args.Finish(); err != nil {
 		return nil, err
 	}
 
-	// Create the StackElement wrapped in ContentValue
 	return ContentValue{Content: Content{
-		Elements: []ContentElement{&StackElement{
+		Elements: []ContentElement{&layout.StackElement{
 			Dir:      dir,
 			Spacing:  spacing,
 			Children: children,
