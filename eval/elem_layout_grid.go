@@ -91,7 +91,7 @@ func GridFunc() *Func {
 //   - fill (named, color or function, default: none): Cell fill
 //   - stroke (named, stroke, default: none): Cell stroke
 //   - children (positional, variadic, content): Grid cells
-func gridNative(vm *Vm, args *Args) (Value, error) {
+func gridNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	elem := &GridElement{}
 
 	// Get optional columns argument

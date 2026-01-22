@@ -43,7 +43,7 @@ func ReadFunc() *Func {
 
 // readNative implements read(path, encoding: "utf-8").
 // Reads a file and returns its contents as a string (for text) or bytes (for binary).
-func readNative(vm *Vm, args *Args) (Value, error) {
+func readNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required path argument
 	pathArg, err := args.Expect("path")
 	if err != nil {
@@ -85,7 +85,7 @@ func readNative(vm *Vm, args *Args) (Value, error) {
 	}
 
 	// Resolve and read the file
-	data, err := readFileFromWorld(vm, path)
+	data, err := readFileFromWorld(engine, path)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +127,7 @@ func JsonFunc() *Func {
 
 // jsonNative implements json(path).
 // Reads and parses a JSON file, returning a dictionary or array.
-func jsonNative(vm *Vm, args *Args) (Value, error) {
+func jsonNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required path argument
 	pathArg, err := args.Expect("path")
 	if err != nil {
@@ -149,7 +149,7 @@ func jsonNative(vm *Vm, args *Args) (Value, error) {
 	}
 
 	// Read the file
-	data, err := readFileFromWorld(vm, path)
+	data, err := readFileFromWorld(engine, path)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +187,7 @@ func YamlFunc() *Func {
 
 // yamlNative implements yaml(path).
 // Reads and parses a YAML file, returning a dictionary or array.
-func yamlNative(vm *Vm, args *Args) (Value, error) {
+func yamlNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required path argument
 	pathArg, err := args.Expect("path")
 	if err != nil {
@@ -209,7 +209,7 @@ func yamlNative(vm *Vm, args *Args) (Value, error) {
 	}
 
 	// Read the file
-	data, err := readFileFromWorld(vm, path)
+	data, err := readFileFromWorld(engine, path)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +247,7 @@ func TomlFunc() *Func {
 
 // tomlNative implements toml(path).
 // Reads and parses a TOML file, returning a dictionary.
-func tomlNative(vm *Vm, args *Args) (Value, error) {
+func tomlNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required path argument
 	pathArg, err := args.Expect("path")
 	if err != nil {
@@ -269,7 +269,7 @@ func tomlNative(vm *Vm, args *Args) (Value, error) {
 	}
 
 	// Read the file
-	data, err := readFileFromWorld(vm, path)
+	data, err := readFileFromWorld(engine, path)
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +309,7 @@ func CsvFunc() *Func {
 
 // csvNative implements csv(path, delimiter: ",", row-type: "array").
 // Reads and parses a CSV file, returning an array of arrays or dictionaries.
-func csvNative(vm *Vm, args *Args) (Value, error) {
+func csvNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required path argument
 	pathArg, err := args.Expect("path")
 	if err != nil {
@@ -370,7 +370,7 @@ func csvNative(vm *Vm, args *Args) (Value, error) {
 	}
 
 	// Read the file
-	data, err := readFileFromWorld(vm, path)
+	data, err := readFileFromWorld(engine, path)
 	if err != nil {
 		return nil, err
 	}
@@ -426,7 +426,7 @@ func XmlFunc() *Func {
 
 // xmlNative implements xml(path).
 // Reads and parses an XML file, returning a nested dictionary structure.
-func xmlNative(vm *Vm, args *Args) (Value, error) {
+func xmlNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required path argument
 	pathArg, err := args.Expect("path")
 	if err != nil {
@@ -448,7 +448,7 @@ func xmlNative(vm *Vm, args *Args) (Value, error) {
 	}
 
 	// Read the file
-	data, err := readFileFromWorld(vm, path)
+	data, err := readFileFromWorld(engine, path)
 	if err != nil {
 		return nil, err
 	}
@@ -470,15 +470,15 @@ func xmlNative(vm *Vm, args *Args) (Value, error) {
 // Helper Functions
 // ----------------------------------------------------------------------------
 
-// readFileFromWorld reads a file using the VM's World interface.
-func readFileFromWorld(vm *Vm, path string) ([]byte, error) {
+// readFileFromWorld reads a file using the Engine's World interface.
+func readFileFromWorld(engine *Engine, path string) ([]byte, error) {
 	// Handle absolute paths and relative paths
 	var resolvedPath string
 	if filepath.IsAbs(path) {
 		resolvedPath = path
 	} else {
 		// Resolve relative to the main file's directory
-		mainFile := vm.World().MainFile()
+		mainFile := engine.World.MainFile()
 		if mainFile.Path != "" {
 			dir := filepath.Dir(mainFile.Path)
 			resolvedPath = filepath.Join(dir, path)
@@ -489,7 +489,7 @@ func readFileFromWorld(vm *Vm, path string) ([]byte, error) {
 
 	// Create FileID and read through World interface
 	fileID := FileID{Path: resolvedPath}
-	data, err := vm.World().File(fileID)
+	data, err := engine.World.File(fileID)
 	if err != nil {
 		return nil, &FileReadError{
 			Path:    path,

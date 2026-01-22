@@ -77,7 +77,7 @@ func BoxFunc() *Func {
 //   - inset (named, various, default: none): Inner padding
 //   - outset (named, various, default: none): Outer expansion
 //   - clip (named, bool, default: false): Whether to clip overflow
-func boxNative(vm *Vm, args *Args) (Value, error) {
+func boxNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	elem := &BoxElement{}
 
 	// Get optional body argument (positional or named)
@@ -304,7 +304,7 @@ func BlockFunc() *Func {
 //   - below (named, length, default: auto): Spacing below this block
 //   - clip (named, bool, default: false): Whether to clip overflow
 //   - sticky (named, bool, default: false): Whether to stick to next block
-func blockNative(vm *Vm, args *Args) (Value, error) {
+func blockNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	elem := &BlockElement{}
 
 	// Get optional body argument (positional or named)

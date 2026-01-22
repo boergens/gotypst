@@ -87,7 +87,7 @@ func TestReadNativeBasic(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("file.txt"), syntax.Detached())
 
-	result, err := readNative(vm, args)
+	result, err := readNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("readNative() error: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestReadNativeAbsolutePath(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("/absolute/path/file.txt"), syntax.Detached())
 
-	result, err := readNative(vm, args)
+	result, err := readNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("readNative() error: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestReadNativeBinaryEncoding(t *testing.T) {
 	args.Push(Str("file.bin"), syntax.Detached())
 	args.PushNamed("encoding", None, syntax.Detached())
 
-	result, err := readNative(vm, args)
+	result, err := readNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("readNative() error: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestReadNativeFileNotFound(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("nonexistent.txt"), syntax.Detached())
 
-	_, err := readNative(vm, args)
+	_, err := readNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for nonexistent file")
 	}
@@ -173,7 +173,7 @@ func TestReadNativeMissingPath(t *testing.T) {
 
 	args := NewArgs(syntax.Detached())
 
-	_, err := readNative(vm, args)
+	_, err := readNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for missing path argument")
 	}
@@ -206,7 +206,7 @@ func TestJsonNativeObject(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("data.json"), syntax.Detached())
 
-	result, err := jsonNative(vm, args)
+	result, err := jsonNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("jsonNative() error: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestJsonNativeArray(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("data.json"), syntax.Detached())
 
-	result, err := jsonNative(vm, args)
+	result, err := jsonNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("jsonNative() error: %v", err)
 	}
@@ -285,7 +285,7 @@ func TestJsonNativeInvalid(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("data.json"), syntax.Detached())
 
-	_, err := jsonNative(vm, args)
+	_, err := jsonNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for invalid JSON")
 	}
@@ -322,7 +322,7 @@ active: true
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("data.yaml"), syntax.Detached())
 
-	result, err := yamlNative(vm, args)
+	result, err := yamlNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("yamlNative() error: %v", err)
 	}
@@ -364,7 +364,7 @@ func TestYamlNativeArray(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("data.yaml"), syntax.Detached())
 
-	result, err := yamlNative(vm, args)
+	result, err := yamlNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("yamlNative() error: %v", err)
 	}
@@ -417,7 +417,7 @@ port = 5432
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("config.toml"), syntax.Detached())
 
-	result, err := tomlNative(vm, args)
+	result, err := tomlNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("tomlNative() error: %v", err)
 	}
@@ -464,7 +464,7 @@ func TestTomlNativeInvalid(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("config.toml"), syntax.Detached())
 
-	_, err := tomlNative(vm, args)
+	_, err := tomlNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for invalid TOML")
 	}
@@ -499,7 +499,7 @@ Jane,25,LA`
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("data.csv"), syntax.Detached())
 
-	result, err := csvNative(vm, args)
+	result, err := csvNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("csvNative() error: %v", err)
 	}
@@ -540,7 +540,7 @@ Jane,25,LA`
 	args.Push(Str("data.csv"), syntax.Detached())
 	args.PushNamed("row-type", Str("dict"), syntax.Detached())
 
-	result, err := csvNative(vm, args)
+	result, err := csvNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("csvNative() error: %v", err)
 	}
@@ -588,7 +588,7 @@ John;30;NYC`
 	args.Push(Str("data.csv"), syntax.Detached())
 	args.PushNamed("delimiter", Str(";"), syntax.Detached())
 
-	result, err := csvNative(vm, args)
+	result, err := csvNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("csvNative() error: %v", err)
 	}
@@ -612,7 +612,7 @@ func TestCsvNativeInvalidDelimiter(t *testing.T) {
 	args.Push(Str("data.csv"), syntax.Detached())
 	args.PushNamed("delimiter", Str(";;"), syntax.Detached()) // Invalid: more than 1 char
 
-	_, err := csvNative(vm, args)
+	_, err := csvNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for invalid delimiter")
 	}
@@ -649,7 +649,7 @@ func TestXmlNativeBasic(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("data.xml"), syntax.Detached())
 
-	result, err := xmlNative(vm, args)
+	result, err := xmlNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("xmlNative() error: %v", err)
 	}
@@ -725,7 +725,7 @@ func TestXmlNativeInvalid(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("data.xml"), syntax.Detached())
 
-	_, err := xmlNative(vm, args)
+	_, err := xmlNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for invalid XML")
 	}
@@ -921,7 +921,7 @@ func TestFileOperationsWithRealFiles(t *testing.T) {
 	// Test read()
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("test.txt"), syntax.Detached())
-	result, err := readNative(vm, args)
+	result, err := readNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Errorf("read() error: %v", err)
 	} else if str, ok := result.(StrValue); !ok || string(str) != "Hello, World!" {
@@ -931,7 +931,7 @@ func TestFileOperationsWithRealFiles(t *testing.T) {
 	// Test json()
 	args = NewArgs(syntax.Detached())
 	args.Push(Str("test.json"), syntax.Detached())
-	result, err = jsonNative(vm, args)
+	result, err = jsonNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Errorf("json() error: %v", err)
 	} else if dict, ok := result.(DictValue); ok {
@@ -947,7 +947,7 @@ func TestFileOperationsWithRealFiles(t *testing.T) {
 	// Test yaml()
 	args = NewArgs(syntax.Detached())
 	args.Push(Str("test.yaml"), syntax.Detached())
-	result, err = yamlNative(vm, args)
+	result, err = yamlNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Errorf("yaml() error: %v", err)
 	}
@@ -955,7 +955,7 @@ func TestFileOperationsWithRealFiles(t *testing.T) {
 	// Test toml()
 	args = NewArgs(syntax.Detached())
 	args.Push(Str("test.toml"), syntax.Detached())
-	result, err = tomlNative(vm, args)
+	result, err = tomlNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Errorf("toml() error: %v", err)
 	}
@@ -963,7 +963,7 @@ func TestFileOperationsWithRealFiles(t *testing.T) {
 	// Test csv()
 	args = NewArgs(syntax.Detached())
 	args.Push(Str("test.csv"), syntax.Detached())
-	result, err = csvNative(vm, args)
+	result, err = csvNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Errorf("csv() error: %v", err)
 	}
@@ -971,7 +971,7 @@ func TestFileOperationsWithRealFiles(t *testing.T) {
 	// Test xml()
 	args = NewArgs(syntax.Detached())
 	args.Push(Str("test.xml"), syntax.Detached())
-	result, err = xmlNative(vm, args)
+	result, err = xmlNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Errorf("xml() error: %v", err)
 	}

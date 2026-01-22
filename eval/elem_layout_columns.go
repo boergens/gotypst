@@ -51,7 +51,7 @@ func ColumnsFunc() *Func {
 //   - count (positional, int, default: 2): The number of columns
 //   - gutter (named, relative, default: none): The gap between columns
 //   - body (positional, content): The content to arrange in columns
-func columnsNative(vm *Vm, args *Args) (Value, error) {
+func columnsNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get optional count argument (default: 2)
 	count := 2
 	countArg := args.Find("count")

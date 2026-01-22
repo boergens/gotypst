@@ -28,7 +28,7 @@ func typeConstructorFunc(t Type) *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				return callTypeConstructor(t, args)
 			},
 		},
@@ -434,7 +434,7 @@ func strFromUnicodeFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				spanned, err := args.Expect("codepoint")
 				if err != nil {
 					return nil, err
@@ -476,7 +476,7 @@ func strToUnicodeFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				spanned, err := args.Expect("character")
 				if err != nil {
 					return nil, err

@@ -13,101 +13,101 @@ func GetArrayMethod(target ArrayValue, methodName string, span syntax.Span) Valu
 
 // createArrayMethod creates a bound method function for array methods.
 func createArrayMethod(target ArrayValue, methodName string, span syntax.Span) Value {
-	var fn func(vm *Vm, args *Args) (Value, error)
+	var fn func(engine *Engine, context *Context, args *Args) (Value, error)
 
 	switch methodName {
 	case "len":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return ArrayLen(target, args)
 		}
 	case "first":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return ArrayFirst(target, args, span)
 		}
 	case "last":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return ArrayLast(target, args, span)
 		}
 	case "at":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return ArrayAt(target, args, span)
 		}
 	case "push":
 		// Note: push is a mutating method, needs special handling
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return None, fmt.Errorf("push requires mutable access")
 		}
 	case "pop":
 		// Note: pop is a mutating method, needs special handling
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return nil, &ArrayEmptyError{Span: span}
 		}
 	case "insert":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return None, fmt.Errorf("insert requires mutable access")
 		}
 	case "remove":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return None, fmt.Errorf("remove requires mutable access")
 		}
 	case "slice":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return ArraySlice(target, args)
 		}
 	case "contains":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return ArrayContains(target, args)
 		}
 	case "find":
-		fn = func(vm *Vm, args *Args) (Value, error) {
-			return ArrayFind(vm, target, args)
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
+			return ArrayFind(engine, context, target, args)
 		}
 	case "position":
-		fn = func(vm *Vm, args *Args) (Value, error) {
-			return ArrayPosition(vm, target, args)
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
+			return ArrayPosition(engine, context, target, args)
 		}
 	case "filter":
-		fn = func(vm *Vm, args *Args) (Value, error) {
-			return ArrayFilter(vm, target, args)
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
+			return ArrayFilter(engine, context, target, args)
 		}
 	case "map":
-		fn = func(vm *Vm, args *Args) (Value, error) {
-			return ArrayMap(vm, target, args)
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
+			return ArrayMap(engine, context, target, args)
 		}
 	case "fold":
-		fn = func(vm *Vm, args *Args) (Value, error) {
-			return ArrayFold(vm, target, args)
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
+			return ArrayFold(engine, context, target, args)
 		}
 	case "sum":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return ArraySum(target, args)
 		}
 	case "product":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return ArrayProduct(target, args)
 		}
 	case "rev":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return ArrayRev(target, args)
 		}
 	case "join":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return ArrayJoin(target, args)
 		}
 	case "sorted":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return ArraySorted(target, args)
 		}
 	case "zip":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return ArrayZip(target, args)
 		}
 	case "enumerate":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return ArrayEnumerate(target, args)
 		}
 	case "dedup":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return ArrayDedup(target, args)
 		}
 	default:
@@ -286,7 +286,7 @@ func ArrayContains(arr ArrayValue, args *Args) (Value, error) {
 }
 
 // ArrayFind finds the first element matching a predicate.
-func ArrayFind(vm *Vm, arr ArrayValue, args *Args) (Value, error) {
+func ArrayFind(engine *Engine, context *Context, arr ArrayValue, args *Args) (Value, error) {
 	predArg, err := args.Expect("predicate")
 	if err != nil {
 		return nil, err
@@ -299,7 +299,7 @@ func ArrayFind(vm *Vm, arr ArrayValue, args *Args) (Value, error) {
 	for _, item := range arr {
 		predArgs := NewArgs(args.Span)
 		predArgs.Push(item, args.Span)
-		result, err := callFunc(vm, predArg.V, predArgs, args.Span)
+		result, err := engine.CallFunc(context, predArg.V, predArgs, args.Span)
 		if err != nil {
 			return nil, err
 		}
@@ -311,7 +311,7 @@ func ArrayFind(vm *Vm, arr ArrayValue, args *Args) (Value, error) {
 }
 
 // ArrayPosition finds the index of the first matching element.
-func ArrayPosition(vm *Vm, arr ArrayValue, args *Args) (Value, error) {
+func ArrayPosition(engine *Engine, context *Context, arr ArrayValue, args *Args) (Value, error) {
 	predArg, err := args.Expect("predicate")
 	if err != nil {
 		return nil, err
@@ -324,7 +324,7 @@ func ArrayPosition(vm *Vm, arr ArrayValue, args *Args) (Value, error) {
 	for i, item := range arr {
 		predArgs := NewArgs(args.Span)
 		predArgs.Push(item, args.Span)
-		result, err := callFunc(vm, predArg.V, predArgs, args.Span)
+		result, err := engine.CallFunc(context, predArg.V, predArgs, args.Span)
 		if err != nil {
 			return nil, err
 		}
@@ -336,7 +336,7 @@ func ArrayPosition(vm *Vm, arr ArrayValue, args *Args) (Value, error) {
 }
 
 // ArrayFilter filters array elements by a predicate.
-func ArrayFilter(vm *Vm, arr ArrayValue, args *Args) (Value, error) {
+func ArrayFilter(engine *Engine, context *Context, arr ArrayValue, args *Args) (Value, error) {
 	predArg, err := args.Expect("predicate")
 	if err != nil {
 		return nil, err
@@ -350,7 +350,7 @@ func ArrayFilter(vm *Vm, arr ArrayValue, args *Args) (Value, error) {
 	for _, item := range arr {
 		predArgs := NewArgs(args.Span)
 		predArgs.Push(item, args.Span)
-		res, err := callFunc(vm, predArg.V, predArgs, args.Span)
+		res, err := engine.CallFunc(context, predArg.V, predArgs, args.Span)
 		if err != nil {
 			return nil, err
 		}
@@ -362,7 +362,7 @@ func ArrayFilter(vm *Vm, arr ArrayValue, args *Args) (Value, error) {
 }
 
 // ArrayMap maps a function over array elements.
-func ArrayMap(vm *Vm, arr ArrayValue, args *Args) (Value, error) {
+func ArrayMap(engine *Engine, context *Context, arr ArrayValue, args *Args) (Value, error) {
 	fnArg, err := args.Expect("function")
 	if err != nil {
 		return nil, err
@@ -376,7 +376,7 @@ func ArrayMap(vm *Vm, arr ArrayValue, args *Args) (Value, error) {
 	for i, item := range arr {
 		fnArgs := NewArgs(args.Span)
 		fnArgs.Push(item, args.Span)
-		res, err := callFunc(vm, fnArg.V, fnArgs, args.Span)
+		res, err := engine.CallFunc(context, fnArg.V, fnArgs, args.Span)
 		if err != nil {
 			return nil, err
 		}
@@ -386,7 +386,7 @@ func ArrayMap(vm *Vm, arr ArrayValue, args *Args) (Value, error) {
 }
 
 // ArrayFold folds an array using a function and initial value.
-func ArrayFold(vm *Vm, arr ArrayValue, args *Args) (Value, error) {
+func ArrayFold(engine *Engine, context *Context, arr ArrayValue, args *Args) (Value, error) {
 	initArg, err := args.Expect("initial")
 	if err != nil {
 		return nil, err
@@ -405,7 +405,7 @@ func ArrayFold(vm *Vm, arr ArrayValue, args *Args) (Value, error) {
 		fnArgs := NewArgs(args.Span)
 		fnArgs.Push(acc, args.Span)
 		fnArgs.Push(item, args.Span)
-		acc, err = callFunc(vm, fnArg.V, fnArgs, args.Span)
+		acc, err = engine.CallFunc(context, fnArg.V, fnArgs, args.Span)
 		if err != nil {
 			return nil, err
 		}

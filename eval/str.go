@@ -497,63 +497,63 @@ func (e *StrMethodError) Error() string {
 
 // createStrMethod creates a bound method for a string.
 func createStrMethod(target StrValue, methodName string, span syntax.Span) Value {
-	var fn func(vm *Vm, args *Args) (Value, error)
+	var fn func(engine *Engine, context *Context, args *Args) (Value, error)
 
 	switch methodName {
 	case "contains":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return StrContains(target, args)
 		}
 	case "starts-with":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return StrStartsWith(target, args)
 		}
 	case "ends-with":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return StrEndsWith(target, args)
 		}
 	case "find":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return StrFind(target, args)
 		}
 	case "position":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return StrPosition(target, args)
 		}
 	case "match":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return StrMatch(target, args)
 		}
 	case "matches":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return StrMatches(target, args)
 		}
 	case "len":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return StrLen(target, args)
 		}
 	case "first":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return StrFirst(target, args, span)
 		}
 	case "last":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return StrLast(target, args, span)
 		}
 	case "at":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return StrAt(target, args, span)
 		}
 	case "slice":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return StrSlice(target, args, span)
 		}
 	case "split":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return StrSplit(target, args)
 		}
 	case "rev":
-		fn = func(vm *Vm, args *Args) (Value, error) {
+		fn = func(engine *Engine, context *Context, args *Args) (Value, error) {
 			return StrRev(target, args)
 		}
 	default:

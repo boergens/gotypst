@@ -35,7 +35,7 @@ func TestRawNativeBasic(t *testing.T) {
 	args.Push(Str("print('hello')"), syntax.Detached())
 
 	// Call the raw function
-	result, err := rawNative(vm, args)
+	result, err := rawNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("rawNative() error: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestRawNativeWithLang(t *testing.T) {
 	args.Push(Str("def foo(): pass"), syntax.Detached())
 	args.PushNamed("lang", Str("python"), syntax.Detached())
 
-	result, err := rawNative(vm, args)
+	result, err := rawNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("rawNative() error: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestRawNativeWithBlock(t *testing.T) {
 	args.Push(Str("multi\nline\ncode"), syntax.Detached())
 	args.PushNamed("block", True, syntax.Detached())
 
-	result, err := rawNative(vm, args)
+	result, err := rawNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("rawNative() error: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestRawNativeWithAllParams(t *testing.T) {
 	args.PushNamed("lang", Str("rust"), syntax.Detached())
 	args.PushNamed("block", True, syntax.Detached())
 
-	result, err := rawNative(vm, args)
+	result, err := rawNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("rawNative() error: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestRawNativeMissingText(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.PushNamed("lang", Str("python"), syntax.Detached())
 
-	_, err := rawNative(vm, args)
+	_, err := rawNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for missing text argument")
 	}
@@ -163,7 +163,7 @@ func TestRawNativeWrongTextType(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(Int(42), syntax.Detached())
 
-	_, err := rawNative(vm, args)
+	_, err := rawNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for wrong text type")
 	}
@@ -181,7 +181,7 @@ func TestRawNativeWrongBlockType(t *testing.T) {
 	args.Push(Str("code"), syntax.Detached())
 	args.PushNamed("block", Str("not a bool"), syntax.Detached())
 
-	_, err := rawNative(vm, args)
+	_, err := rawNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for wrong block type")
 	}
@@ -199,7 +199,7 @@ func TestRawNativeWrongLangType(t *testing.T) {
 	args.Push(Str("code"), syntax.Detached())
 	args.PushNamed("lang", Int(123), syntax.Detached())
 
-	_, err := rawNative(vm, args)
+	_, err := rawNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for wrong lang type")
 	}
@@ -217,7 +217,7 @@ func TestRawNativeLangNone(t *testing.T) {
 	args.Push(Str("code"), syntax.Detached())
 	args.PushNamed("lang", None, syntax.Detached())
 
-	result, err := rawNative(vm, args)
+	result, err := rawNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("rawNative() error: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestRawNativeUnexpectedArg(t *testing.T) {
 	args.Push(Str("code"), syntax.Detached())
 	args.PushNamed("unknown", Str("value"), syntax.Detached())
 
-	_, err := rawNative(vm, args)
+	_, err := rawNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for unexpected argument")
 	}
@@ -307,7 +307,7 @@ func TestRawNativeWithNamedText(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.PushNamed("text", Str("named text"), syntax.Detached())
 
-	result, err := rawNative(vm, args)
+	result, err := rawNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("rawNative() error: %v", err)
 	}
@@ -358,7 +358,7 @@ func TestParNativeBasic(t *testing.T) {
 	args.Push(body, syntax.Detached())
 
 	// Call the par function
-	result, err := parNative(vm, args)
+	result, err := parNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("parNative() error: %v", err)
 	}
@@ -412,7 +412,7 @@ func TestParNativeWithJustify(t *testing.T) {
 	args.Push(body, syntax.Detached())
 	args.PushNamed("justify", True, syntax.Detached())
 
-	result, err := parNative(vm, args)
+	result, err := parNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("parNative() error: %v", err)
 	}
@@ -438,7 +438,7 @@ func TestParNativeWithLinebreaks(t *testing.T) {
 	args.Push(body, syntax.Detached())
 	args.PushNamed("linebreaks", Str("simple"), syntax.Detached())
 
-	result, err := parNative(vm, args)
+	result, err := parNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("parNative() error: %v", err)
 	}
@@ -455,7 +455,7 @@ func TestParNativeWithLinebreaks(t *testing.T) {
 	args.Push(body, syntax.Detached())
 	args.PushNamed("linebreaks", Str("optimized"), syntax.Detached())
 
-	result, err = parNative(vm, args)
+	result, err = parNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("parNative() error: %v", err)
 	}
@@ -480,7 +480,7 @@ func TestParNativeWithInvalidLinebreaks(t *testing.T) {
 	args.Push(body, syntax.Detached())
 	args.PushNamed("linebreaks", Str("invalid"), syntax.Detached())
 
-	_, err := parNative(vm, args)
+	_, err := parNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for invalid linebreaks value")
 	}
@@ -498,7 +498,7 @@ func TestParNativeWithFirstLineIndent(t *testing.T) {
 	args.Push(body, syntax.Detached())
 	args.PushNamed("first-line-indent", LengthValue{Length: Length{Points: 20}}, syntax.Detached())
 
-	result, err := parNative(vm, args)
+	result, err := parNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("parNative() error: %v", err)
 	}
@@ -523,7 +523,7 @@ func TestParNativeWithLeading(t *testing.T) {
 	args.Push(body, syntax.Detached())
 	args.PushNamed("leading", LengthValue{Length: Length{Points: 14}}, syntax.Detached())
 
-	result, err := parNative(vm, args)
+	result, err := parNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("parNative() error: %v", err)
 	}
@@ -548,7 +548,7 @@ func TestParNativeWithHangingIndent(t *testing.T) {
 	args.Push(body, syntax.Detached())
 	args.PushNamed("hanging-indent", LengthValue{Length: Length{Points: 12}}, syntax.Detached())
 
-	result, err := parNative(vm, args)
+	result, err := parNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("parNative() error: %v", err)
 	}
@@ -577,7 +577,7 @@ func TestParNativeWithAllParams(t *testing.T) {
 	args.PushNamed("first-line-indent", LengthValue{Length: Length{Points: 20}}, syntax.Detached())
 	args.PushNamed("hanging-indent", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
 
-	result, err := parNative(vm, args)
+	result, err := parNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("parNative() error: %v", err)
 	}
@@ -609,7 +609,7 @@ func TestParNativeMissingBody(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.PushNamed("justify", True, syntax.Detached())
 
-	_, err := parNative(vm, args)
+	_, err := parNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for missing body argument")
 	}
@@ -622,7 +622,7 @@ func TestParNativeWrongBodyType(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("not content"), syntax.Detached())
 
-	_, err := parNative(vm, args)
+	_, err := parNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for wrong body type")
 	}
@@ -643,7 +643,7 @@ func TestParNativeUnexpectedArg(t *testing.T) {
 	args.Push(body, syntax.Detached())
 	args.PushNamed("unknown", Str("value"), syntax.Detached())
 
-	_, err := parNative(vm, args)
+	_, err := parNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for unexpected argument")
 	}
@@ -723,7 +723,7 @@ func TestParbreakNative(t *testing.T) {
 
 	args := NewArgs(syntax.Detached())
 
-	result, err := parbreakNative(vm, args)
+	result, err := parbreakNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("parbreakNative() error: %v", err)
 	}
@@ -752,7 +752,7 @@ func TestParbreakNativeUnexpectedArg(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.PushNamed("unexpected", Str("value"), syntax.Detached())
 
-	_, err := parbreakNative(vm, args)
+	_, err := parbreakNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for unexpected argument")
 	}
@@ -858,7 +858,7 @@ func TestStackNativeBasic(t *testing.T) {
 	args.Push(child1, syntax.Detached())
 	args.Push(child2, syntax.Detached())
 
-	result, err := stackNative(vm, args)
+	result, err := stackNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("stackNative() error: %v", err)
 	}
@@ -909,7 +909,7 @@ func TestStackNativeWithDir(t *testing.T) {
 		args := NewArgs(syntax.Detached())
 		args.PushNamed("dir", Str(tt.dir), syntax.Detached())
 
-		result, err := stackNative(vm, args)
+		result, err := stackNative(vm.Engine, vm.Context, args)
 		if err != nil {
 			t.Fatalf("stackNative() with dir=%q error: %v", tt.dir, err)
 		}
@@ -930,7 +930,7 @@ func TestStackNativeWithInvalidDir(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.PushNamed("dir", Str("invalid"), syntax.Detached())
 
-	_, err := stackNative(vm, args)
+	_, err := stackNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for invalid dir value")
 	}
@@ -943,7 +943,7 @@ func TestStackNativeWithSpacing(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.PushNamed("spacing", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
 
-	result, err := stackNative(vm, args)
+	result, err := stackNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("stackNative() error: %v", err)
 	}
@@ -969,7 +969,7 @@ func TestStackNativeWithAllParams(t *testing.T) {
 	args.PushNamed("spacing", LengthValue{Length: Length{Points: 5}}, syntax.Detached())
 	args.Push(child, syntax.Detached())
 
-	result, err := stackNative(vm, args)
+	result, err := stackNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("stackNative() error: %v", err)
 	}
@@ -995,7 +995,7 @@ func TestStackNativeUnexpectedArg(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.PushNamed("unknown", Str("value"), syntax.Detached())
 
-	_, err := stackNative(vm, args)
+	_, err := stackNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for unexpected argument")
 	}
@@ -1065,7 +1065,7 @@ func TestAlignNativeBasic(t *testing.T) {
 	args.Push(Str("center"), syntax.Detached())
 	args.Push(body, syntax.Detached())
 
-	result, err := alignNative(vm, args)
+	result, err := alignNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("alignNative() error: %v", err)
 	}
@@ -1123,7 +1123,7 @@ func TestAlignNativeWithDifferentAlignments(t *testing.T) {
 		args.Push(Str(tt.alignment), syntax.Detached())
 		args.Push(body, syntax.Detached())
 
-		result, err := alignNative(vm, args)
+		result, err := alignNative(vm.Engine, vm.Context, args)
 		if err != nil {
 			t.Fatalf("alignNative() with alignment=%q error: %v", tt.alignment, err)
 		}
@@ -1161,7 +1161,7 @@ func TestAlignNativeWithInvalidAlignment(t *testing.T) {
 	args.Push(Str("invalid"), syntax.Detached())
 	args.Push(body, syntax.Detached())
 
-	_, err := alignNative(vm, args)
+	_, err := alignNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for invalid alignment value")
 	}
@@ -1178,7 +1178,7 @@ func TestAlignNativeMissingAlignment(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(body, syntax.Detached()) // Only body, no alignment
 
-	_, err := alignNative(vm, args)
+	_, err := alignNative(vm.Engine, vm.Context, args)
 	// This should pass since body is content but first arg is interpreted as alignment
 	// Actually, it will fail because ContentValue is not a string for alignment
 	if err == nil {
@@ -1193,7 +1193,7 @@ func TestAlignNativeMissingBody(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("center"), syntax.Detached())
 
-	_, err := alignNative(vm, args)
+	_, err := alignNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for missing body argument")
 	}
@@ -1207,7 +1207,7 @@ func TestAlignNativeWrongBodyType(t *testing.T) {
 	args.Push(Str("center"), syntax.Detached())
 	args.Push(Str("not content"), syntax.Detached())
 
-	_, err := alignNative(vm, args)
+	_, err := alignNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for wrong body type")
 	}
@@ -1229,7 +1229,7 @@ func TestAlignNativeUnexpectedArg(t *testing.T) {
 	args.Push(body, syntax.Detached())
 	args.PushNamed("unknown", Str("value"), syntax.Detached())
 
-	_, err := alignNative(vm, args)
+	_, err := alignNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for unexpected argument")
 	}
@@ -1358,7 +1358,7 @@ func TestListNativeBasic(t *testing.T) {
 	args.Push(item1, syntax.Detached())
 	args.Push(item2, syntax.Detached())
 
-	result, err := listNative(vm, args)
+	result, err := listNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("listNative() error: %v", err)
 	}
@@ -1405,7 +1405,7 @@ func TestListNativeWithTight(t *testing.T) {
 	args.PushNamed("tight", False, syntax.Detached())
 	args.Push(item, syntax.Detached())
 
-	result, err := listNative(vm, args)
+	result, err := listNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("listNative() error: %v", err)
 	}
@@ -1433,7 +1433,7 @@ func TestListNativeWithMarker(t *testing.T) {
 	args.PushNamed("marker", Str("*"), syntax.Detached())
 	args.Push(item, syntax.Detached())
 
-	result, err := listNative(vm, args)
+	result, err := listNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("listNative() error: %v", err)
 	}
@@ -1468,7 +1468,7 @@ func TestListNativeWithContentAsItem(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(item, syntax.Detached())
 
-	result, err := listNative(vm, args)
+	result, err := listNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("listNative() error: %v", err)
 	}
@@ -1491,7 +1491,7 @@ func TestListNativeUnexpectedArg(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.PushNamed("unknown", Str("value"), syntax.Detached())
 
-	_, err := listNative(vm, args)
+	_, err := listNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for unexpected argument")
 	}
@@ -1571,7 +1571,7 @@ func TestEnumNativeBasic(t *testing.T) {
 	args.Push(item1, syntax.Detached())
 	args.Push(item2, syntax.Detached())
 
-	result, err := enumNative(vm, args)
+	result, err := enumNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("enumNative() error: %v", err)
 	}
@@ -1624,7 +1624,7 @@ func TestEnumNativeWithNumbering(t *testing.T) {
 	args.PushNamed("numbering", Str("a)"), syntax.Detached())
 	args.Push(item, syntax.Detached())
 
-	result, err := enumNative(vm, args)
+	result, err := enumNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("enumNative() error: %v", err)
 	}
@@ -1651,7 +1651,7 @@ func TestEnumNativeWithStart(t *testing.T) {
 	args.PushNamed("start", Int(5), syntax.Detached())
 	args.Push(item, syntax.Detached())
 
-	result, err := enumNative(vm, args)
+	result, err := enumNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("enumNative() error: %v", err)
 	}
@@ -1685,7 +1685,7 @@ func TestEnumNativeWithFull(t *testing.T) {
 	args.PushNamed("full", True, syntax.Detached())
 	args.Push(item, syntax.Detached())
 
-	result, err := enumNative(vm, args)
+	result, err := enumNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("enumNative() error: %v", err)
 	}
@@ -1712,7 +1712,7 @@ func TestEnumNativeWithTight(t *testing.T) {
 	args.PushNamed("tight", False, syntax.Detached())
 	args.Push(item, syntax.Detached())
 
-	result, err := enumNative(vm, args)
+	result, err := enumNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("enumNative() error: %v", err)
 	}
@@ -1737,7 +1737,7 @@ func TestEnumNativeWithContentAsItem(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(item, syntax.Detached())
 
-	result, err := enumNative(vm, args)
+	result, err := enumNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("enumNative() error: %v", err)
 	}
@@ -1763,7 +1763,7 @@ func TestEnumNativeUnexpectedArg(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.PushNamed("unknown", Str("value"), syntax.Detached())
 
-	_, err := enumNative(vm, args)
+	_, err := enumNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for unexpected argument")
 	}
@@ -1894,7 +1894,7 @@ func TestColumnsNativeBasic(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(body, syntax.Detached())
 
-	result, err := columnsNative(vm, args)
+	result, err := columnsNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("columnsNative() error: %v", err)
 	}
@@ -1940,7 +1940,7 @@ func TestColumnsNativeWithCount(t *testing.T) {
 	args.Push(Int(3), syntax.Detached())
 	args.Push(body, syntax.Detached())
 
-	result, err := columnsNative(vm, args)
+	result, err := columnsNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("columnsNative() error: %v", err)
 	}
@@ -1966,7 +1966,7 @@ func TestColumnsNativeWithNamedCount(t *testing.T) {
 	args.PushNamed("count", Int(4), syntax.Detached())
 	args.Push(body, syntax.Detached())
 
-	result, err := columnsNative(vm, args)
+	result, err := columnsNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("columnsNative() error: %v", err)
 	}
@@ -1992,7 +1992,7 @@ func TestColumnsNativeWithGutter(t *testing.T) {
 	args.PushNamed("gutter", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
 	args.Push(body, syntax.Detached())
 
-	result, err := columnsNative(vm, args)
+	result, err := columnsNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("columnsNative() error: %v", err)
 	}
@@ -2019,7 +2019,7 @@ func TestColumnsNativeWithAllParams(t *testing.T) {
 	args.PushNamed("gutter", LengthValue{Length: Length{Points: 15}}, syntax.Detached())
 	args.Push(body, syntax.Detached())
 
-	result, err := columnsNative(vm, args)
+	result, err := columnsNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("columnsNative() error: %v", err)
 	}
@@ -2045,7 +2045,7 @@ func TestColumnsNativeMissingBody(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.PushNamed("gutter", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
 
-	_, err := columnsNative(vm, args)
+	_, err := columnsNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for missing body argument")
 	}
@@ -2058,7 +2058,7 @@ func TestColumnsNativeWrongBodyType(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("not content"), syntax.Detached())
 
-	_, err := columnsNative(vm, args)
+	_, err := columnsNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for wrong body type")
 	}
@@ -2080,7 +2080,7 @@ func TestColumnsNativeInvalidCount(t *testing.T) {
 	args.Push(Int(0), syntax.Detached())
 	args.Push(body, syntax.Detached())
 
-	_, err := columnsNative(vm, args)
+	_, err := columnsNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for invalid count (0)")
 	}
@@ -2098,7 +2098,7 @@ func TestColumnsNativeUnexpectedArg(t *testing.T) {
 	args.Push(body, syntax.Detached())
 	args.PushNamed("unknown", Str("value"), syntax.Detached())
 
-	_, err := columnsNative(vm, args)
+	_, err := columnsNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for unexpected argument")
 	}
@@ -2196,7 +2196,7 @@ func TestBoxNativeBasic(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(body, syntax.Detached())
 
-	result, err := boxNative(vm, args)
+	result, err := boxNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("boxNative() error: %v", err)
 	}
@@ -2238,7 +2238,7 @@ func TestBoxNativeWithWidth(t *testing.T) {
 	args.Push(body, syntax.Detached())
 	args.PushNamed("width", LengthValue{Length: Length{Points: 100}}, syntax.Detached())
 
-	result, err := boxNative(vm, args)
+	result, err := boxNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("boxNative() error: %v", err)
 	}
@@ -2263,7 +2263,7 @@ func TestBoxNativeWithClip(t *testing.T) {
 	args.Push(body, syntax.Detached())
 	args.PushNamed("clip", True, syntax.Detached())
 
-	result, err := boxNative(vm, args)
+	result, err := boxNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("boxNative() error: %v", err)
 	}
@@ -2282,7 +2282,7 @@ func TestBoxNativeEmpty(t *testing.T) {
 
 	args := NewArgs(syntax.Detached())
 
-	result, err := boxNative(vm, args)
+	result, err := boxNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("boxNative() error: %v", err)
 	}
@@ -2352,7 +2352,7 @@ func TestBlockNativeBasic(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(body, syntax.Detached())
 
-	result, err := blockNative(vm, args)
+	result, err := blockNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("blockNative() error: %v", err)
 	}
@@ -2391,7 +2391,7 @@ func TestBlockNativeWithBreakable(t *testing.T) {
 	args.Push(body, syntax.Detached())
 	args.PushNamed("breakable", False, syntax.Detached())
 
-	result, err := blockNative(vm, args)
+	result, err := blockNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("blockNative() error: %v", err)
 	}
@@ -2417,7 +2417,7 @@ func TestBlockNativeWithSpacing(t *testing.T) {
 	args.PushNamed("above", LengthValue{Length: Length{Points: 20}}, syntax.Detached())
 	args.PushNamed("below", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
 
-	result, err := blockNative(vm, args)
+	result, err := blockNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("blockNative() error: %v", err)
 	}
@@ -2491,7 +2491,7 @@ func TestPadNativeBasic(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(body, syntax.Detached())
 
-	result, err := padNative(vm, args)
+	result, err := padNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("padNative() error: %v", err)
 	}
@@ -2530,7 +2530,7 @@ func TestPadNativeWithX(t *testing.T) {
 	args.Push(body, syntax.Detached())
 	args.PushNamed("x", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
 
-	result, err := padNative(vm, args)
+	result, err := padNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("padNative() error: %v", err)
 	}
@@ -2558,7 +2558,7 @@ func TestPadNativeWithY(t *testing.T) {
 	args.Push(body, syntax.Detached())
 	args.PushNamed("y", LengthValue{Length: Length{Points: 20}}, syntax.Detached())
 
-	result, err := padNative(vm, args)
+	result, err := padNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("padNative() error: %v", err)
 	}
@@ -2586,7 +2586,7 @@ func TestPadNativeWithRest(t *testing.T) {
 	args.Push(body, syntax.Detached())
 	args.PushNamed("rest", LengthValue{Length: Length{Points: 5}}, syntax.Detached())
 
-	result, err := padNative(vm, args)
+	result, err := padNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("padNative() error: %v", err)
 	}
@@ -2623,7 +2623,7 @@ func TestPadNativeWithIndividualSides(t *testing.T) {
 	args.PushNamed("right", LengthValue{Length: Length{Points: 3}}, syntax.Detached())
 	args.PushNamed("bottom", LengthValue{Length: Length{Points: 4}}, syntax.Detached())
 
-	result, err := padNative(vm, args)
+	result, err := padNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("padNative() error: %v", err)
 	}
@@ -2652,7 +2652,7 @@ func TestPadNativeMissingBody(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.PushNamed("x", LengthValue{Length: Length{Points: 10}}, syntax.Detached())
 
-	_, err := padNative(vm, args)
+	_, err := padNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for missing body argument")
 	}
@@ -2798,7 +2798,7 @@ func TestTableNativeBasic(t *testing.T) {
 
 	// Call table native function
 	tableFunc := TableFunc()
-	result, err := tableFunc.Repr.(NativeFunc).Func(vm, args)
+	result, err := tableFunc.Repr.(NativeFunc).Func(vm.Engine, vm.Context, args)
 
 	if err != nil {
 		t.Fatalf("tableNative failed: %v", err)
@@ -2840,7 +2840,7 @@ func TestTableNativeWithoutColumns(t *testing.T) {
 
 	// Call table native function
 	tableFunc := TableFunc()
-	result, err := tableFunc.Repr.(NativeFunc).Func(vm, args)
+	result, err := tableFunc.Repr.(NativeFunc).Func(vm.Engine, vm.Context, args)
 
 	if err != nil {
 		t.Fatalf("tableNative failed: %v", err)
@@ -2877,7 +2877,7 @@ func TestTableNativeWithArrayColumns(t *testing.T) {
 
 	// Call table native function
 	tableFunc := TableFunc()
-	result, err := tableFunc.Repr.(NativeFunc).Func(vm, args)
+	result, err := tableFunc.Repr.(NativeFunc).Func(vm.Engine, vm.Context, args)
 
 	if err != nil {
 		t.Fatalf("tableNative failed: %v", err)
@@ -2981,7 +2981,7 @@ func TestTableCellNativeBasic(t *testing.T) {
 
 	// Call table.cell native function
 	cellFunc := TableCellFunc()
-	result, err := cellFunc.Repr.(NativeFunc).Func(vm, args)
+	result, err := cellFunc.Repr.(NativeFunc).Func(vm.Engine, vm.Context, args)
 
 	if err != nil {
 		t.Fatalf("tableCellNative failed: %v", err)
@@ -3022,7 +3022,7 @@ func TestTableCellNativeWithSpanning(t *testing.T) {
 
 	// Call table.cell native function
 	cellFunc := TableCellFunc()
-	result, err := cellFunc.Repr.(NativeFunc).Func(vm, args)
+	result, err := cellFunc.Repr.(NativeFunc).Func(vm.Engine, vm.Context, args)
 
 	if err != nil {
 		t.Fatalf("tableCellNative failed: %v", err)
@@ -3112,7 +3112,7 @@ func TestLinkNativeBasic(t *testing.T) {
 	args.Push(Str("https://example.com"), syntax.Detached())
 
 	// Call the link function
-	result, err := linkNative(vm, args)
+	result, err := linkNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("linkNative() error: %v", err)
 	}
@@ -3167,7 +3167,7 @@ func TestLinkNativeWithBody(t *testing.T) {
 	args.Push(Str("https://example.com"), syntax.Detached())
 	args.Push(bodyContent, syntax.Detached())
 
-	result, err := linkNative(vm, args)
+	result, err := linkNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("linkNative() error: %v", err)
 	}
@@ -3201,7 +3201,7 @@ func TestLinkNativeMissingDest(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 
 	// Call should fail due to missing dest
-	_, err := linkNative(vm, args)
+	_, err := linkNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for missing dest argument")
 	}
@@ -3215,7 +3215,7 @@ func TestLinkNativeMailtoSchemeStripping(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("mailto:hello@example.com"), syntax.Detached())
 
-	result, err := linkNative(vm, args)
+	result, err := linkNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("linkNative() error: %v", err)
 	}
@@ -3245,7 +3245,7 @@ func TestLinkNativeTelSchemeStripping(t *testing.T) {
 	args := NewArgs(syntax.Detached())
 	args.Push(Str("tel:+1234567890"), syntax.Detached())
 
-	result, err := linkNative(vm, args)
+	result, err := linkNative(vm.Engine, vm.Context, args)
 	if err != nil {
 		t.Fatalf("linkNative() error: %v", err)
 	}
@@ -3276,7 +3276,7 @@ func TestLinkNativeEmptyURLError(t *testing.T) {
 	args.Push(Str(""), syntax.Detached())
 
 	// Call should fail due to empty URL
-	_, err := linkNative(vm, args)
+	_, err := linkNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for empty URL")
 	}
@@ -3296,7 +3296,7 @@ func TestLinkNativeURLTooLongError(t *testing.T) {
 	args.Push(Str(longURL), syntax.Detached())
 
 	// Call should fail due to URL too long
-	_, err := linkNative(vm, args)
+	_, err := linkNative(vm.Engine, vm.Context, args)
 	if err == nil {
 		t.Error("expected error for URL too long")
 	}

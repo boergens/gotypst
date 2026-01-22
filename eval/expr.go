@@ -972,7 +972,7 @@ func callFunc(vm *Vm, callee Value, args *Args, span syntax.Span) (Value, error)
 
 	switch repr := fn.Repr.(type) {
 	case NativeFunc:
-		return repr.Func(vm, args)
+		return repr.Func(vm.Engine, vm.Context, args)
 
 	case ClosureFunc:
 		return evalClosureCall(vm, fn, repr.Closure, args)

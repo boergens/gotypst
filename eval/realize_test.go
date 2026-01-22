@@ -269,7 +269,7 @@ func TestApplyFuncTransformation(t *testing.T) {
 	transformFunc := &Func{
 		Name: &name,
 		Repr: NativeFunc{
-			Func: func(_ *Vm, args *Args) (Value, error) {
+			Func: func(_ *Engine, _ *Context, args *Args) (Value, error) {
 				bodyArg := args.Eat()
 				if bodyArg == nil {
 					return None, nil

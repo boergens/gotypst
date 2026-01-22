@@ -88,7 +88,7 @@ func ImageFunc() *Func {
 //   - height (named, length, default: auto): Rendered height
 //   - fit (named, str, default: "contain"): How to fit within bounds ("contain", "cover", "stretch")
 //   - alt (named, str, default: none): Alt text for accessibility
-func imageNative(vm *Vm, args *Args) (Value, error) {
+func imageNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required path argument
 	pathArg, err := args.Expect("path")
 	if err != nil {
@@ -198,7 +198,7 @@ func imageNative(vm *Vm, args *Args) (Value, error) {
 	}
 
 	// Load the image file
-	data, err := readFileFromWorld(vm, path)
+	data, err := readFileFromWorld(engine, path)
 	if err != nil {
 		return nil, err
 	}
@@ -410,8 +410,8 @@ func SquareFunc() *Func {
 }
 
 // shapeStub creates a stub native function for shape elements.
-func shapeStub(name string) func(*Vm, *Args) (Value, error) {
-	return func(vm *Vm, args *Args) (Value, error) {
+func shapeStub(name string) func(*Engine, *Context, *Args) (Value, error) {
+	return func(engine *Engine, context *Context, args *Args) (Value, error) {
 		// Consume all arguments silently
 		args.Finish()
 		// Return empty content

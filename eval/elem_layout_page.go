@@ -134,7 +134,7 @@ func PageFunc() *Func {
 //   - background (named, content, default: none): Background content
 //   - foreground (named, content, default: none): Foreground content
 //   - body (positional, content, default: none): Page body content
-func pageNative(vm *Vm, args *Args) (Value, error) {
+func pageNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	elem := &PageElement{}
 
 	// Get optional paper argument (positional or named)

@@ -99,7 +99,7 @@ func TextFunc() *Func {
 //   - fill (named, color, default: none): Text color
 //
 // Reference: typst-reference/crates/typst-library/src/text/mod.rs
-func textNative(vm *Vm, args *Args) (Value, error) {
+func textNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required body argument
 	bodyArg := args.Find("body")
 	if bodyArg == nil {
@@ -275,7 +275,7 @@ func StrongFunc() *Func {
 //   - delta (named, int, default: 300): The font weight increase
 //
 // Reference: typst-reference/crates/typst-library/src/model/strong.rs
-func strongNative(vm *Vm, args *Args) (Value, error) {
+func strongNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required body argument
 	bodyArg := args.Find("body")
 	if bodyArg == nil {
@@ -360,7 +360,7 @@ func EmphFunc() *Func {
 //   - body (positional, content): The content to emphasize
 //
 // Reference: typst-reference/crates/typst-library/src/model/emph.rs
-func emphNative(vm *Vm, args *Args) (Value, error) {
+func emphNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required body argument
 	bodyArg := args.Find("body")
 	if bodyArg == nil {
@@ -427,7 +427,7 @@ func RawFunc() *Func {
 //   - text (positional, str): The raw text content
 //   - block (named, bool, default: false): Whether this is a block-level element
 //   - lang (named, str or none, default: none): The syntax highlighting language
-func rawNative(vm *Vm, args *Args) (Value, error) {
+func rawNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required text argument (can be positional or named)
 	textArg := args.Find("text")
 	if textArg == nil {

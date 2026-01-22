@@ -251,11 +251,12 @@ func CallFunc(vm *Vm, f *Func, args *Args) (Value, error) {
 }
 
 // callNative calls a native (built-in) function.
+// Passes Engine and Context explicitly, matching Rust's pattern.
 func callNative(vm *Vm, native NativeFunc, args *Args) (Value, error) {
 	vm.EnterCall()
 	defer vm.ExitCall()
 
-	return native.Func(vm, args)
+	return native.Func(vm.Engine, vm.Context, args)
 }
 
 // callClosure calls a user-defined closure.

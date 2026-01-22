@@ -64,7 +64,7 @@ func StackFunc() *Func {
 //   - dir (named, str, default: "ttb"): The stacking direction (ltr, rtl, ttb, btt)
 //   - spacing (named, length, default: none): The spacing between children
 //   - children (positional, variadic, content): The content elements to stack
-func stackNative(vm *Vm, args *Args) (Value, error) {
+func stackNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get optional dir argument (default: "ttb")
 	dir := StackTTB
 	if dirArg := args.Find("dir"); dirArg != nil {

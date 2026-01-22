@@ -132,7 +132,7 @@ func TestCallNativeFunc(t *testing.T) {
 		Name: ptr("add"),
 		Span: syntax.Span{},
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				a, err := args.Expect("a")
 				if err != nil {
 					return nil, err
@@ -179,7 +179,7 @@ func TestCallNativeFuncMissingArg(t *testing.T) {
 		Name: ptr("add"),
 		Span: syntax.Span{},
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				_, err := args.Expect("a")
 				if err != nil {
 					return nil, err
@@ -213,14 +213,15 @@ func TestCallDepthLimit(t *testing.T) {
 		Name: ptr("recurse"),
 		Span: syntax.Span{},
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
-				return CallFunc(vm, recursiveFunc, NewArgs(syntax.Span{}))
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
+				// Use engine.CallFunc for recursive calls
+				return engine.CallFunc(context, FuncValue{Func: recursiveFunc}, NewArgs(syntax.Span{}), syntax.Span{})
 			},
 		},
 	}
 
-	vm := NewVm(nil, nil, NewScopes(nil), syntax.Span{})
-	_, err := CallFunc(vm, recursiveFunc, NewArgs(syntax.Span{}))
+	engine := NewEngine(nil)
+	_, err := engine.CallFunc(nil, FuncValue{Func: recursiveFunc}, NewArgs(syntax.Span{}), syntax.Span{})
 	if err == nil {
 		t.Error("Expected error for exceeding call depth")
 	}

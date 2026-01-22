@@ -21,7 +21,7 @@ func toFloat64(v foundations.Value) (float64, bool) {
 // numericTypeError returns an error for non-numeric input.
 func numericTypeError(fn string, v foundations.Value) error {
 	return &foundations.OpError{
-		Message: fn + " expected numeric value, got " + v.Type(),
+		Message: fn + " expected numeric value, got " + v.Type().String(),
 	}
 }
 

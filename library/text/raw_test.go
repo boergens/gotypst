@@ -81,7 +81,7 @@ func TestRawImpl(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := rawImpl(nil, tt.args)
+			result, err := rawImpl(nil, nil, tt.args)
 			if tt.wantErr {
 				if err == nil {
 					t.Error("expected error, got nil")

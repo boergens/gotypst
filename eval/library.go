@@ -278,7 +278,7 @@ func calcAbsFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("value")
 				if err != nil {
 					return nil, err
@@ -317,7 +317,7 @@ func calcPowFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				base, err := args.Expect("base")
 				if err != nil {
 					return nil, err
@@ -366,7 +366,7 @@ func calcExpFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("exponent")
 				if err != nil {
 					return nil, err
@@ -399,7 +399,7 @@ func calcSqrtFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("value")
 				if err != nil {
 					return nil, err
@@ -432,7 +432,7 @@ func calcRootFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				radicand, err := args.Expect("radicand")
 				if err != nil {
 					return nil, err
@@ -482,7 +482,7 @@ func calcLogFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("value")
 				if err != nil {
 					return nil, err
@@ -535,7 +535,7 @@ func calcLnFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("value")
 				if err != nil {
 					return nil, err
@@ -568,7 +568,7 @@ func calcSinFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("angle")
 				if err != nil {
 					return nil, err
@@ -610,7 +610,7 @@ func calcCosFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("angle")
 				if err != nil {
 					return nil, err
@@ -651,7 +651,7 @@ func calcTanFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("angle")
 				if err != nil {
 					return nil, err
@@ -692,7 +692,7 @@ func calcAsinFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("value")
 				if err != nil {
 					return nil, err
@@ -725,7 +725,7 @@ func calcAcosFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("value")
 				if err != nil {
 					return nil, err
@@ -758,7 +758,7 @@ func calcAtanFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("value")
 				if err != nil {
 					return nil, err
@@ -791,7 +791,7 @@ func calcAtan2Func() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				y, err := args.Expect("y")
 				if err != nil {
 					return nil, err
@@ -840,7 +840,7 @@ func calcSinhFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("value")
 				if err != nil {
 					return nil, err
@@ -873,7 +873,7 @@ func calcCoshFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("value")
 				if err != nil {
 					return nil, err
@@ -906,7 +906,7 @@ func calcTanhFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("value")
 				if err != nil {
 					return nil, err
@@ -939,7 +939,7 @@ func calcFloorFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("value")
 				if err != nil {
 					return nil, err
@@ -972,7 +972,7 @@ func calcCeilFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("value")
 				if err != nil {
 					return nil, err
@@ -1005,7 +1005,7 @@ func calcRoundFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("value")
 				if err != nil {
 					return nil, err
@@ -1058,7 +1058,7 @@ func calcTruncFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				arg, err := args.Expect("value")
 				if err != nil {
 					return nil, err
@@ -1091,7 +1091,7 @@ func calcMinFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				first, err := args.Expect("values")
 				if err != nil {
 					return nil, err
@@ -1148,7 +1148,7 @@ func calcMaxFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				first, err := args.Expect("values")
 				if err != nil {
 					return nil, err
@@ -1205,7 +1205,7 @@ func calcClampFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				val, err := args.Expect("value")
 				if err != nil {
 					return nil, err
@@ -1273,7 +1273,7 @@ func calcRemFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				dividend, err := args.Expect("dividend")
 				if err != nil {
 					return nil, err
@@ -1333,7 +1333,7 @@ func calcQuoFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				dividend, err := args.Expect("dividend")
 				if err != nil {
 					return nil, err
@@ -1409,7 +1409,7 @@ func mathAccentFunc(name string, kind AccentKind) *Func {
 		Name: &funcName,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				// Get required base argument (content)
 				baseArg, err := args.Expect("base")
 				if err != nil {
@@ -1568,7 +1568,7 @@ func loremFunc() *Func {
 		Name: &name,
 		Span: syntax.Detached(),
 		Repr: NativeFunc{
-			Func: func(vm *Vm, args *Args) (Value, error) {
+			Func: func(engine *Engine, context *Context, args *Args) (Value, error) {
 				// Get required words argument
 				wordsArg, err := args.Expect("words")
 				if err != nil {

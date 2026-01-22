@@ -55,7 +55,7 @@ func ParFunc() *Func {
 //   - linebreaks (named, str, default: auto): Line breaking algorithm ("simple" or "optimized")
 //   - first-line-indent (named, length, default: none): Indent for first line
 //   - hanging-indent (named, length, default: none): Indent for subsequent lines
-func parNative(vm *Vm, args *Args) (Value, error) {
+func parNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required body argument (positional)
 	bodyArg := args.Find("body")
 	if bodyArg == nil {
@@ -197,7 +197,7 @@ func ParbreakFunc() *Func {
 
 // parbreakNative implements the parbreak() function.
 // Creates a ParbreakElement to separate paragraphs.
-func parbreakNative(vm *Vm, args *Args) (Value, error) {
+func parbreakNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Check for unexpected arguments
 	if err := args.Finish(); err != nil {
 		return nil, err
@@ -254,7 +254,7 @@ func HeadingFunc() *Func {
 //   - outlined (named, bool, default: true): Whether to show in outline
 //   - bookmarked (named, bool or auto, default: auto): Whether to bookmark in PDF
 //   - hanging-indent (named, length or auto, default: auto): Indent for multi-line headings
-func headingNative(vm *Vm, args *Args) (Value, error) {
+func headingNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required body argument (can be positional or named)
 	bodyArg := args.Find("body")
 	if bodyArg == nil {
@@ -482,7 +482,7 @@ func ListFunc() *Func {
 //   - body-indent (named, length, default: 0.5em): Spacing between marker and body
 //   - spacing (named, length or auto, default: auto): Spacing between items
 //   - children (positional, variadic, content): The list items
-func listNative(vm *Vm, args *Args) (Value, error) {
+func listNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	elem := &ListElement{}
 
 	// Get optional tight argument (default: true)
@@ -623,7 +623,7 @@ func ListItemFunc() *Func {
 }
 
 // listItemNative implements the list.item() function.
-func listItemNative(vm *Vm, args *Args) (Value, error) {
+func listItemNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required body argument
 	bodyArg := args.Find("body")
 	if bodyArg == nil {
@@ -708,7 +708,7 @@ func EnumFunc() *Func {
 //   - spacing (named, length or auto, default: auto): Spacing between items
 //   - number-align (named, str, default: "end + top"): Alignment of numbers
 //   - children (positional, variadic, content): The enum items
-func enumNative(vm *Vm, args *Args) (Value, error) {
+func enumNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	elem := &EnumElement{}
 
 	// Get optional tight argument (default: true)
@@ -921,7 +921,7 @@ func EnumItemFunc() *Func {
 }
 
 // enumItemNative implements the enum.item() function.
-func enumItemNative(vm *Vm, args *Args) (Value, error) {
+func enumItemNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	elem := &EnumItemElement{}
 
 	// Get optional number argument (first positional)
@@ -1027,7 +1027,7 @@ func bodyFromURL(url string) Content {
 // Arguments:
 //   - dest (positional, str): The destination URL or label
 //   - body (positional, content, default: none): The content to display (defaults to the URL)
-func linkNative(vm *Vm, args *Args) (Value, error) {
+func linkNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required dest argument (positional)
 	destArg := args.Find("dest")
 	if destArg == nil {
@@ -1151,7 +1151,7 @@ func TableFunc() *Func {
 //   - fill (named): Cell background fill
 //   - stroke (named): Cell border stroke (default: 1pt + black)
 //   - children (positional, variadic): Table cells
-func tableNative(vm *Vm, args *Args) (Value, error) {
+func tableNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	elem := &TableElement{}
 
 	// Get columns argument (required for determining grid structure)
@@ -1295,7 +1295,7 @@ func TableCellFunc() *Func {
 //   - fill (named): Cell background override
 //   - stroke (named): Cell border override
 //   - breakable (named, bool): Whether rows can break across pages
-func tableCellNative(vm *Vm, args *Args) (Value, error) {
+func tableCellNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	elem := &TableCellElement{
 		Colspan: 1,
 		Rowspan: 1,
@@ -1444,7 +1444,7 @@ func TableHeaderFunc() *Func {
 }
 
 // tableHeaderNative implements the table.header() function.
-func tableHeaderNative(vm *Vm, args *Args) (Value, error) {
+func tableHeaderNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	elem := &TableHeaderElement{
 		Repeat: true,
 		Level:  1,
@@ -1543,7 +1543,7 @@ func TableFooterFunc() *Func {
 }
 
 // tableFooterNative implements the table.footer() function.
-func tableFooterNative(vm *Vm, args *Args) (Value, error) {
+func tableFooterNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	elem := &TableFooterElement{
 		Repeat: true,
 	}
@@ -1623,7 +1623,7 @@ func TableHLineFunc() *Func {
 }
 
 // tableHLineNative implements the table.hline() function.
-func tableHLineNative(vm *Vm, args *Args) (Value, error) {
+func tableHLineNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	elem := &TableHLineElement{}
 
 	// Get optional y argument
@@ -1725,7 +1725,7 @@ func TableVLineFunc() *Func {
 }
 
 // tableVLineNative implements the table.vline() function.
-func tableVLineNative(vm *Vm, args *Args) (Value, error) {
+func tableVLineNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	elem := &TableVLineElement{}
 
 	// Get optional x argument

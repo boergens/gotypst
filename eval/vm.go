@@ -4,9 +4,6 @@ import (
 	"github.com/boergens/gotypst/syntax"
 )
 
-// MaxCallDepth is the maximum allowed call stack depth.
-const MaxCallDepth = 256
-
 // Vm is the virtual machine for evaluating Typst code.
 //
 // The VM holds all state needed during evaluation, including variable scopes,
@@ -174,6 +171,48 @@ func NewEngine(world World) *Engine {
 	}
 }
 
+// CallFunc calls a function with the given context and arguments.
+// This is the primary way for native functions to call other functions.
+// It handles call depth tracking through the Engine's Route.
+func (e *Engine) CallFunc(context *Context, callee Value, args *Args, span syntax.Span) (Value, error) {
+	fn, ok := AsFunc(callee)
+	if !ok {
+		return nil, &InvalidCalleeError{Value: callee, Span: span}
+	}
+
+	// Check and update call depth
+	if err := e.Route.CheckCallDepth(); err != nil {
+		return nil, err
+	}
+	e.Route.EnterCall()
+	defer e.Route.ExitCall()
+
+	// Dispatch based on function representation
+	switch repr := fn.Repr.(type) {
+	case NativeFunc:
+		return repr.Func(e, context, args)
+
+	case ClosureFunc:
+		// Create a temporary Vm for closure evaluation
+		scopes := NewScopes(e.World.Library())
+		if repr.Closure.Captured != nil {
+			scopes.SetTop(repr.Closure.Captured.Clone())
+		}
+		vm := NewVm(e, context, scopes, fn.Span)
+		return callClosure(vm, fn, repr.Closure, args)
+
+	case WithFunc:
+		// Merge pre-applied args with new args
+		merged := &Args{Span: args.Span}
+		merged.Items = append(merged.Items, repr.Args.Items...)
+		merged.Items = append(merged.Items, args.Items...)
+		return e.CallFunc(context, FuncValue{Func: repr.Func}, merged, span)
+
+	default:
+		return nil, &InvalidCalleeError{Value: callee, Span: span}
+	}
+}
+
 // ----------------------------------------------------------------------------
 // World Interface
 // ----------------------------------------------------------------------------
@@ -265,15 +304,45 @@ type Position struct {
 // Route (Cycle Detection)
 // ----------------------------------------------------------------------------
 
-// Route tracks the evaluation path for detecting cyclic imports.
+// Route tracks the evaluation path for detecting cyclic imports and call depth.
+// This matches Rust's Route which tracks both file cycles and call depth.
 type Route struct {
 	// files contains the file IDs currently being evaluated.
 	files []FileID
+	// callDepth tracks the current function call depth.
+	callDepth int
 }
+
+// MaxCallDepth is the maximum allowed call stack depth.
+const MaxCallDepth = 256
 
 // NewRoute creates a new empty route.
 func NewRoute() *Route {
-	return &Route{files: nil}
+	return &Route{files: nil, callDepth: 0}
+}
+
+// CheckCallDepth checks if the call depth limit has been exceeded.
+// Returns an error if the limit is exceeded.
+func (r *Route) CheckCallDepth() error {
+	if r.callDepth >= MaxCallDepth {
+		return &CallDepthExceededError{Depth: r.callDepth}
+	}
+	return nil
+}
+
+// EnterCall increments the call depth.
+func (r *Route) EnterCall() {
+	r.callDepth++
+}
+
+// ExitCall decrements the call depth.
+func (r *Route) ExitCall() {
+	r.callDepth--
+}
+
+// CallDepth returns the current call depth.
+func (r *Route) CallDepth() int {
+	return r.callDepth
 }
 
 // Contains checks if a file is already in the route.
@@ -304,7 +373,10 @@ func (r *Route) Clone() *Route {
 	if r == nil {
 		return nil
 	}
-	clone := &Route{files: make([]FileID, len(r.files))}
+	clone := &Route{
+		files:     make([]FileID, len(r.files)),
+		callDepth: r.callDepth,
+	}
 	copy(clone.files, r.files)
 	return clone
 }

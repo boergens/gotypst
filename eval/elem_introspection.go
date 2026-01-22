@@ -308,7 +308,7 @@ func HFunc() *Func {
 }
 
 // hNative implements the h() function.
-func hNative(vm *Vm, args *Args) (Value, error) {
+func hNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required amount argument
 	amountArg := args.Find("amount")
 	if amountArg == nil {
@@ -372,7 +372,7 @@ func VFunc() *Func {
 }
 
 // vNative implements the v() function.
-func vNative(vm *Vm, args *Args) (Value, error) {
+func vNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required amount argument
 	amountArg := args.Find("amount")
 	if amountArg == nil {
@@ -436,7 +436,7 @@ func PagebreakFunc() *Func {
 }
 
 // pagebreakNative implements the pagebreak() function.
-func pagebreakNative(vm *Vm, args *Args) (Value, error) {
+func pagebreakNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	elem := &PagebreakElem{}
 
 	// Get optional weak argument

@@ -63,7 +63,7 @@ func PadFunc() *Func {
 //   - x (named, length, default: 0pt): Horizontal padding (sets left and right)
 //   - y (named, length, default: 0pt): Vertical padding (sets top and bottom)
 //   - rest (named, length, default: 0pt): Padding for all sides
-func padNative(vm *Vm, args *Args) (Value, error) {
+func padNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	elem := &PadElement{}
 
 	// Get rest argument first (applies to all sides)

@@ -33,7 +33,7 @@ func RawFunc() eval.FuncValue {
 }
 
 // rawImpl is the native implementation of the raw function.
-func rawImpl(vm *eval.Vm, args *eval.Args) (eval.Value, error) {
+func rawImpl(engine *eval.Engine, context *eval.Context, args *eval.Args) (eval.Value, error) {
 	// Get the required text argument (first positional)
 	textArg, err := args.Expect("text")
 	if err != nil {

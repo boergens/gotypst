@@ -476,9 +476,12 @@ type FuncRepr interface {
 }
 
 // NativeFunc represents a built-in function implemented in Go.
+// This matches Rust's NativeFuncSignature pattern where native functions
+// receive Engine and Context explicitly rather than a combined Vm.
 type NativeFunc struct {
 	// Func is the Go function implementing this native.
-	Func func(vm *Vm, args *Args) (Value, error)
+	// Receives Engine (world, route, sink) and Context (styles) explicitly.
+	Func func(engine *Engine, context *Context, args *Args) (Value, error)
 	// Info contains function metadata.
 	Info *FuncInfo
 	// Scope contains associated methods (e.g., table.cell).

@@ -53,7 +53,7 @@ func AlignFunc() *Func {
 // Arguments:
 //   - alignment (positional, alignment): The alignment specification
 //   - body (positional, content): The content to align
-func alignNative(vm *Vm, args *Args) (Value, error) {
+func alignNative(engine *Engine, context *Context, args *Args) (Value, error) {
 	// Get required alignment argument
 	alignArg, err := args.Expect("alignment")
 	if err != nil {
