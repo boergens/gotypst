@@ -12,6 +12,7 @@ import (
 	"regexp"
 
 	"github.com/boergens/gotypst/eval"
+	"github.com/boergens/gotypst/syntax"
 )
 
 // ----------------------------------------------------------------------------
@@ -555,11 +556,18 @@ func isLocatable(elem eval.ContentElement) bool {
 	}
 }
 
-// hasLabel returns true if an element has a label.
+// hasLabel returns true if an element has a label attached.
+// Labels are used for cross-references in Typst.
+// Matches Rust: content.label().is_some()
 func hasLabel(elem eval.ContentElement) bool {
-	// Check if element has a Label field that is set.
-	// For now, return false as we'd need reflection or type-specific checks.
-	// This can be expanded as needed.
+	// Check element types that can have labels.
+	// Currently only SymbolElem has a Label field in our implementation.
+	// More elements will get label support as they are implemented.
+	if sym, ok := elem.(*eval.SymbolElem); ok {
+		return sym.Label != nil && *sym.Label != ""
+	}
+	// TODO: Add more element types as they gain label support
+	// (e.g., HeadingElement, ImageElement, EquationElement, etc.)
 	return false
 }
 
@@ -1069,8 +1077,23 @@ func applyRecipe(engine *eval.Engine, elem eval.ContentElement, recipe *eval.Rec
 		return &t.Content, nil
 
 	case eval.FuncTransformation:
-		// TODO: Apply function transformation.
-		return nil, nil
+		// Apply function transformation.
+		if t.Func == nil {
+			return nil, nil
+		}
+
+		// Create a VM to execute the transformation function.
+		// We use the engine from the state, and create a fresh context and scopes.
+		vm := eval.NewVm(engine, eval.NewContext(), eval.NewScopes(nil), syntax.Detached())
+
+		// Use the ApplyTransformation helper from eval package.
+		result, err := eval.ApplyTransformation(t, elem, vm)
+		if err != nil {
+			return nil, err
+		}
+
+		// Convert result to Content.
+		return &eval.Content{Elements: result}, nil
 
 	default:
 		return nil, nil
@@ -1079,3 +1102,296 @@ func applyRecipe(engine *eval.Engine, elem eval.ContentElement, recipe *eval.Rec
 
 // Maximum number of nested groups (corresponds to unique priority levels).
 const maxGroupNesting = 3
+
+// ----------------------------------------------------------------------------
+// Regex Show Rules for Grouped Text
+// ----------------------------------------------------------------------------
+// These functions implement regex show rules across grouped textual elements.
+// Matches Rust: visit_textual, find_regex_match_in_elems, find_regex_match_in_str,
+// visit_regex_match in typst-realize/src/lib.rs
+
+// regexMatch holds information about a regex match found in grouped text.
+// Matches Rust: RegexMatch struct
+type regexMatch struct {
+	// offset is the byte offset in the combined text where the match starts.
+	offset int
+	// text is the matched text.
+	text string
+	// styles is the style chain of the matching grouping.
+	styles *eval.StyleChain
+	// recipe is the recipe that matched.
+	recipe *eval.Recipe
+	// recipeIndex is the index of the recipe (for revocation).
+	recipeIndex int
+}
+
+// visitTextual handles a completed TEXTUAL grouping by searching for regex matches.
+// If a match is found, it splits the elements and applies the transformation.
+// Otherwise, it just collapses spaces.
+// Matches Rust: visit_textual()
+func visitTextual(s *state, pairs []Pair, start int) error {
+	if len(pairs) == 0 {
+		collapseSpaces(pairs, start)
+		return nil
+	}
+
+	// Try to find a regex match.
+	m := findRegexMatchInElems(pairs)
+	if m == nil {
+		// No regex match, just collapse spaces.
+		collapseSpaces(pairs, start)
+		return nil
+	}
+
+	// Found a match - apply it.
+	return visitRegexMatch(s, pairs, m)
+}
+
+// findRegexMatchInElems finds the leftmost regex match across grouped elements.
+// Matches Rust: find_regex_match_in_elems()
+func findRegexMatchInElems(pairs []Pair) *regexMatch {
+	var buf []byte
+	base := 0
+	var leftmost *regexMatch
+	var currentStyles *eval.StyleChain
+	state := StateDestructive
+
+	for _, pair := range pairs {
+		newState, text := collapseStateTextual(pair.Content, pair.Styles)
+		switch newState {
+		case StateInvisible:
+			continue
+		case StateDestructive:
+			if state == StateSpace && len(buf) > 0 {
+				// Remove trailing space
+				buf = buf[:len(buf)-1]
+			}
+			state = StateDestructive
+		case StateSupportive:
+			state = StateSupportive
+		case StateSpace:
+			if state != StateSupportive {
+				continue
+			}
+			state = StateSpace
+		}
+
+		// If styles differ, search before adding new text.
+		if pair.Styles != currentStyles && len(buf) > 0 {
+			leftmost = findRegexMatchInStr(string(buf), currentStyles)
+			if leftmost != nil {
+				break
+			}
+			base += len(buf)
+			buf = buf[:0]
+		}
+
+		currentStyles = pair.Styles
+		buf = append(buf, text...)
+	}
+
+	// Search in remaining buffer.
+	if leftmost == nil && len(buf) > 0 {
+		leftmost = findRegexMatchInStr(string(buf), currentStyles)
+	}
+
+	// Adjust offset by base.
+	if leftmost != nil {
+		leftmost.offset = base + leftmost.offset
+	}
+
+	return leftmost
+}
+
+// collapseStateTextual returns the space state and text for a textual element.
+// Matches Rust: collapse_state_textual()
+func collapseStateTextual(elem eval.ContentElement, styles *eval.StyleChain) (SpaceState, string) {
+	switch e := elem.(type) {
+	case *eval.TagElem:
+		return StateInvisible, ""
+	case *eval.LinebreakElement:
+		return StateDestructive, "\n"
+	case *eval.SpaceElement:
+		return StateSpace, " "
+	case *eval.TextElement:
+		return StateSupportive, e.Text
+	case *eval.SmartQuoteElement:
+		if e.Double {
+			return StateSupportive, "\""
+		}
+		return StateSupportive, "'"
+	default:
+		// Should not happen for textual elements
+		return StateSupportive, ""
+	}
+}
+
+// findRegexMatchInStr searches for regex show rules in the style chain.
+// Returns the leftmost match found.
+// Matches Rust: find_regex_match_in_str()
+func findRegexMatchInStr(text string, styles *eval.StyleChain) *regexMatch {
+	if styles == nil || text == "" {
+		return nil
+	}
+
+	recipes := styles.Recipes()
+	if len(recipes) == 0 {
+		return nil
+	}
+
+	var leftmost *regexMatch
+
+	for i, recipe := range recipes {
+		if recipe.Selector == nil {
+			continue
+		}
+
+		// Check if selector is a regex TextSelector.
+		textSel, ok := (*recipe.Selector).(eval.TextSelector)
+		if !ok || !textSel.IsRegex {
+			continue
+		}
+
+		// Try to compile and match the regex.
+		re, err := regexp.Compile(textSel.Text)
+		if err != nil {
+			continue
+		}
+
+		loc := re.FindStringIndex(text)
+		if loc == nil {
+			continue
+		}
+
+		// Skip empty matches.
+		if loc[0] == loc[1] {
+			continue
+		}
+
+		// Check if this is more to the left than current best.
+		if leftmost != nil && leftmost.offset <= loc[0] {
+			continue
+		}
+
+		leftmost = &regexMatch{
+			offset:      loc[0],
+			text:        text[loc[0]:loc[1]],
+			styles:      styles,
+			recipe:      recipe,
+			recipeIndex: i,
+		}
+	}
+
+	return leftmost
+}
+
+// visitRegexMatch applies a regex match transformation.
+// It splits the elements around the match and applies the recipe.
+// Matches Rust: visit_regex_match()
+func visitRegexMatch(s *state, pairs []Pair, m *regexMatch) error {
+	matchStart := m.offset
+	matchEnd := m.offset + len(m.text)
+
+	// Create the replacement piece.
+	piece := &eval.TextElement{Text: m.text}
+
+	// Apply the recipe transformation.
+	output, err := applyRecipe(s.engine, piece, m.recipe, m.styles)
+	if err != nil {
+		return err
+	}
+
+	cursor := 0
+	outputConsumed := false
+
+	for _, pair := range pairs {
+		// Forward tags unchanged.
+		if _, ok := pair.Content.(*eval.TagElem); ok {
+			if err := visit(s, pair.Content, pair.Styles); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// Get the length of this element's text.
+		var elemLen int
+		switch e := pair.Content.(type) {
+		case *eval.TextElement:
+			elemLen = len(e.Text)
+		case *eval.SpaceElement:
+			elemLen = 1
+		case *eval.LinebreakElement:
+			elemLen = 1
+		case *eval.SmartQuoteElement:
+			elemLen = 1
+		default:
+			elemLen = 1
+		}
+
+		elemStart := cursor
+		elemEnd := cursor + elemLen
+
+		// If element starts before match, visit it fully or sliced.
+		if elemStart < matchStart {
+			if elemEnd <= matchStart {
+				// Entirely before match.
+				if err := visit(s, pair.Content, pair.Styles); err != nil {
+					return err
+				}
+			} else {
+				// Overlaps with match start - slice the text.
+				if text, ok := pair.Content.(*eval.TextElement); ok {
+					sliceEnd := matchStart - elemStart
+					if sliceEnd > 0 && sliceEnd <= len(text.Text) {
+						sliced := &eval.TextElement{Text: text.Text[:sliceEnd]}
+						if err := visit(s, sliced, pair.Styles); err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
+
+		// When the match starts before this element ends, visit the output.
+		if matchStart < elemEnd && !outputConsumed {
+			if output != nil {
+				if err := visitContent(s, *output, m.styles); err != nil {
+					return err
+				}
+			}
+			outputConsumed = true
+		}
+
+		// If element ends after match, visit it fully or sliced.
+		if elemEnd > matchEnd {
+			if elemStart >= matchEnd {
+				// Entirely after match.
+				if err := visit(s, pair.Content, pair.Styles); err != nil {
+					return err
+				}
+			} else {
+				// Overlaps with match end - slice the text.
+				if text, ok := pair.Content.(*eval.TextElement); ok {
+					sliceStart := matchEnd - elemStart
+					if sliceStart >= 0 && sliceStart < len(text.Text) {
+						sliced := &eval.TextElement{Text: text.Text[sliceStart:]}
+						if err := visit(s, sliced, pair.Styles); err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
+
+		cursor = elemEnd
+	}
+
+	// Consume output if not yet done.
+	if !outputConsumed && output != nil {
+		if err := visitContent(s, *output, m.styles); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

@@ -154,11 +154,10 @@ var termsRule = &GroupingRule{
 // init sets up the Finish functions for grouping rules.
 // This is done in init() to avoid initialization cycles.
 func init() {
-	// TEXTUAL finish: collapse spaces
+	// TEXTUAL finish: try regex matches, then collapse spaces
 	textualRule.Finish = func(g *grouped) error {
 		pairs := g.get()
-		collapseSpaces(pairs, g.start)
-		return nil
+		return visitTextual(g.s, pairs, g.start)
 	}
 
 	// PAR finish: create paragraph from grouped inline content
