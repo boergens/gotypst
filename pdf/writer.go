@@ -492,37 +492,130 @@ func (w *Writer) processFrameWithTransforms(frame *pages.Frame, content *bytes.B
 }
 
 // renderInlineFrameLocal renders an inline frame at the current transform position.
+// This handles all inline frame item types in the transformed coordinate system
+// where Y is already flipped at the page level.
 func (w *Writer) renderInlineFrameLocal(content *bytes.Buffer, frame *inline.FinalFrame) {
+	baseline := float64(frame.Baseline)
+
 	for _, entry := range frame.Items {
 		x := float64(entry.Pos.X)
 		y := float64(entry.Pos.Y)
 
 		switch item := entry.Item.(type) {
 		case inline.FinalTextItem:
-			if item.Text == nil || item.Text.Glyphs.Len() == 0 {
-				continue
-			}
-			// Get font size from first glyph
-			glyphs := item.Text.Glyphs.Kept()
-			if len(glyphs) == 0 {
-				continue
-			}
-			fontSize := float64(glyphs[0].Size)
-			baseline := float64(frame.Baseline)
+			w.renderShapedTextLocal(content, item.Text, x, y, baseline)
 
-			fmt.Fprintf(content, "BT\n")
-			fmt.Fprintf(content, "/F1 %g Tf\n", fontSize)
-			// Position: y is from top of frame, baseline is offset from top
-			fmt.Fprintf(content, "%g %g Td\n", x, y+baseline)
+		case inline.FinalMathScriptItem:
+			w.renderMathScriptLocal(content, item, x, y, baseline)
 
-			// Build text string from glyphs
-			var text bytes.Buffer
-			for i := range glyphs {
-				text.WriteRune(glyphs[i].Char)
-			}
-			fmt.Fprintf(content, "(%s) Tj\n", escapeString(text.String()))
-			fmt.Fprintf(content, "ET\n")
+		case inline.FinalMathLimitsItem:
+			w.renderMathLimitsLocal(content, item, x, y, baseline)
 		}
+	}
+}
+
+// renderShapedTextLocal renders shaped text in transformed coordinates.
+func (w *Writer) renderShapedTextLocal(content *bytes.Buffer, text *inline.ShapedText, x, y, baseline float64) {
+	if text == nil || text.Glyphs.Len() == 0 {
+		return
+	}
+
+	glyphs := text.Glyphs.Kept()
+	if len(glyphs) == 0 {
+		return
+	}
+
+	// Get font info from first glyph
+	firstGlyph := &glyphs[0]
+	fontSize := float64(firstGlyph.Size)
+
+	// Register glyphs with font manager and get font name
+	widthUnits := int(float64(firstGlyph.XAdvance) * 1000)
+	fontName := w.renderer.FontManager.RegisterGlyph(firstGlyph.Font, firstGlyph.GlyphID, firstGlyph.Char, widthUnits)
+
+	fmt.Fprintf(content, "BT\n")
+	fmt.Fprintf(content, "/%s %g Tf\n", fontName, fontSize)
+	// In transformed coords, y goes down. Text baseline is at y + baseline offset.
+	fmt.Fprintf(content, "%g %g Td\n", x, y+baseline)
+
+	// Build hex string with glyph IDs for CID font
+	// For Identity-H encoding, we output glyph IDs as 2-byte big-endian values
+	fmt.Fprintf(content, "<")
+	for i := range glyphs {
+		g := &glyphs[i]
+		// Register each glyph
+		widthUnits := int(float64(g.XAdvance) * 1000)
+		w.renderer.FontManager.RegisterGlyph(g.Font, g.GlyphID, g.Char, widthUnits)
+		// Output glyph ID as 2-byte hex
+		fmt.Fprintf(content, "%04X", g.GlyphID)
+	}
+	fmt.Fprintf(content, "> Tj\n")
+	fmt.Fprintf(content, "ET\n")
+}
+
+// renderMathScriptLocal renders math scripts (superscript/subscript) in transformed coordinates.
+func (w *Writer) renderMathScriptLocal(content *bytes.Buffer, item inline.FinalMathScriptItem, x, y, baseline float64) {
+	// Render base content
+	if item.BaseFrame != nil {
+		fmt.Fprintf(content, "q\n")
+		fmt.Fprintf(content, "1 0 0 1 %g %g cm\n", x, y)
+		w.renderInlineFrameLocal(content, item.BaseFrame)
+		fmt.Fprintf(content, "Q\n")
+	}
+
+	// Calculate script X position
+	scriptX := x + float64(item.ScriptXOffset)
+
+	// Render superscript
+	if item.SuperFrame != nil {
+		superY := y + float64(item.SuperOffset)
+		fmt.Fprintf(content, "q\n")
+		fmt.Fprintf(content, "1 0 0 1 %g %g cm\n", scriptX, superY)
+		w.renderInlineFrameLocal(content, item.SuperFrame)
+		fmt.Fprintf(content, "Q\n")
+	}
+
+	// Render subscript
+	if item.SubFrame != nil {
+		subY := y + float64(item.SubOffset)
+		fmt.Fprintf(content, "q\n")
+		fmt.Fprintf(content, "1 0 0 1 %g %g cm\n", scriptX, subY)
+		w.renderInlineFrameLocal(content, item.SubFrame)
+		fmt.Fprintf(content, "Q\n")
+	}
+}
+
+// renderMathLimitsLocal renders math limits (operator with limits above/below) in transformed coordinates.
+func (w *Writer) renderMathLimitsLocal(content *bytes.Buffer, item inline.FinalMathLimitsItem, x, y, baseline float64) {
+	centerX := x + float64(item.CenterX)
+
+	// Render upper limit (centered above nucleus)
+	if item.UpperFrame != nil {
+		upperX := centerX - float64(item.UpperFrame.Size.Width)/2
+		upperY := y + float64(item.UpperOffset)
+		fmt.Fprintf(content, "q\n")
+		fmt.Fprintf(content, "1 0 0 1 %g %g cm\n", upperX, upperY)
+		w.renderInlineFrameLocal(content, item.UpperFrame)
+		fmt.Fprintf(content, "Q\n")
+	}
+
+	// Render nucleus (main operator)
+	if item.NucleusFrame != nil {
+		nucleusX := centerX - float64(item.NucleusFrame.Size.Width)/2
+		fmt.Fprintf(content, "q\n")
+		fmt.Fprintf(content, "1 0 0 1 %g %g cm\n", nucleusX, y)
+		w.renderInlineFrameLocal(content, item.NucleusFrame)
+		fmt.Fprintf(content, "Q\n")
+	}
+
+	// Render lower limit (centered below nucleus)
+	if item.LowerFrame != nil {
+		lowerX := centerX - float64(item.LowerFrame.Size.Width)/2
+		lowerY := y + float64(item.LowerOffset)
+		fmt.Fprintf(content, "q\n")
+		fmt.Fprintf(content, "1 0 0 1 %g %g cm\n", lowerX, lowerY)
+		w.renderInlineFrameLocal(content, item.LowerFrame)
+		fmt.Fprintf(content, "Q\n")
 	}
 }
 
