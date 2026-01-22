@@ -372,6 +372,37 @@ func TestMatchesSelector(t *testing.T) {
 			}},
 			expected: false,
 		},
+		// Regex tests
+		{
+			name:     "TextSelector regex match",
+			elem:     &eval.TextElement{Text: "hello123"},
+			selector: eval.TextSelector{Text: `\d+`, IsRegex: true},
+			expected: true,
+		},
+		{
+			name:     "TextSelector regex no match",
+			elem:     &eval.TextElement{Text: "hello"},
+			selector: eval.TextSelector{Text: `\d+`, IsRegex: true},
+			expected: false,
+		},
+		{
+			name:     "TextSelector regex full match",
+			elem:     &eval.TextElement{Text: "abc"},
+			selector: eval.TextSelector{Text: `^abc$`, IsRegex: true},
+			expected: true,
+		},
+		{
+			name:     "TextSelector regex partial match",
+			elem:     &eval.TextElement{Text: "hello world"},
+			selector: eval.TextSelector{Text: `world`, IsRegex: true},
+			expected: true,
+		},
+		{
+			name:     "TextSelector invalid regex returns false",
+			elem:     &eval.TextElement{Text: "hello"},
+			selector: eval.TextSelector{Text: `[invalid`, IsRegex: true},
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {

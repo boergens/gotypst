@@ -9,6 +9,7 @@ package realize
 
 import (
 	"errors"
+	"regexp"
 
 	"github.com/boergens/gotypst/eval"
 )
@@ -143,6 +144,8 @@ type state struct {
 	mayAttach bool
 	// sawParbreak indicates if we visited any paragraph breaks.
 	sawParbreak bool
+	// locationCounter generates unique locations for elements.
+	locationCounter uint64
 }
 
 // grouping tracks an active grouping operation.
@@ -372,30 +375,67 @@ func visitShowRules(s *state, content eval.ContentElement, styles *eval.StyleCha
 		localStyles = styles.Chain(v.styles)
 	}
 
+	// Prepare the element and get tags for introspection.
+	// Tags are only created for elements that need them (locatable/tagged).
+	startTag, endTag := prepare(s, content, v.styles, localStyles)
+
+	// Push start tag.
+	if startTag != nil {
+		if err := visit(s, startTag, localStyles); err != nil {
+			return false, err
+		}
+	}
+
+	// Remember state for restoring after show rule application.
+	prevOutside := s.outside
+	s.outside = s.outside && isContextElem(content)
+
 	// Apply show rule step if there is one.
+	var visitErr error
+	handled := false
 	if v.step != nil {
 		if v.step.builtin {
 			// Apply built-in show rule.
 			output, err := applyBuiltinShowRule(s.engine, content, localStyles)
 			if err != nil {
-				return false, err
-			}
-			if output != nil {
-				return true, visitContent(s, *output, localStyles)
+				visitErr = err
+			} else if output != nil {
+				visitErr = visitContent(s, *output, localStyles)
+				handled = true
 			}
 		} else if v.step.recipe != nil {
 			// Apply user-defined show rule.
 			output, err := applyRecipe(s.engine, content, v.step.recipe, localStyles)
 			if err != nil {
-				return false, err
-			}
-			if output != nil {
-				return true, visitContent(s, *output, localStyles)
+				visitErr = err
+			} else if output != nil {
+				visitErr = visitContent(s, *output, localStyles)
+				handled = true
 			}
 		}
 	}
 
-	return false, nil
+	// Restore outside state.
+	s.outside = prevOutside
+
+	// Push end tag.
+	if endTag != nil {
+		if err := visit(s, endTag, localStyles); err != nil {
+			return handled, err
+		}
+	}
+
+	if visitErr != nil {
+		return handled, visitErr
+	}
+
+	return handled, nil
+}
+
+// isContextElem returns true if the element is a ContextElem.
+func isContextElem(elem eval.ContentElement) bool {
+	_, ok := elem.(*eval.ContextElem)
+	return ok
 }
 
 // getVerdict determines whether and how to proceed with show rule application.
@@ -455,6 +495,92 @@ func getVerdict(engine *eval.Engine, elem eval.ContentElement, styles *eval.Styl
 	}
 
 	return v
+}
+
+// prepare prepares an element for realization.
+// This assigns a location, applies show-set rules, synthesizes fields,
+// and returns tags for introspection.
+// Matches Rust: fn prepare()
+func prepare(s *state, elem eval.ContentElement, showSetStyles *eval.Styles, styles *eval.StyleChain) (startTag, endTag *eval.TagElem) {
+	// Determine if this element needs introspection tags.
+	// Elements are introspectable if they're "locatable" (like headings, figures)
+	// or have labels.
+	flags := eval.TagFlags{
+		Introspectable: isLocatable(elem) || hasLabel(elem),
+		Tagged:         isTagged(elem),
+	}
+
+	// Only create tags if any flag is set.
+	if !flags.Any() {
+		return nil, nil
+	}
+
+	// Generate a unique location for this element.
+	s.locationCounter++
+	loc := eval.TagLocation{
+		Hash:    s.locationCounter,
+		Variant: 0,
+	}
+
+	// Create start and end tags.
+	key := s.locationCounter // Use same value for simplicity
+	startTag = eval.NewStartTag(elem, loc, flags)
+	endTag = eval.NewEndTag(loc, key, flags)
+
+	return startTag, endTag
+}
+
+// isLocatable returns true if an element can be located via introspection.
+// These elements get start/end tags during realization.
+func isLocatable(elem eval.ContentElement) bool {
+	switch elem.(type) {
+	case *eval.HeadingElement:
+		return true
+	case *eval.ImageElement:
+		return true
+	case *eval.EquationElement:
+		return true
+	case *eval.CiteElement:
+		return true
+	case *eval.RefElement:
+		return true
+	case *eval.LinkElement:
+		return true
+	case *eval.StrongElement:
+		return true
+	case *eval.EmphElement:
+		return true
+	default:
+		return false
+	}
+}
+
+// hasLabel returns true if an element has a label.
+func hasLabel(elem eval.ContentElement) bool {
+	// Check if element has a Label field that is set.
+	// For now, return false as we'd need reflection or type-specific checks.
+	// This can be expanded as needed.
+	return false
+}
+
+// isTagged returns true if an element is semantically tagged (for accessibility).
+func isTagged(elem eval.ContentElement) bool {
+	switch elem.(type) {
+	case *eval.HeadingElement:
+		return true
+	case *eval.ParagraphElement:
+		return true
+	case *eval.ListElement:
+		return true
+	case *eval.EnumElement:
+		return true
+	case *eval.TermsElement:
+		return true
+	case *eval.ImageElement:
+		return true
+	default:
+		return false
+	}
 }
 
 // visitStyled handles a styled element.
@@ -790,8 +916,11 @@ func matchesSelector(elem eval.ContentElement, selector eval.Selector, styles *e
 	case eval.TextSelector:
 		if text, ok := elem.(*eval.TextElement); ok {
 			if sel.IsRegex {
-				// TODO: Implement regex matching
-				return false
+				re, err := regexp.Compile(sel.Text)
+				if err != nil {
+					return false
+				}
+				return re.MatchString(text.Text)
 			}
 			return text.Text == sel.Text
 		}
