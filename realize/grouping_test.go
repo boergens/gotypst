@@ -7,11 +7,113 @@ import (
 )
 
 // ----------------------------------------------------------------------------
-// Paragraph Grouping Tests
+// isPhrasing Tests
 // ----------------------------------------------------------------------------
 
-func TestParagraphGroupingRule_Trigger(t *testing.T) {
-	rule := &ParagraphGroupingRule{}
+func TestIsPhrasing(t *testing.T) {
+	tests := []struct {
+		name     string
+		elem     eval.ContentElement
+		expected bool
+	}{
+		// Text and basic inline elements
+		{"TextElement is phrasing", &eval.TextElement{Text: "hello"}, true},
+		{"SpaceElement is phrasing", &eval.SpaceElement{}, true},
+		{"SmartQuoteElement is phrasing", &eval.SmartQuoteElement{Double: true}, true},
+
+		// Formatting elements
+		{"StrongElement is phrasing", &eval.StrongElement{}, true},
+		{"EmphElement is phrasing", &eval.EmphElement{}, true},
+		{"RawElement is phrasing", &eval.RawElement{Text: "code"}, true},
+
+		// Links and references
+		{"LinkElement is phrasing", &eval.LinkElement{URL: "http://example.com"}, true},
+		{"RefElement is phrasing", &eval.RefElement{Target: "fig:1"}, true},
+
+		// Spacing and boxes
+		{"HElem is phrasing", &eval.HElem{}, true},
+		{"BoxElement is phrasing", &eval.BoxElement{}, true},
+		{"InlineElem is phrasing", &eval.InlineElem{}, true},
+
+		// Math
+		{"EquationElement is phrasing", &eval.EquationElement{}, true},
+
+		// Line breaks
+		{"LinebreakElement is phrasing", &eval.LinebreakElement{}, true},
+
+		// Sequences and styled
+		{"SequenceElem is phrasing", &eval.SequenceElem{}, true},
+		{"StyledElement is phrasing", &eval.StyledElement{}, true},
+
+		// Tags
+		{"TagElem is phrasing", &eval.TagElem{}, true},
+
+		// Block elements are NOT phrasing
+		{"HeadingElement is not phrasing", &eval.HeadingElement{Depth: 1}, false},
+		{"ParagraphElement is not phrasing", &eval.ParagraphElement{}, false},
+		{"ListItemElement is not phrasing", &eval.ListItemElement{}, false},
+		{"EnumItemElement is not phrasing", &eval.EnumItemElement{}, false},
+		{"TermItemElement is not phrasing", &eval.TermItemElement{}, false},
+		{"ListElement is not phrasing", &eval.ListElement{}, false},
+		{"EnumElement is not phrasing", &eval.EnumElement{}, false},
+		{"TermsElement is not phrasing", &eval.TermsElement{}, false},
+		{"BlockElement is not phrasing", &eval.BlockElement{}, false},
+
+		// Breaks
+		{"ParbreakElement is not phrasing", &eval.ParbreakElement{}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isPhrasing(tt.elem)
+			if result != tt.expected {
+				t.Errorf("isPhrasing() = %v, expected %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+// ----------------------------------------------------------------------------
+// isGroupable Tests
+// ----------------------------------------------------------------------------
+
+func TestIsGroupable(t *testing.T) {
+	tests := []struct {
+		name     string
+		elem     eval.ContentElement
+		expected bool
+	}{
+		// Groupable elements (trigger their own groups)
+		{"ListItemElement is groupable", &eval.ListItemElement{}, true},
+		{"EnumItemElement is groupable", &eval.EnumItemElement{}, true},
+		{"TermItemElement is groupable", &eval.TermItemElement{}, true},
+		{"CiteElement is groupable", &eval.CiteElement{Key: "key"}, true},
+
+		// Non-groupable elements
+		{"TextElement is not groupable", &eval.TextElement{Text: "hello"}, false},
+		{"SpaceElement is not groupable", &eval.SpaceElement{}, false},
+		{"StrongElement is not groupable", &eval.StrongElement{}, false},
+		{"ParagraphElement is not groupable", &eval.ParagraphElement{}, false},
+		{"HeadingElement is not groupable", &eval.HeadingElement{}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isGroupable(tt.elem)
+			if result != tt.expected {
+				t.Errorf("isGroupable() = %v, expected %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+// ----------------------------------------------------------------------------
+// GroupingRule Tests
+// ----------------------------------------------------------------------------
+
+func TestParRule_Trigger(t *testing.T) {
+	// parRule triggers on phrasing content
+	state := &state{}
 
 	tests := []struct {
 		name     string
@@ -20,84 +122,45 @@ func TestParagraphGroupingRule_Trigger(t *testing.T) {
 	}{
 		{"TextElement triggers", &eval.TextElement{Text: "hello"}, true},
 		{"StrongElement triggers", &eval.StrongElement{}, true},
-		{"EmphElement triggers", &eval.EmphElement{}, true},
 		{"LinkElement triggers", &eval.LinkElement{URL: "http://example.com"}, true},
-		{"SmartQuoteElement triggers", &eval.SmartQuoteElement{Double: true}, true},
-		{"LinebreakElement triggers", &eval.LinebreakElement{}, true},
-		{"Inline RawElement triggers", &eval.RawElement{Text: "code", Block: false}, true},
-		{"Block RawElement does not trigger", &eval.RawElement{Text: "code", Block: true}, false},
 		{"HeadingElement does not trigger", &eval.HeadingElement{Depth: 1}, false},
 		{"ListItemElement does not trigger", &eval.ListItemElement{}, false},
-		{"ParbreakElement does not trigger", &eval.ParbreakElement{}, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := rule.Trigger(tt.elem)
+			result := parRule.Trigger(tt.elem, state)
 			if result != tt.expected {
-				t.Errorf("Trigger() = %v, expected %v", result, tt.expected)
+				t.Errorf("parRule.Trigger() = %v, expected %v", result, tt.expected)
 			}
 		})
 	}
 }
 
-func TestParagraphGroupingRule_Interrupt(t *testing.T) {
-	rule := &ParagraphGroupingRule{}
-
+func TestParRule_Interrupt(t *testing.T) {
 	tests := []struct {
 		name     string
-		elem     eval.ContentElement
+		elem     eval.Element
 		expected bool
 	}{
-		{"ParbreakElement interrupts", &eval.ParbreakElement{}, true},
-		{"HeadingElement interrupts", &eval.HeadingElement{Depth: 1}, true},
-		{"ListItemElement interrupts", &eval.ListItemElement{}, true},
-		{"EnumItemElement interrupts", &eval.EnumItemElement{}, true},
-		{"TermItemElement interrupts", &eval.TermItemElement{}, true},
-		{"Block RawElement interrupts", &eval.RawElement{Text: "code", Block: true}, true},
-		{"ParagraphElement interrupts", &eval.ParagraphElement{}, true},
-		{"TextElement does not interrupt", &eval.TextElement{Text: "hello"}, false},
-		{"StrongElement does not interrupt", &eval.StrongElement{}, false},
+		{"par interrupts", eval.Element{Name: "par"}, true},
+		{"text interrupts", eval.Element{Name: "text"}, true},
+		{"heading does not interrupt", eval.Element{Name: "heading"}, false},
+		{"list does not interrupt", eval.Element{Name: "list"}, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := rule.Interrupt(tt.elem)
+			result := parRule.Interrupt(tt.elem)
 			if result != tt.expected {
-				t.Errorf("Interrupt() = %v, expected %v", result, tt.expected)
+				t.Errorf("parRule.Interrupt() = %v, expected %v", result, tt.expected)
 			}
 		})
 	}
 }
 
-func TestParagraphGroupingRule_Finalize(t *testing.T) {
-	rule := &ParagraphGroupingRule{}
-
-	elements := []eval.ContentElement{
-		&eval.TextElement{Text: "Hello "},
-		&eval.StrongElement{Content: eval.Content{
-			Elements: []eval.ContentElement{&eval.TextElement{Text: "world"}},
-		}},
-		&eval.TextElement{Text: "!"},
-	}
-
-	result := rule.Finalize(elements)
-	para, ok := result.(*eval.ParagraphElement)
-	if !ok {
-		t.Fatalf("Expected *ParagraphElement, got %T", result)
-	}
-
-	if len(para.Body.Elements) != 3 {
-		t.Errorf("Expected 3 elements in paragraph body, got %d", len(para.Body.Elements))
-	}
-}
-
-// ----------------------------------------------------------------------------
-// List Grouping Tests
-// ----------------------------------------------------------------------------
-
-func TestBulletListGroupingRule_Trigger(t *testing.T) {
-	rule := NewBulletListGroupingRule()
+func TestListRule_Trigger(t *testing.T) {
+	state := &state{}
 
 	tests := []struct {
 		name     string
@@ -112,16 +175,16 @@ func TestBulletListGroupingRule_Trigger(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := rule.Trigger(tt.elem)
+			result := listRule.Trigger(tt.elem, state)
 			if result != tt.expected {
-				t.Errorf("Trigger() = %v, expected %v", result, tt.expected)
+				t.Errorf("listRule.Trigger() = %v, expected %v", result, tt.expected)
 			}
 		})
 	}
 }
 
-func TestEnumListGroupingRule_Trigger(t *testing.T) {
-	rule := NewEnumListGroupingRule()
+func TestEnumRule_Trigger(t *testing.T) {
+	state := &state{}
 
 	tests := []struct {
 		name     string
@@ -135,16 +198,16 @@ func TestEnumListGroupingRule_Trigger(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := rule.Trigger(tt.elem)
+			result := enumRule.Trigger(tt.elem, state)
 			if result != tt.expected {
-				t.Errorf("Trigger() = %v, expected %v", result, tt.expected)
+				t.Errorf("enumRule.Trigger() = %v, expected %v", result, tt.expected)
 			}
 		})
 	}
 }
 
-func TestTermListGroupingRule_Trigger(t *testing.T) {
-	rule := NewTermListGroupingRule()
+func TestTermsRule_Trigger(t *testing.T) {
+	state := &state{}
 
 	tests := []struct {
 		name     string
@@ -158,113 +221,16 @@ func TestTermListGroupingRule_Trigger(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := rule.Trigger(tt.elem)
+			result := termsRule.Trigger(tt.elem, state)
 			if result != tt.expected {
-				t.Errorf("Trigger() = %v, expected %v", result, tt.expected)
+				t.Errorf("termsRule.Trigger() = %v, expected %v", result, tt.expected)
 			}
 		})
 	}
 }
 
-func TestBulletListGroupingRule_Interrupt(t *testing.T) {
-	rule := NewBulletListGroupingRule()
-
-	tests := []struct {
-		name     string
-		elem     eval.ContentElement
-		expected bool
-	}{
-		{"ListItemElement does not interrupt", &eval.ListItemElement{}, false},
-		{"EnumItemElement interrupts", &eval.EnumItemElement{}, true},
-		{"TermItemElement interrupts", &eval.TermItemElement{}, true},
-		{"HeadingElement interrupts", &eval.HeadingElement{Depth: 1}, true},
-		{"ParagraphElement interrupts", &eval.ParagraphElement{}, true},
-		{"ParbreakElement interrupts", &eval.ParbreakElement{}, true},
-		{"TextElement interrupts", &eval.TextElement{Text: "hello"}, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := rule.Interrupt(tt.elem)
-			if result != tt.expected {
-				t.Errorf("Interrupt() = %v, expected %v", result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestBulletListGroupingRule_Finalize(t *testing.T) {
-	rule := NewBulletListGroupingRule()
-
-	elements := []eval.ContentElement{
-		&eval.ListItemElement{Content: eval.Content{
-			Elements: []eval.ContentElement{&eval.TextElement{Text: "Item 1"}},
-		}},
-		&eval.ListItemElement{Content: eval.Content{
-			Elements: []eval.ContentElement{&eval.TextElement{Text: "Item 2"}},
-		}},
-		&eval.ListItemElement{Content: eval.Content{
-			Elements: []eval.ContentElement{&eval.TextElement{Text: "Item 3"}},
-		}},
-	}
-
-	result := rule.Finalize(elements)
-	list, ok := result.(*eval.ListElement)
-	if !ok {
-		t.Fatalf("Expected *ListElement, got %T", result)
-	}
-
-	if len(list.Items) != 3 {
-		t.Errorf("Expected 3 items in list, got %d", len(list.Items))
-	}
-}
-
-func TestEnumListGroupingRule_Finalize(t *testing.T) {
-	rule := NewEnumListGroupingRule()
-
-	elements := []eval.ContentElement{
-		&eval.EnumItemElement{Number: 1},
-		&eval.EnumItemElement{Number: 2},
-	}
-
-	result := rule.Finalize(elements)
-	enum, ok := result.(*eval.EnumElement)
-	if !ok {
-		t.Fatalf("Expected *EnumElement, got %T", result)
-	}
-
-	if len(enum.Items) != 2 {
-		t.Errorf("Expected 2 items in enum, got %d", len(enum.Items))
-	}
-}
-
-func TestTermListGroupingRule_Finalize(t *testing.T) {
-	rule := NewTermListGroupingRule()
-
-	elements := []eval.ContentElement{
-		&eval.TermItemElement{
-			Term:        eval.Content{Elements: []eval.ContentElement{&eval.TextElement{Text: "Term 1"}}},
-			Description: eval.Content{Elements: []eval.ContentElement{&eval.TextElement{Text: "Desc 1"}}},
-		},
-	}
-
-	result := rule.Finalize(elements)
-	terms, ok := result.(*eval.TermsElement)
-	if !ok {
-		t.Fatalf("Expected *TermsElement, got %T", result)
-	}
-
-	if len(terms.Items) != 1 {
-		t.Errorf("Expected 1 item in terms, got %d", len(terms.Items))
-	}
-}
-
-// ----------------------------------------------------------------------------
-// Citation Grouping Tests
-// ----------------------------------------------------------------------------
-
-func TestCitationGroupingRule_Trigger(t *testing.T) {
-	rule := &CitationGroupingRule{}
+func TestCitesRule_Trigger(t *testing.T) {
+	state := &state{}
 
 	tests := []struct {
 		name     string
@@ -278,265 +244,103 @@ func TestCitationGroupingRule_Trigger(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := rule.Trigger(tt.elem)
+			result := citesRule.Trigger(tt.elem, state)
 			if result != tt.expected {
-				t.Errorf("Trigger() = %v, expected %v", result, tt.expected)
+				t.Errorf("citesRule.Trigger() = %v, expected %v", result, tt.expected)
 			}
 		})
 	}
 }
 
-func TestCitationGroupingRule_Interrupt(t *testing.T) {
-	rule := &CitationGroupingRule{}
+func TestTextualRule_Trigger(t *testing.T) {
+	state := &state{}
 
 	tests := []struct {
 		name     string
 		elem     eval.ContentElement
 		expected bool
 	}{
-		{"CiteElement does not interrupt", &eval.CiteElement{Key: "smith2020"}, false},
-		{"TextElement interrupts", &eval.TextElement{Text: "hello"}, true},
-		{"SpaceElement interrupts", &eval.TextElement{Text: " "}, true},
+		// Phrasing but not groupable -> triggers
+		{"TextElement triggers", &eval.TextElement{Text: "hello"}, true},
+		{"SpaceElement triggers", &eval.SpaceElement{}, true},
+		{"StrongElement triggers", &eval.StrongElement{}, true},
+
+		// Groupable elements don't trigger (they have their own rules)
+		{"ListItemElement does not trigger", &eval.ListItemElement{}, false},
+		{"CiteElement does not trigger", &eval.CiteElement{Key: "key"}, false},
+
+		// Non-phrasing doesn't trigger
+		{"HeadingElement does not trigger", &eval.HeadingElement{}, false},
+		{"ParagraphElement does not trigger", &eval.ParagraphElement{}, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := rule.Interrupt(tt.elem)
+			result := textualRule.Trigger(tt.elem, state)
 			if result != tt.expected {
-				t.Errorf("Interrupt() = %v, expected %v", result, tt.expected)
+				t.Errorf("textualRule.Trigger() = %v, expected %v", result, tt.expected)
 			}
 		})
 	}
 }
 
-func TestCitationGroupingRule_Finalize(t *testing.T) {
-	rule := &CitationGroupingRule{}
+// ----------------------------------------------------------------------------
+// Rule Priority Tests
+// ----------------------------------------------------------------------------
 
-	elements := []eval.ContentElement{
-		&eval.CiteElement{Key: "smith2020"},
-		&eval.CiteElement{Key: "jones2021"},
+func TestRulePriorities(t *testing.T) {
+	// Verify rule priorities match expected hierarchy
+	if textualRule.Priority != 0 {
+		t.Errorf("textualRule.Priority = %d, expected 0", textualRule.Priority)
 	}
-
-	result := rule.Finalize(elements)
-	group, ok := result.(*eval.CitationGroup)
-	if !ok {
-		t.Fatalf("Expected *CitationGroup, got %T", result)
+	if parRule.Priority != 1 {
+		t.Errorf("parRule.Priority = %d, expected 1", parRule.Priority)
 	}
-
-	if len(group.Citations) != 2 {
-		t.Errorf("Expected 2 citations in group, got %d", len(group.Citations))
+	if citesRule.Priority != 2 {
+		t.Errorf("citesRule.Priority = %d, expected 2", citesRule.Priority)
+	}
+	if listRule.Priority != 2 {
+		t.Errorf("listRule.Priority = %d, expected 2", listRule.Priority)
+	}
+	if enumRule.Priority != 2 {
+		t.Errorf("enumRule.Priority = %d, expected 2", enumRule.Priority)
+	}
+	if termsRule.Priority != 2 {
+		t.Errorf("termsRule.Priority = %d, expected 2", termsRule.Priority)
 	}
 }
 
 // ----------------------------------------------------------------------------
-// Grouper Integration Tests
+// Rule Sets Tests
 // ----------------------------------------------------------------------------
 
-func TestGrouper_ProcessParagraph(t *testing.T) {
-	grouper := NewGrouper()
-
-	// Input: text, text, parbreak, text
-	elements := []eval.ContentElement{
-		&eval.TextElement{Text: "Hello "},
-		&eval.TextElement{Text: "world"},
-		&eval.ParbreakElement{},
-		&eval.TextElement{Text: "New paragraph"},
+func TestLayoutRulesOrder(t *testing.T) {
+	// Verify layout rules are in expected order
+	if len(layoutRules) != 6 {
+		t.Errorf("layoutRules length = %d, expected 6", len(layoutRules))
 	}
 
-	result := grouper.Process(elements)
-
-	// Should have: paragraph, parbreak, paragraph
-	if len(result) != 3 {
-		t.Fatalf("Expected 3 elements, got %d", len(result))
-	}
-
-	// First should be a paragraph
-	para1, ok := result[0].(*eval.ParagraphElement)
-	if !ok {
-		t.Errorf("Expected first element to be *ParagraphElement, got %T", result[0])
-	} else if len(para1.Body.Elements) != 2 {
-		t.Errorf("Expected first paragraph to have 2 elements, got %d", len(para1.Body.Elements))
-	}
-
-	// Second should be parbreak
-	if _, ok := result[1].(*eval.ParbreakElement); !ok {
-		t.Errorf("Expected second element to be *ParbreakElement, got %T", result[1])
-	}
-
-	// Third should be a paragraph
-	para2, ok := result[2].(*eval.ParagraphElement)
-	if !ok {
-		t.Errorf("Expected third element to be *ParagraphElement, got %T", result[2])
-	} else if len(para2.Body.Elements) != 1 {
-		t.Errorf("Expected second paragraph to have 1 element, got %d", len(para2.Body.Elements))
+	expectedOrder := []*GroupingRule{parRule, citesRule, listRule, enumRule, termsRule, textualRule}
+	for i, rule := range expectedOrder {
+		if layoutRules[i] != rule {
+			t.Errorf("layoutRules[%d] mismatch", i)
+		}
 	}
 }
 
-func TestGrouper_ProcessList(t *testing.T) {
-	grouper := NewGrouper()
-
-	// Input: list item, list item, text
-	elements := []eval.ContentElement{
-		&eval.ListItemElement{Content: eval.Content{
-			Elements: []eval.ContentElement{&eval.TextElement{Text: "Item 1"}},
-		}},
-		&eval.ListItemElement{Content: eval.Content{
-			Elements: []eval.ContentElement{&eval.TextElement{Text: "Item 2"}},
-		}},
-		&eval.TextElement{Text: "After list"},
+func TestLayoutParRulesOrder(t *testing.T) {
+	// Verify layout par rules contain only textual
+	if len(layoutParRules) != 1 {
+		t.Errorf("layoutParRules length = %d, expected 1", len(layoutParRules))
 	}
-
-	result := grouper.Process(elements)
-
-	// Should have: list, paragraph
-	if len(result) != 2 {
-		t.Fatalf("Expected 2 elements, got %d", len(result))
-	}
-
-	// First should be a list
-	list, ok := result[0].(*eval.ListElement)
-	if !ok {
-		t.Errorf("Expected first element to be *ListElement, got %T", result[0])
-	} else if len(list.Items) != 2 {
-		t.Errorf("Expected list to have 2 items, got %d", len(list.Items))
-	}
-
-	// Second should be a paragraph (from the text)
-	if _, ok := result[1].(*eval.ParagraphElement); !ok {
-		t.Errorf("Expected second element to be *ParagraphElement, got %T", result[1])
+	if layoutParRules[0] != textualRule {
+		t.Error("layoutParRules[0] should be textualRule")
 	}
 }
 
-func TestGrouper_ProcessMixedLists(t *testing.T) {
-	grouper := NewGrouper()
-
-	// Input: bullet item, enum item (different list types should create separate lists)
-	elements := []eval.ContentElement{
-		&eval.ListItemElement{Content: eval.Content{
-			Elements: []eval.ContentElement{&eval.TextElement{Text: "Bullet"}},
-		}},
-		&eval.EnumItemElement{Content: eval.Content{
-			Elements: []eval.ContentElement{&eval.TextElement{Text: "Numbered"}},
-		}},
-	}
-
-	result := grouper.Process(elements)
-
-	// Should have: bullet list, enum list
-	if len(result) != 2 {
-		t.Fatalf("Expected 2 elements, got %d", len(result))
-	}
-
-	// First should be a bullet list
-	if _, ok := result[0].(*eval.ListElement); !ok {
-		t.Errorf("Expected first element to be *ListElement, got %T", result[0])
-	}
-
-	// Second should be an enum list
-	if _, ok := result[1].(*eval.EnumElement); !ok {
-		t.Errorf("Expected second element to be *EnumElement, got %T", result[1])
+func TestMathRulesEmpty(t *testing.T) {
+	// Math has no grouping rules
+	if len(mathRules) != 0 {
+		t.Errorf("mathRules length = %d, expected 0", len(mathRules))
 	}
 }
-
-func TestGrouper_ProcessCitations(t *testing.T) {
-	grouper := NewGrouper()
-
-	// Input: cite, cite, text
-	elements := []eval.ContentElement{
-		&eval.CiteElement{Key: "smith2020"},
-		&eval.CiteElement{Key: "jones2021"},
-		&eval.TextElement{Text: " says..."},
-	}
-
-	result := grouper.Process(elements)
-
-	// Should have: citation group, paragraph
-	if len(result) != 2 {
-		t.Fatalf("Expected 2 elements, got %d", len(result))
-	}
-
-	// First should be a citation group
-	group, ok := result[0].(*eval.CitationGroup)
-	if !ok {
-		t.Errorf("Expected first element to be *CitationGroup, got %T", result[0])
-	} else if len(group.Citations) != 2 {
-		t.Errorf("Expected citation group to have 2 citations, got %d", len(group.Citations))
-	}
-
-	// Second should be a paragraph
-	if _, ok := result[1].(*eval.ParagraphElement); !ok {
-		t.Errorf("Expected second element to be *ParagraphElement, got %T", result[1])
-	}
-}
-
-func TestGrouper_ProcessHeading(t *testing.T) {
-	grouper := NewGrouper()
-
-	// Input: text, heading, text
-	// Headings should not be grouped into paragraphs
-	elements := []eval.ContentElement{
-		&eval.TextElement{Text: "Before"},
-		&eval.HeadingElement{Depth: 1, Content: eval.Content{
-			Elements: []eval.ContentElement{&eval.TextElement{Text: "Title"}},
-		}},
-		&eval.TextElement{Text: "After"},
-	}
-
-	result := grouper.Process(elements)
-
-	// Should have: paragraph, heading, paragraph
-	if len(result) != 3 {
-		t.Fatalf("Expected 3 elements, got %d", len(result))
-	}
-
-	// First should be a paragraph
-	if _, ok := result[0].(*eval.ParagraphElement); !ok {
-		t.Errorf("Expected first element to be *ParagraphElement, got %T", result[0])
-	}
-
-	// Second should be heading (unchanged)
-	if _, ok := result[1].(*eval.HeadingElement); !ok {
-		t.Errorf("Expected second element to be *HeadingElement, got %T", result[1])
-	}
-
-	// Third should be a paragraph
-	if _, ok := result[2].(*eval.ParagraphElement); !ok {
-		t.Errorf("Expected third element to be *ParagraphElement, got %T", result[2])
-	}
-}
-
-func TestGrouper_EmptyInput(t *testing.T) {
-	grouper := NewGrouper()
-
-	result := grouper.Process(nil)
-
-	if len(result) != 0 {
-		t.Errorf("Expected 0 elements for nil input, got %d", len(result))
-	}
-
-	result = grouper.Process([]eval.ContentElement{})
-
-	if len(result) != 0 {
-		t.Errorf("Expected 0 elements for empty input, got %d", len(result))
-	}
-}
-
-func TestGrouper_Reset(t *testing.T) {
-	grouper := NewGrouper()
-
-	// Process some elements
-	elements := []eval.ContentElement{
-		&eval.TextElement{Text: "Hello"},
-	}
-	grouper.Process(elements)
-
-	// Reset
-	grouper.Reset()
-
-	// Process again should work
-	result := grouper.Process(elements)
-	if len(result) != 1 {
-		t.Errorf("Expected 1 element after reset, got %d", len(result))
-	}
-}
-

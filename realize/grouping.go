@@ -1,397 +1,446 @@
-// Package realize implements the realization subsystem for Typst.
-// Realization transforms evaluated content into a form suitable for layout
-// by applying show rules, grouping related elements, and collapsing spaces.
 package realize
 
 import (
 	"github.com/boergens/gotypst/eval"
 )
 
-// GroupingRule defines how related elements are collected for unified processing.
-// Each rule specifies when to start grouping, what belongs inside, what breaks
-// the group, and how to finalize the collected elements.
-type GroupingRule interface {
-	// Trigger returns true if this element should start a new group.
-	// For example, a ListItemElement triggers list grouping.
-	Trigger(elem eval.ContentElement) bool
+// ----------------------------------------------------------------------------
+// Grouping Rules
+// ----------------------------------------------------------------------------
+// Grouping rules define how content elements are grouped during realization.
+// Each rule has a priority (higher wins), trigger/inner predicates, an
+// interrupt condition, and a finisher function.
+//
+// This is a faithful port of Rust's grouping rules in typst-realize/src/lib.rs.
 
-	// Inner returns true if this element belongs inside an active group.
-	// For example, consecutive ListItemElements belong inside a list.
-	Inner(elem eval.ContentElement) bool
-
-	// Interrupt returns true if this element breaks an active group.
-	// For example, a heading interrupts a paragraph group.
-	Interrupt(elem eval.ContentElement) bool
-
-	// Finalize creates the grouped element from collected inner elements.
-	// For example, creates a ListElement from collected ListItemElements.
-	Finalize(elements []eval.ContentElement) eval.ContentElement
+// GroupingRule defines a rule for grouping content elements.
+// Matches Rust: GroupingRule struct
+type GroupingRule struct {
+	// Priority determines nesting order (higher = can nest inside lower).
+	Priority uint8
+	// Tags indicates if the rule handles tags itself (vs. separating them out).
+	Tags bool
+	// Trigger returns true if an element can start or extend the group.
+	Trigger func(elem eval.ContentElement, s *state) bool
+	// Inner returns true if an element can be inside the group but not trigger.
+	Inner func(elem eval.ContentElement) bool
+	// Interrupt returns true if a set-rule element interrupts the group.
+	Interrupt func(elem eval.Element) bool
+	// Finish is called when the group is complete.
+	Finish func(g *grouped) error
 }
 
-// GroupingState tracks the state of an active grouping operation.
-type GroupingState struct {
-	// Rule is the grouping rule being applied.
-	Rule GroupingRule
-
-	// Elements are the collected elements.
-	Elements []eval.ContentElement
-}
-
-// NewGroupingState creates a new grouping state with the given rule and initial element.
-func NewGroupingState(rule GroupingRule, initial eval.ContentElement) *GroupingState {
-	return &GroupingState{
-		Rule:     rule,
-		Elements: []eval.ContentElement{initial},
-	}
-}
-
-// Add adds an element to the group.
-func (g *GroupingState) Add(elem eval.ContentElement) {
-	g.Elements = append(g.Elements, elem)
-}
-
-// Finalize completes the grouping and returns the grouped element.
-func (g *GroupingState) Finalize() eval.ContentElement {
-	return g.Rule.Finalize(g.Elements)
-}
+// Priority constants for grouping rules.
+// Matches Rust: static TEXTUAL, PAR, CITES, LIST, ENUM, TERMS priorities.
+const (
+	priorityTextual = 0 // Lowest priority - text grouping (within paragraphs)
+	priorityPar     = 1 // Paragraph grouping
+	priorityCites   = 2 // Citation grouping
+	priorityList    = 2 // List item grouping (same priority as cites)
+	priorityEnum    = 2 // Enum item grouping (same priority as cites)
+	priorityTerms   = 2 // Terms item grouping (same priority as cites)
+)
 
 // ----------------------------------------------------------------------------
-// Paragraph Grouping Rule
+// Static Grouping Rules
 // ----------------------------------------------------------------------------
 
-// ParagraphGroupingRule collects inline content between parbreaks into paragraphs.
-// Inline content includes text, strong, emph, links, refs, and other inline elements.
-type ParagraphGroupingRule struct{}
-
-// Trigger returns true if the element starts a new paragraph.
-// Any inline element can trigger a paragraph.
-func (r *ParagraphGroupingRule) Trigger(elem eval.ContentElement) bool {
-	return isInlineElement(elem)
+// textualRule groups inline content for text shaping.
+// Matches Rust: static TEXTUAL rule
+var textualRule = &GroupingRule{
+	Priority: priorityTextual,
+	Tags:     true, // TEXTUAL handles tags
+	Trigger: func(elem eval.ContentElement, s *state) bool {
+		return isPhrasing(elem) && !isGroupable(elem)
+	},
+	Inner: func(elem eval.ContentElement) bool {
+		return isPhrasing(elem)
+	},
+	Interrupt: func(elem eval.Element) bool {
+		return elem.Name == "text"
+	},
+	// Finish is set in init() to avoid initialization cycle
 }
 
-// Inner returns true if the element belongs inside a paragraph.
-// All inline elements belong inside paragraphs.
-func (r *ParagraphGroupingRule) Inner(elem eval.ContentElement) bool {
-	return isInlineElement(elem)
+// parRule groups content into paragraphs.
+// Matches Rust: static PAR rule
+var parRule = &GroupingRule{
+	Priority: priorityPar,
+	Tags:     false, // PAR does not handle tags
+	Trigger: func(elem eval.ContentElement, s *state) bool {
+		return isPhrasing(elem)
+	},
+	Inner: func(elem eval.ContentElement) bool {
+		return isPhrasing(elem)
+	},
+	Interrupt: func(elem eval.Element) bool {
+		return elem.Name == "par" || elem.Name == "text"
+	},
+	// Finish is set in init() to avoid initialization cycle
 }
 
-// Interrupt returns true if the element breaks a paragraph.
-// Block-level elements and parbreaks interrupt paragraphs.
-func (r *ParagraphGroupingRule) Interrupt(elem eval.ContentElement) bool {
-	switch elem.(type) {
-	case *eval.ParbreakElement:
-		return true
-	case *eval.HeadingElement:
-		return true
-	case *eval.ListItemElement:
-		return true
-	case *eval.EnumItemElement:
-		return true
-	case *eval.TermItemElement:
-		return true
-	case *eval.RawElement:
-		// Block-level raw elements interrupt
-		if raw, ok := elem.(*eval.RawElement); ok {
-			return raw.Block
-		}
+// citesRule groups consecutive citations.
+// Matches Rust: static CITES rule
+var citesRule = &GroupingRule{
+	Priority: priorityCites,
+	Tags:     false,
+	Trigger: func(elem eval.ContentElement, s *state) bool {
+		_, ok := elem.(*eval.CiteElement)
+		return ok
+	},
+	Inner: func(elem eval.ContentElement) bool {
 		return false
-	case *eval.ParagraphElement:
-		// Explicit paragraph elements interrupt implicit paragraphs
-		return true
-	default:
-		return false
-	}
+	},
+	Interrupt: func(elem eval.Element) bool {
+		return elem.Name == "cite"
+	},
+	// Finish is set in init() to avoid initialization cycle
 }
 
-// Finalize creates a ParagraphElement from the collected inline content.
-func (r *ParagraphGroupingRule) Finalize(elements []eval.ContentElement) eval.ContentElement {
-	return &eval.ParagraphElement{
-		Body: eval.Content{Elements: elements},
-	}
-}
-
-// isInlineElement returns true if the element is inline content.
-func isInlineElement(elem eval.ContentElement) bool {
-	switch e := elem.(type) {
-	case *eval.TextElement:
-		return true
-	case *eval.SpaceElement:
-		return true
-	case *eval.StrongElement:
-		return true
-	case *eval.EmphElement:
-		return true
-	case *eval.LinkElement:
-		return true
-	case *eval.RefElement:
-		return true
-	case *eval.SmartQuoteElement:
-		return true
-	case *eval.LinebreakElement:
-		return true
-	case *eval.RawElement:
-		// Inline raw elements (not block)
-		return !e.Block
-	default:
-		return false
-	}
-}
-
-// ----------------------------------------------------------------------------
-// List Grouping Rule
-// ----------------------------------------------------------------------------
-
-// ListGroupingRule groups consecutive list items into a list element.
-// It handles bullet lists (ListItemElement), numbered lists (EnumItemElement),
-// and term lists (TermItemElement) separately.
-type ListGroupingRule struct {
-	// listType tracks what kind of list is being grouped.
-	// Values: "bullet", "enum", "term"
-	listType string
-}
-
-// NewBulletListGroupingRule creates a rule for grouping bullet list items.
-func NewBulletListGroupingRule() *ListGroupingRule {
-	return &ListGroupingRule{listType: "bullet"}
-}
-
-// NewEnumListGroupingRule creates a rule for grouping enumerated list items.
-func NewEnumListGroupingRule() *ListGroupingRule {
-	return &ListGroupingRule{listType: "enum"}
-}
-
-// NewTermListGroupingRule creates a rule for grouping term list items.
-func NewTermListGroupingRule() *ListGroupingRule {
-	return &ListGroupingRule{listType: "term"}
-}
-
-// Trigger returns true if this element starts a list of the matching type.
-func (r *ListGroupingRule) Trigger(elem eval.ContentElement) bool {
-	switch r.listType {
-	case "bullet":
+// listRule groups consecutive list items.
+// Matches Rust: static LIST rule
+var listRule = &GroupingRule{
+	Priority: priorityList,
+	Tags:     false,
+	Trigger: func(elem eval.ContentElement, s *state) bool {
 		_, ok := elem.(*eval.ListItemElement)
 		return ok
-	case "enum":
+	},
+	Inner: func(elem eval.ContentElement) bool {
+		return false
+	},
+	Interrupt: func(elem eval.Element) bool {
+		return elem.Name == "list"
+	},
+	// Finish is set in init() to avoid initialization cycle
+}
+
+// enumRule groups consecutive enum items.
+// Matches Rust: static ENUM rule
+var enumRule = &GroupingRule{
+	Priority: priorityEnum,
+	Tags:     false,
+	Trigger: func(elem eval.ContentElement, s *state) bool {
 		_, ok := elem.(*eval.EnumItemElement)
 		return ok
-	case "term":
+	},
+	Inner: func(elem eval.ContentElement) bool {
+		return false
+	},
+	Interrupt: func(elem eval.Element) bool {
+		return elem.Name == "enum"
+	},
+	// Finish is set in init() to avoid initialization cycle
+}
+
+// termsRule groups consecutive term items.
+// Matches Rust: static TERMS rule
+var termsRule = &GroupingRule{
+	Priority: priorityTerms,
+	Tags:     false,
+	Trigger: func(elem eval.ContentElement, s *state) bool {
 		_, ok := elem.(*eval.TermItemElement)
 		return ok
+	},
+	Inner: func(elem eval.ContentElement) bool {
+		return false
+	},
+	Interrupt: func(elem eval.Element) bool {
+		return elem.Name == "terms"
+	},
+	// Finish is set in init() to avoid initialization cycle
+}
+
+// init sets up the Finish functions for grouping rules.
+// This is done in init() to avoid initialization cycles.
+func init() {
+	// TEXTUAL finish: collapse spaces
+	textualRule.Finish = func(g *grouped) error {
+		pairs := g.get()
+		collapseSpaces(pairs, g.start)
+		return nil
+	}
+
+	// PAR finish: create paragraph from grouped inline content
+	parRule.Finish = func(g *grouped) error {
+		pairs := g.get()
+		if len(pairs) == 0 {
+			return nil
+		}
+
+		// Collapse spaces within the paragraph.
+		collapseSpaces(pairs, g.start)
+
+		// Take the styles from the first element.
+		var styles *eval.StyleChain
+		if len(pairs) > 0 {
+			styles = pairs[0].Styles
+		}
+
+		// Create paragraph element containing the grouped content.
+		var children []eval.ContentElement
+		for _, p := range pairs {
+			children = append(children, p.Content)
+		}
+
+		par := &eval.ParagraphElement{
+			Body: eval.Content{Elements: children},
+		}
+
+		// End the group (remove from sink) and visit the paragraph.
+		st := g.end()
+		return visit(st, par, styles)
+	}
+
+	// CITES finish: create citation group
+	citesRule.Finish = func(g *grouped) error {
+		pairs := g.get()
+		if len(pairs) == 0 {
+			return nil
+		}
+
+		// Collect citations.
+		var cites []*eval.CiteElement
+		for _, p := range pairs {
+			if cite, ok := p.Content.(*eval.CiteElement); ok {
+				cites = append(cites, cite)
+			}
+		}
+
+		if len(cites) == 0 {
+			return nil
+		}
+
+		// Take styles from first citation.
+		styles := pairs[0].Styles
+
+		// Create citation group.
+		group := &eval.CitationGroup{Citations: cites}
+
+		// End the group and visit the citation group.
+		st := g.end()
+		return visit(st, group, styles)
+	}
+
+	// LIST finish: create list from items
+	listRule.Finish = func(g *grouped) error {
+		pairs := g.get()
+		if len(pairs) == 0 {
+			return nil
+		}
+
+		// Collect list items.
+		var items []*eval.ListItemElement
+		for _, p := range pairs {
+			if item, ok := p.Content.(*eval.ListItemElement); ok {
+				items = append(items, item)
+			}
+		}
+
+		if len(items) == 0 {
+			return nil
+		}
+
+		// Take styles from first item.
+		styles := pairs[0].Styles
+
+		// Create list element.
+		tight := true
+		list := &eval.ListElement{
+			Items: items,
+			Tight: &tight,
+		}
+
+		// End the group and visit the list.
+		st := g.end()
+		return visit(st, list, styles)
+	}
+
+	// ENUM finish: create enum from items
+	enumRule.Finish = func(g *grouped) error {
+		pairs := g.get()
+		if len(pairs) == 0 {
+			return nil
+		}
+
+		// Collect enum items.
+		var items []*eval.EnumItemElement
+		for _, p := range pairs {
+			if item, ok := p.Content.(*eval.EnumItemElement); ok {
+				items = append(items, item)
+			}
+		}
+
+		if len(items) == 0 {
+			return nil
+		}
+
+		// Assign numbers if not already set.
+		for i, item := range items {
+			if item.Number == 0 {
+				item.Number = i + 1
+			}
+		}
+
+		// Take styles from first item.
+		styles := pairs[0].Styles
+
+		// Create enum element.
+		tight := true
+		enum := &eval.EnumElement{
+			Items: items,
+			Tight: &tight,
+		}
+
+		// End the group and visit the enum.
+		st := g.end()
+		return visit(st, enum, styles)
+	}
+
+	// TERMS finish: create terms from items
+	termsRule.Finish = func(g *grouped) error {
+		pairs := g.get()
+		if len(pairs) == 0 {
+			return nil
+		}
+
+		// Collect term items.
+		var items []*eval.TermItemElement
+		for _, p := range pairs {
+			if item, ok := p.Content.(*eval.TermItemElement); ok {
+				items = append(items, item)
+			}
+		}
+
+		if len(items) == 0 {
+			return nil
+		}
+
+		// Take styles from first item.
+		styles := pairs[0].Styles
+
+		// Create terms element.
+		terms := &eval.TermsElement{Items: items}
+
+		// End the group and visit the terms.
+		st := g.end()
+		return visit(st, terms, styles)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Rule Sets for Different Realization Kinds
+// ----------------------------------------------------------------------------
+
+// layoutRules are used for document and fragment layout realization.
+// Order matters: first matching rule wins within same priority tier.
+// Matches Rust: LAYOUT_RULES
+var layoutRules = []*GroupingRule{
+	parRule,     // Priority 1: paragraphs
+	citesRule,   // Priority 2: citations (must be before list/enum/terms)
+	listRule,    // Priority 2: lists
+	enumRule,    // Priority 2: enums
+	termsRule,   // Priority 2: terms
+	textualRule, // Priority 0: text grouping (lowest)
+}
+
+// layoutParRules are used for paragraph-level realization.
+// Matches Rust: LAYOUT_PAR_RULES
+var layoutParRules = []*GroupingRule{
+	textualRule, // Only text grouping within paragraphs
+}
+
+// htmlDocumentRules are used for HTML document realization.
+// Matches Rust: HTML_DOCUMENT_RULES
+var htmlDocumentRules = []*GroupingRule{
+	parRule,
+	citesRule,
+	listRule,
+	enumRule,
+	termsRule,
+	textualRule,
+}
+
+// htmlFragmentRules are used for HTML fragment realization.
+// Matches Rust: HTML_FRAGMENT_RULES
+var htmlFragmentRules = []*GroupingRule{
+	parRule,
+	citesRule,
+	listRule,
+	enumRule,
+	termsRule,
+	textualRule,
+}
+
+// mathRules are used for math realization.
+// Matches Rust: MATH_RULES
+var mathRules = []*GroupingRule{
+	// Math has no grouping rules (elements are processed directly).
+}
+
+// ----------------------------------------------------------------------------
+// Predicates
+// ----------------------------------------------------------------------------
+
+// isPhrasing returns true if an element is inline/phrasing content.
+// Matches Rust: is_phrasing() in typst-realize/src/lib.rs
+func isPhrasing(elem eval.ContentElement) bool {
+	switch elem.(type) {
+	// Text and basic inline elements
+	case *eval.TextElement, *eval.SpaceElement, *eval.SmartQuoteElement:
+		return true
+
+	// Formatting elements
+	case *eval.StrongElement, *eval.EmphElement, *eval.RawElement:
+		return true
+
+	// Links and references
+	case *eval.LinkElement, *eval.RefElement:
+		return true
+
+	// Spacing
+	case *eval.HElem:
+		return true
+
+	// Inline boxes
+	case *eval.BoxElement, *eval.InlineElem:
+		return true
+
+	// Math (equations are inline unless display mode)
+	case *eval.EquationElement:
+		return true
+
+	// Line breaks are inline but break lines
+	case *eval.LinebreakElement:
+		return true
+
+	// Sequences recurse
+	case *eval.SequenceElem:
+		return true
+
+	// Styled content recurses
+	case *eval.StyledElement:
+		return true
+
+	// Tags are considered phrasing
+	case *eval.TagElem:
+		return true
+
 	default:
 		return false
 	}
 }
 
-// Inner returns true if this element belongs inside the list.
-func (r *ListGroupingRule) Inner(elem eval.ContentElement) bool {
-	// Same as trigger - only matching item types belong inside
-	return r.Trigger(elem)
-}
-
-// Interrupt returns true if this element breaks the list.
-// Different list types interrupt each other, as do block elements.
-func (r *ListGroupingRule) Interrupt(elem eval.ContentElement) bool {
-	switch r.listType {
-	case "bullet":
-		switch elem.(type) {
-		case *eval.ListItemElement:
-			return false // More bullet items continue the list
-		case *eval.EnumItemElement, *eval.TermItemElement:
-			return true // Different list types interrupt
-		case *eval.HeadingElement, *eval.ParagraphElement, *eval.ParbreakElement:
-			return true // Block elements interrupt
-		default:
-			return true // Non-list elements interrupt
-		}
-	case "enum":
-		switch elem.(type) {
-		case *eval.EnumItemElement:
-			return false
-		case *eval.ListItemElement, *eval.TermItemElement:
-			return true
-		case *eval.HeadingElement, *eval.ParagraphElement, *eval.ParbreakElement:
-			return true
-		default:
-			return true
-		}
-	case "term":
-		switch elem.(type) {
-		case *eval.TermItemElement:
-			return false
-		case *eval.ListItemElement, *eval.EnumItemElement:
-			return true
-		case *eval.HeadingElement, *eval.ParagraphElement, *eval.ParbreakElement:
-			return true
-		default:
-			return true
-		}
-	default:
+// isGroupable returns true if an element participates in grouping.
+// These elements can trigger their own groups.
+// Matches Rust: logic in TEXTUAL trigger
+func isGroupable(elem eval.ContentElement) bool {
+	switch elem.(type) {
+	case *eval.ListItemElement, *eval.EnumItemElement, *eval.TermItemElement:
 		return true
-	}
-}
-
-// Finalize creates the appropriate list element from collected items.
-func (r *ListGroupingRule) Finalize(elements []eval.ContentElement) eval.ContentElement {
-	switch r.listType {
-	case "bullet":
-		items := make([]*eval.ListItemElement, 0, len(elements))
-		for _, e := range elements {
-			if item, ok := e.(*eval.ListItemElement); ok {
-				items = append(items, item)
-			}
-		}
-		return &eval.ListElement{Items: items}
-	case "enum":
-		items := make([]*eval.EnumItemElement, 0, len(elements))
-		for _, e := range elements {
-			if item, ok := e.(*eval.EnumItemElement); ok {
-				items = append(items, item)
-			}
-		}
-		return &eval.EnumElement{Items: items}
-	case "term":
-		items := make([]*eval.TermItemElement, 0, len(elements))
-		for _, e := range elements {
-			if item, ok := e.(*eval.TermItemElement); ok {
-				items = append(items, item)
-			}
-		}
-		return &eval.TermsElement{Items: items}
+	case *eval.CiteElement:
+		return true
 	default:
-		// Fallback: return first element
-		if len(elements) > 0 {
-			return elements[0]
-		}
-		return nil
+		return false
 	}
-}
-
-// ----------------------------------------------------------------------------
-// Citation Grouping Rule
-// ----------------------------------------------------------------------------
-
-// CitationGroupingRule collects citations for unified bibliography handling.
-// Multiple citations can be grouped together for proper formatting.
-type CitationGroupingRule struct{}
-
-// Trigger returns true if this element starts a citation group.
-func (r *CitationGroupingRule) Trigger(elem eval.ContentElement) bool {
-	_, ok := elem.(*eval.CiteElement)
-	return ok
-}
-
-// Inner returns true if this element belongs inside a citation group.
-// Only cite elements belong inside.
-func (r *CitationGroupingRule) Inner(elem eval.ContentElement) bool {
-	return r.Trigger(elem)
-}
-
-// Interrupt returns true if this element breaks a citation group.
-// Any non-citation element interrupts.
-func (r *CitationGroupingRule) Interrupt(elem eval.ContentElement) bool {
-	_, ok := elem.(*eval.CiteElement)
-	return !ok
-}
-
-// Finalize creates a citation group from collected citations.
-func (r *CitationGroupingRule) Finalize(elements []eval.ContentElement) eval.ContentElement {
-	cites := make([]*eval.CiteElement, 0, len(elements))
-	for _, e := range elements {
-		if cite, ok := e.(*eval.CiteElement); ok {
-			cites = append(cites, cite)
-		}
-	}
-	return &eval.CitationGroup{Citations: cites}
-}
-
-// ----------------------------------------------------------------------------
-// Grouper
-// ----------------------------------------------------------------------------
-
-// Grouper applies grouping rules to a sequence of content elements.
-type Grouper struct {
-	// rules are the grouping rules to apply, in priority order.
-	rules []GroupingRule
-
-	// active is the currently active grouping state, if any.
-	active *GroupingState
-
-	// output collects the grouped output elements.
-	output []eval.ContentElement
-}
-
-// NewGrouper creates a new grouper with the standard grouping rules.
-// Rules are applied in order: lists first, then paragraphs, then citations.
-func NewGrouper() *Grouper {
-	return &Grouper{
-		rules: []GroupingRule{
-			NewBulletListGroupingRule(),
-			NewEnumListGroupingRule(),
-			NewTermListGroupingRule(),
-			&CitationGroupingRule{},
-			&ParagraphGroupingRule{},
-		},
-		active: nil,
-		output: nil,
-	}
-}
-
-// NewGrouperWithRules creates a new grouper with custom rules.
-func NewGrouperWithRules(rules []GroupingRule) *Grouper {
-	return &Grouper{
-		rules:  rules,
-		active: nil,
-		output: nil,
-	}
-}
-
-// Process processes a sequence of content elements, applying grouping rules.
-func (g *Grouper) Process(elements []eval.ContentElement) []eval.ContentElement {
-	g.output = nil
-	g.active = nil
-
-	for _, elem := range elements {
-		g.processElement(elem)
-	}
-
-	// Finalize any remaining active group
-	if g.active != nil {
-		g.output = append(g.output, g.active.Finalize())
-		g.active = nil
-	}
-
-	return g.output
-}
-
-// processElement handles a single element, applying grouping rules.
-func (g *Grouper) processElement(elem eval.ContentElement) {
-	// If we have an active group, check if this element continues or interrupts it
-	if g.active != nil {
-		if g.active.Rule.Inner(elem) {
-			g.active.Add(elem)
-			return
-		}
-		if g.active.Rule.Interrupt(elem) {
-			g.output = append(g.output, g.active.Finalize())
-			g.active = nil
-		}
-	}
-
-	// Check if any rule triggers on this element
-	for _, rule := range g.rules {
-		if rule.Trigger(elem) {
-			// Start a new group
-			g.active = NewGroupingState(rule, elem)
-			return
-		}
-	}
-
-	// No grouping applies - output directly
-	g.output = append(g.output, elem)
-}
-
-// Reset clears the grouper state for reuse.
-func (g *Grouper) Reset() {
-	g.active = nil
-	g.output = nil
 }

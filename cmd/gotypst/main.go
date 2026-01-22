@@ -267,13 +267,19 @@ func layout(world *eval.FileWorld, content *eval.Content) (*pages.PagedDocument,
 	evalEngine := eval.NewEngine(world)
 
 	// Create empty styles for initial realization
-	realizeStyles := realize.EmptyStyleChain()
+	realizeStyles := eval.EmptyStyleChain()
+
+	// Wrap content in a sequence element for realization
+	var rootElem eval.ContentElement
+	if content != nil && len(content.Elements) > 0 {
+		rootElem = &eval.SequenceElem{Children: content.Elements}
+	}
 
 	// Realize the content - apply show rules, group elements, collapse spaces
 	realizedPairs, err := realize.Realize(
 		realize.LayoutDocument{},
 		evalEngine,
-		content,
+		rootElem,
 		realizeStyles,
 	)
 	if err != nil {
@@ -308,8 +314,8 @@ func convertRealizedContent(pairs []realize.Pair) *pages.Content {
 
 	elements := make([]eval.ContentElement, 0, len(pairs))
 	for _, pair := range pairs {
-		if pair.Element != nil {
-			elements = append(elements, pair.Element)
+		if pair.Content != nil {
+			elements = append(elements, pair.Content)
 		}
 	}
 

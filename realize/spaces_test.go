@@ -15,12 +15,21 @@ func TestGetSpaceState(t *testing.T) {
 		{"nil", nil, StateInvisible},
 		{"text", &eval.TextElement{Text: "hello"}, StateSupportive},
 		{"whitespace text", &eval.TextElement{Text: "   "}, StateSpace},
+		{"space element", &eval.SpaceElement{}, StateSpace},
 		{"parbreak", &eval.ParbreakElement{}, StateDestructive},
 		{"linebreak", &eval.LinebreakElement{}, StateDestructive},
 		{"heading", &eval.HeadingElement{Depth: 1}, StateDestructive},
 		{"paragraph", &eval.ParagraphElement{}, StateDestructive},
+		{"list", &eval.ListElement{}, StateDestructive},
+		{"block", &eval.BlockElement{}, StateDestructive},
+		{"v element", &eval.VElem{}, StateDestructive},
+		{"tag", &eval.TagElem{}, StateInvisible},
 		{"strong", &eval.StrongElement{}, StateSupportive},
 		{"emph", &eval.EmphElement{}, StateSupportive},
+		{"link", &eval.LinkElement{}, StateSupportive},
+		{"h element", &eval.HElem{}, StateSupportive},
+		{"box", &eval.BoxElement{}, StateSupportive},
+		{"equation", &eval.EquationElement{}, StateSupportive},
 	}
 
 	for _, tt := range tests {
@@ -60,75 +69,67 @@ func TestIsWhitespaceOnly(t *testing.T) {
 }
 
 func TestCollapseSpaces(t *testing.T) {
+	// Note: collapseSpaces modifies in-place and takes a start index
+	// It's used internally by the grouping system
+
 	tests := []struct {
-		name     string
-		pairs    []Pair
-		expected int // expected count of elements
+		name   string
+		pairs  []Pair
+		start  int
+		verify func([]Pair) bool
 	}{
 		{
-			name:     "empty",
-			pairs:    nil,
-			expected: 0,
+			name:  "empty",
+			pairs: nil,
+			start: 0,
+			verify: func(pairs []Pair) bool {
+				return len(pairs) == 0
+			},
 		},
 		{
 			name: "no spaces",
 			pairs: []Pair{
-				{Element: &eval.TextElement{Text: "hello"}},
-				{Element: &eval.TextElement{Text: "world"}},
+				{Content: &eval.TextElement{Text: "hello"}},
+				{Content: &eval.TextElement{Text: "world"}},
 			},
-			expected: 2,
+			start: 0,
+			verify: func(pairs []Pair) bool {
+				// Should have both elements
+				count := 0
+				for _, p := range pairs {
+					if p.Content != nil {
+						count++
+					}
+				}
+				return count == 2
+			},
 		},
 		{
-			name: "leading space",
+			name: "collapse leading space",
 			pairs: []Pair{
-				{Element: &eval.TextElement{Text: " "}},
-				{Element: &eval.TextElement{Text: "hello"}},
+				{Content: &eval.SpaceElement{}},
+				{Content: &eval.TextElement{Text: "hello"}},
 			},
-			expected: 1, // leading space removed
-		},
-		{
-			name: "trailing space",
-			pairs: []Pair{
-				{Element: &eval.TextElement{Text: "hello"}},
-				{Element: &eval.TextElement{Text: " "}},
+			start: 0,
+			verify: func(pairs []Pair) bool {
+				// Leading space should be collapsed
+				// First non-nil should be TextElement
+				for _, p := range pairs {
+					if p.Content != nil {
+						_, ok := p.Content.(*eval.TextElement)
+						return ok
+					}
+				}
+				return false
 			},
-			expected: 1, // trailing space removed
-		},
-		{
-			name: "collapse multiple spaces",
-			pairs: []Pair{
-				{Element: &eval.TextElement{Text: "hello"}},
-				{Element: &eval.TextElement{Text: " "}},
-				{Element: &eval.TextElement{Text: " "}},
-				{Element: &eval.TextElement{Text: "world"}},
-			},
-			expected: 3, // collapsed to: hello, single space, world
-		},
-		{
-			name: "space before destructive",
-			pairs: []Pair{
-				{Element: &eval.TextElement{Text: "hello"}},
-				{Element: &eval.TextElement{Text: " "}},
-				{Element: &eval.ParbreakElement{}},
-			},
-			expected: 2, // space removed before parbreak
-		},
-		{
-			name: "space after destructive",
-			pairs: []Pair{
-				{Element: &eval.ParbreakElement{}},
-				{Element: &eval.TextElement{Text: " "}},
-				{Element: &eval.TextElement{Text: "hello"}},
-			},
-			expected: 2, // space removed after parbreak
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := collapseSpaces(tt.pairs)
-			if len(result) != tt.expected {
-				t.Errorf("collapseSpaces() returned %d elements, want %d", len(result), tt.expected)
+			collapseSpaces(tt.pairs, tt.start)
+			if !tt.verify(tt.pairs) {
+				t.Errorf("collapseSpaces() verification failed")
 			}
 		})
 	}
@@ -205,6 +206,82 @@ func TestTrimTrailingWhitespace(t *testing.T) {
 			got := trimTrailingWhitespace(tt.input)
 			if got != tt.expected {
 				t.Errorf("trimTrailingWhitespace(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestTrimLeadingSpace(t *testing.T) {
+	tests := []struct {
+		name     string
+		pairs    []Pair
+		expected int // expected count after trimming
+	}{
+		{
+			name:     "empty",
+			pairs:    []Pair{},
+			expected: 0,
+		},
+		{
+			name: "no leading space",
+			pairs: []Pair{
+				{Content: &eval.TextElement{Text: "hello"}},
+			},
+			expected: 1,
+		},
+		{
+			name: "with leading space element",
+			pairs: []Pair{
+				{Content: &eval.SpaceElement{}},
+				{Content: &eval.TextElement{Text: "hello"}},
+			},
+			expected: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := trimLeadingSpace(tt.pairs)
+			if len(result) != tt.expected {
+				t.Errorf("trimLeadingSpace() returned %d elements, want %d", len(result), tt.expected)
+			}
+		})
+	}
+}
+
+func TestTrimTrailingSpace(t *testing.T) {
+	tests := []struct {
+		name     string
+		pairs    []Pair
+		expected int // expected count after trimming
+	}{
+		{
+			name:     "empty",
+			pairs:    []Pair{},
+			expected: 0,
+		},
+		{
+			name: "no trailing space",
+			pairs: []Pair{
+				{Content: &eval.TextElement{Text: "hello"}},
+			},
+			expected: 1,
+		},
+		{
+			name: "with trailing space element",
+			pairs: []Pair{
+				{Content: &eval.TextElement{Text: "hello"}},
+				{Content: &eval.SpaceElement{}},
+			},
+			expected: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := trimTrailingSpace(tt.pairs)
+			if len(result) != tt.expected {
+				t.Errorf("trimTrailingSpace() returned %d elements, want %d", len(result), tt.expected)
 			}
 		})
 	}

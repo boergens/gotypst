@@ -127,8 +127,8 @@ func TestConvertRealizedContent(t *testing.T) {
 	t.Run("single element pair", func(t *testing.T) {
 		pairs := []realize.Pair{
 			{
-				Element: &eval.TextElement{Text: "Test"},
-				Styles:  realize.EmptyStyleChain(),
+				Content: &eval.TextElement{Text: "Test"},
+				Styles:  eval.EmptyStyleChain(),
 			},
 		}
 		content := convertRealizedContent(pairs)
@@ -142,9 +142,9 @@ func TestConvertRealizedContent(t *testing.T) {
 
 	t.Run("multiple element pairs", func(t *testing.T) {
 		pairs := []realize.Pair{
-			{Element: &eval.TextElement{Text: "First"}, Styles: realize.EmptyStyleChain()},
-			{Element: &eval.TextElement{Text: "Second"}, Styles: realize.EmptyStyleChain()},
-			{Element: &eval.ParagraphElement{}, Styles: realize.EmptyStyleChain()},
+			{Content: &eval.TextElement{Text: "First"}, Styles: eval.EmptyStyleChain()},
+			{Content: &eval.TextElement{Text: "Second"}, Styles: eval.EmptyStyleChain()},
+			{Content: &eval.ParagraphElement{}, Styles: eval.EmptyStyleChain()},
 		}
 		content := convertRealizedContent(pairs)
 		if content == nil {
