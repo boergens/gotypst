@@ -210,9 +210,9 @@ func TestDatetimeDisplay(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.dt.Display(tt.pattern)
+			got := tt.dt.Format(tt.pattern)
 			if got != tt.want {
-				t.Errorf("Display() = %v, want %v", got, tt.want)
+				t.Errorf("Format() = %v, want %v", got, tt.want)
 			}
 		})
 	}

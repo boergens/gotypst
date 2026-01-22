@@ -10,16 +10,20 @@ import (
 
 // Color represents a color value in any supported color space.
 // This interface is implemented by all color space types.
+// Color extends Value, so all colors are also values.
 type Color interface {
 	Value
 	// colorMarker is an unexported method to seal the interface.
 	colorMarker()
 	// Space returns the name of the color space.
 	Space() string
-	// Alpha returns the alpha (opacity) component.
-	Alpha() float64
+	// ColorAlpha returns the alpha (opacity) component.
+	// Named ColorAlpha to avoid conflict with struct field names.
+	ColorAlpha() float64
 	// ToRgba converts this color to RGBA.
 	ToRgba() Rgba
+	// String returns a string representation of the color.
+	String() string
 }
 
 // Ensure all color types implement Color.
@@ -46,11 +50,13 @@ type Luma struct {
 	A float64
 }
 
-func (Luma) valueMarker() {}
-func (Luma) colorMarker() {}
-func (Luma) Type() string  { return "color" }
-func (Luma) Space() string { return "luma" }
-func (c Luma) Alpha() float64 { return c.A }
+func (Luma) isValue()            {}
+func (Luma) colorMarker()        {}
+func (Luma) Type() Type          { return TypeColor }
+func (Luma) Display() Content    { return Content{} }
+func (c Luma) Clone() Value      { return c }
+func (Luma) Space() string       { return "luma" }
+func (c Luma) ColorAlpha() float64 { return c.A }
 
 func (c Luma) String() string {
 	if c.A == 1.0 {
@@ -82,11 +88,13 @@ type Rgba struct {
 	A float64
 }
 
-func (Rgba) valueMarker() {}
-func (Rgba) colorMarker() {}
-func (Rgba) Type() string  { return "color" }
-func (Rgba) Space() string { return "rgb" }
-func (c Rgba) Alpha() float64 { return c.A }
+func (Rgba) isValue()            {}
+func (Rgba) colorMarker()        {}
+func (Rgba) Type() Type          { return TypeColor }
+func (Rgba) Display() Content    { return Content{} }
+func (c Rgba) Clone() Value      { return c }
+func (Rgba) Space() string       { return "rgb" }
+func (c Rgba) ColorAlpha() float64 { return c.A }
 
 func (c Rgba) String() string {
 	if c.A == 1.0 {
@@ -140,11 +148,13 @@ type LinearRgba struct {
 	A float64
 }
 
-func (LinearRgba) valueMarker() {}
-func (LinearRgba) colorMarker() {}
-func (LinearRgba) Type() string  { return "color" }
-func (LinearRgba) Space() string { return "linear-rgb" }
-func (c LinearRgba) Alpha() float64 { return c.A }
+func (LinearRgba) isValue()            {}
+func (LinearRgba) colorMarker()        {}
+func (LinearRgba) Type() Type          { return TypeColor }
+func (LinearRgba) Display() Content    { return Content{} }
+func (c LinearRgba) Clone() Value      { return c }
+func (LinearRgba) Space() string       { return "linear-rgb" }
+func (c LinearRgba) ColorAlpha() float64 { return c.A }
 
 func (c LinearRgba) String() string {
 	if c.A == 1.0 {
@@ -184,11 +194,13 @@ type Oklab struct {
 	Alpha_ float64
 }
 
-func (Oklab) valueMarker() {}
-func (Oklab) colorMarker() {}
-func (Oklab) Type() string  { return "color" }
-func (Oklab) Space() string { return "oklab" }
-func (c Oklab) Alpha() float64 { return c.Alpha_ }
+func (Oklab) isValue()            {}
+func (Oklab) colorMarker()        {}
+func (Oklab) Type() Type          { return TypeColor }
+func (Oklab) Display() Content    { return Content{} }
+func (c Oklab) Clone() Value      { return c }
+func (Oklab) Space() string       { return "oklab" }
+func (c Oklab) ColorAlpha() float64 { return c.Alpha_ }
 
 func (c Oklab) String() string {
 	if c.Alpha_ == 1.0 {
@@ -244,11 +256,13 @@ type Oklch struct {
 	Alpha_ float64
 }
 
-func (Oklch) valueMarker() {}
-func (Oklch) colorMarker() {}
-func (Oklch) Type() string  { return "color" }
-func (Oklch) Space() string { return "oklch" }
-func (c Oklch) Alpha() float64 { return c.Alpha_ }
+func (Oklch) isValue()            {}
+func (Oklch) colorMarker()        {}
+func (Oklch) Type() Type          { return TypeColor }
+func (Oklch) Display() Content    { return Content{} }
+func (c Oklch) Clone() Value      { return c }
+func (Oklch) Space() string       { return "oklch" }
+func (c Oklch) ColorAlpha() float64 { return c.Alpha_ }
 
 func (c Oklch) String() string {
 	if c.Alpha_ == 1.0 {
@@ -299,11 +313,13 @@ type Hsl struct {
 	A float64
 }
 
-func (Hsl) valueMarker() {}
-func (Hsl) colorMarker() {}
-func (Hsl) Type() string  { return "color" }
-func (Hsl) Space() string { return "hsl" }
-func (c Hsl) Alpha() float64 { return c.A }
+func (Hsl) isValue()            {}
+func (Hsl) colorMarker()        {}
+func (Hsl) Type() Type          { return TypeColor }
+func (Hsl) Display() Content    { return Content{} }
+func (c Hsl) Clone() Value      { return c }
+func (Hsl) Space() string       { return "hsl" }
+func (c Hsl) ColorAlpha() float64 { return c.A }
 
 func (c Hsl) String() string {
 	if c.A == 1.0 {
@@ -364,11 +380,13 @@ type Hsv struct {
 	A float64
 }
 
-func (Hsv) valueMarker() {}
-func (Hsv) colorMarker() {}
-func (Hsv) Type() string  { return "color" }
-func (Hsv) Space() string { return "hsv" }
-func (c Hsv) Alpha() float64 { return c.A }
+func (Hsv) isValue()            {}
+func (Hsv) colorMarker()        {}
+func (Hsv) Type() Type          { return TypeColor }
+func (Hsv) Display() Content    { return Content{} }
+func (c Hsv) Clone() Value      { return c }
+func (Hsv) Space() string       { return "hsv" }
+func (c Hsv) ColorAlpha() float64 { return c.A }
 
 func (c Hsv) String() string {
 	if c.A == 1.0 {
@@ -434,11 +452,13 @@ type Cmyk struct {
 	C, M, Y, K float64
 }
 
-func (Cmyk) valueMarker() {}
-func (Cmyk) colorMarker() {}
-func (Cmyk) Type() string  { return "color" }
-func (Cmyk) Space() string { return "cmyk" }
-func (Cmyk) Alpha() float64 { return 1.0 } // CMYK doesn't have alpha
+func (Cmyk) isValue()            {}
+func (Cmyk) colorMarker()        {}
+func (Cmyk) Type() Type          { return TypeColor }
+func (Cmyk) Display() Content    { return Content{} }
+func (c Cmyk) Clone() Value      { return c }
+func (Cmyk) Space() string       { return "cmyk" }
+func (Cmyk) ColorAlpha() float64 { return 1.0 } // CMYK doesn't have alpha
 
 func (c Cmyk) String() string {
 	return fmt.Sprintf("cmyk(%d%%, %d%%, %d%%, %d%%)", int(c.C*100), int(c.M*100), int(c.Y*100), int(c.K*100))

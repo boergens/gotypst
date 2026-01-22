@@ -169,9 +169,9 @@ func (dt *Datetime) Ordinal() *int {
 	return &ord
 }
 
-// Display formats the datetime using the given pattern.
+// Format formats the datetime using the given pattern.
 // If pattern is empty, uses a default format based on which components are present.
-func (dt *Datetime) Display(pattern string) string {
+func (dt *Datetime) Format(pattern string) string {
 	if dt == nil {
 		return ""
 	}

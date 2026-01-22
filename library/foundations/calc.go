@@ -24,7 +24,7 @@ func Abs(v Value) (Value, error) {
 		return Float(math.Abs(float64(x))), nil
 	default:
 		return nil, &OpError{
-			Message: "expected integer or float, found " + v.Type(),
+			Message: "expected integer or float, found " + v.Type().String(),
 		}
 	}
 }
@@ -47,7 +47,7 @@ func Pow(base, exponent Value) (Value, error) {
 		baseF = float64(b)
 	default:
 		return nil, &OpError{
-			Message: "expected integer or float for base, found " + base.Type(),
+			Message: "expected integer or float for base, found " + base.Type().String(),
 		}
 	}
 
@@ -60,7 +60,7 @@ func Pow(base, exponent Value) (Value, error) {
 		expF = float64(e)
 	default:
 		return nil, &OpError{
-			Message: "expected integer or float for exponent, found " + exponent.Type(),
+			Message: "expected integer or float for exponent, found " + exponent.Type().String(),
 		}
 	}
 
@@ -151,7 +151,7 @@ func Exp(v Value) (Value, error) {
 		x = float64(n)
 	default:
 		return nil, &OpError{
-			Message: "expected integer or float, found " + v.Type(),
+			Message: "expected integer or float, found " + v.Type().String(),
 		}
 	}
 
@@ -169,7 +169,7 @@ func Sqrt(v Value) (Value, error) {
 		x = float64(n)
 	default:
 		return nil, &OpError{
-			Message: "expected integer or float, found " + v.Type(),
+			Message: "expected integer or float, found " + v.Type().String(),
 		}
 	}
 
@@ -195,7 +195,7 @@ func Root(radicand, index Value) (Value, error) {
 		x = float64(r)
 	default:
 		return nil, &OpError{
-			Message: "expected integer or float for radicand, found " + radicand.Type(),
+			Message: "expected integer or float for radicand, found " + radicand.Type().String(),
 		}
 	}
 
@@ -206,7 +206,7 @@ func Root(radicand, index Value) (Value, error) {
 		n = float64(i)
 	default:
 		return nil, &OpError{
-			Message: "expected integer or float for index, found " + index.Type(),
+			Message: "expected integer or float for index, found " + index.Type().String(),
 		}
 	}
 
